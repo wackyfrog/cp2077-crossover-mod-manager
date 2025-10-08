@@ -26,3 +26,7 @@ dist-ssr
 # Tauri
 /src-tauri/target
 /src-tauri/WixTools
+
+# Environment variables
+.env
+.env.local
