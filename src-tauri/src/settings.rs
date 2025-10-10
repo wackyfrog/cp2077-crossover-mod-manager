@@ -5,12 +5,32 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub game_path: String,
+    pub mod_storage_path: String,
+    #[serde(default = "default_first_run")]
+    pub first_run: bool,
+    #[serde(default)]
+    pub nexusmods_api_key: String,
+}
+
+fn default_first_run() -> bool {
+    true
 }
 
 impl Default for Settings {
     fn default() -> Self {
+        // Default mod storage to a "Mods" folder in the user's Downloads directory
+        let default_mod_path = dirs::download_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("CrossoverModManager")
+            .join("Mods")
+            .to_string_lossy()
+            .to_string();
+
         Self {
             game_path: String::new(),
+            mod_storage_path: default_mod_path,
+            first_run: true,
+            nexusmods_api_key: String::new(),
         }
     }
 }
@@ -24,7 +44,7 @@ impl AppSettings {
     pub fn new() -> Self {
         let settings_path = Self::get_settings_path();
         let settings = Self::load_settings(&settings_path);
-        
+
         Self {
             settings_path,
             settings,
@@ -34,11 +54,11 @@ impl AppSettings {
     fn get_settings_path() -> PathBuf {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let app_dir = home.join(".crossover-mod-manager");
-        
+
         if !app_dir.exists() {
             fs::create_dir_all(&app_dir).ok();
         }
-        
+
         app_dir.join("settings.json")
     }
 
@@ -60,10 +80,10 @@ impl AppSettings {
     pub fn save_settings(&mut self, settings: Settings) -> Result<(), String> {
         let json = serde_json::to_string_pretty(&settings)
             .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-        
+
         fs::write(&self.settings_path, json)
             .map_err(|e| format!("Failed to write settings: {}", e))?;
-        
+
         self.settings = settings;
         Ok(())
     }

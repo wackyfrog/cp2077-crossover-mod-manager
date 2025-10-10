@@ -14,6 +14,12 @@
   align-items: center;
 }
 
+.mod-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .mod-list-header h2 {
   font-size: 1.2rem;
   margin: 0;
@@ -22,6 +28,27 @@
 .mod-count {
   font-size: 0.9rem;
   color: #888;
+}
+
+.test-button {
+  padding: 0.5rem 0.75rem;
+  background: #646cff;
+  border: 1px solid #646cff;
+  border-radius: 4px;
+  color: white;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.test-button:hover:not(:disabled) {
+  background: #535bf2;
+  border-color: #535bf2;
+}
+
+.test-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mod-list-content {

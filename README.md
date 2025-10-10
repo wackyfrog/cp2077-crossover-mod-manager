@@ -42,6 +42,7 @@ crossover-mod-manager/
   - HTTP downloads from NexusMods
   - Persistent mod database (JSON)
   - Custom URL protocol handler (nxm://)
+  - First-run auto-detection of game path
 
 ## Prerequisites
 
@@ -53,12 +54,14 @@ crossover-mod-manager/
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/beneccles/crossover-mod-manager.git
    cd crossover-mod-manager
    ```
 
 2. Install frontend dependencies:
+
    ```bash
    npm install
    ```
@@ -115,6 +118,7 @@ The built application will be available in `src-tauri/target/release/bundle/`.
 ### Frontend (React + Vite)
 
 The frontend provides a clean, modern UI for managing mods:
+
 - **ModList**: Displays all installed mods with their status
 - **ModDetails**: Shows detailed information and installed files
 - **Settings**: Configure game paths and application settings
@@ -124,6 +128,7 @@ The frontend provides a clean, modern UI for managing mods:
 The Rust backend handles all file operations and mod management:
 
 1. **ModManager**: Core mod installation and removal logic
+
    - Downloads mods from NexusMods
    - Extracts ZIP archives
    - Determines correct installation paths for different file types
@@ -131,6 +136,7 @@ The Rust backend handles all file operations and mod management:
    - Safely removes mods without affecting vanilla files
 
 2. **Settings**: Persistent configuration storage
+
    - Saves game installation path
    - Stores user preferences
 
@@ -150,6 +156,7 @@ The application automatically determines where to install files based on their t
 ### Data Storage
 
 All mod information is stored in `~/.crossover-mod-manager/`:
+
 - `mods.json`: Database of installed mods and their files
 - `settings.json`: Application settings
 

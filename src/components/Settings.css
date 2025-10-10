@@ -50,6 +50,11 @@
   gap: 0.5rem;
 }
 
+.path-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .path-selector input {
   flex: 1;
   padding: 0.5rem;
@@ -67,6 +72,56 @@
 
 .path-selector button {
   min-width: 100px;
+}
+
+.auto-detect-button {
+  background: #4caf50;
+  border-color: #4caf50;
+  color: white;
+}
+
+.auto-detect-button:hover:not(:disabled) {
+  background: #45a049;
+  border-color: #45a049;
+}
+
+.auto-detect-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.detection-result {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.detection-result.success {
+  color: #4caf50;
+}
+
+.detection-result.warning {
+  color: #ff9800;
+}
+
+.detection-result.error {
+  color: #f44336;
+}
+
+.test-nxm-button {
+  background: #2196f3;
+  border-color: #2196f3;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.test-nxm-button:hover {
+  background: #1976d2;
+  border-color: #1976d2;
 }
 
 .help-text {
@@ -103,4 +158,55 @@
 .save-success {
   color: #4caf50;
   font-weight: 600;
+}
+
+.version-info {
+  margin: 0 0 0.5rem 0;
+  color: #646cff;
+  font-size: 1rem;
+}
+
+.version-info strong {
+  color: #fff;
+}
+
+.downloaded-mods-list {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 1rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.downloaded-mod-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #444;
+  display: flex;
+  align-items: center;
+}
+
+.downloaded-mod-item:last-child {
+  border-bottom: none;
+}
+
+.mod-filename {
+  color: #e0e0e0;
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.refresh-button {
+  background: #646cff;
+  border: 1px solid #646cff;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.refresh-button:hover {
+  background: #535bf2;
+  border-color: #535bf2;
 }
