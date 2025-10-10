@@ -68,18 +68,20 @@
 .refresh-button,
 .clear-button {
   padding: 0.5rem 1rem;
-  border: 1px solid #333;
-  border-radius: 4px;
-  background: #333;
-  color: #fff;
+  border: 1px solid var(--cyber-red);
+  background: transparent;
+  color: var(--cyber-red);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+  font-family: 'Play', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   transition: all 0.2s ease;
 }
 
 .refresh-button:hover {
-  background: #646cff;
-  border-color: #646cff;
+  color: var(--cyber-yellow);
+  border-color: var(--cyber-yellow);
 }
 
 .clear-button:hover {

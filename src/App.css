@@ -1,23 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap');
+
+:root {
+  --cyber-red: #ff0040;
+  --cyber-red-bright: #ff3366;
+  --cyber-red-dim: #cc002a;
+  --cyber-blue: #00ffff;
+  --cyber-blue-bright: #66ffff;
+  --cyber-green: #00ff88;
+  --cyber-green-bright: #00ff88;
+  --cyber-yellow: #ffff00;
+  --cyber-yellow-bright: #ffff66;
+  --cyber-dark: #0a0a0a;
+  --cyber-darker: #050505;
+  --cyber-border: #220000;
+  --cyber-text: #ffcccc;
+  --cyber-glow: 0 0 10px rgba(255, 0, 64, 0.5);
+  --cyber-text-glow: 0 0 5px rgba(255, 0, 64, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Play', sans-serif;
+  background: var(--cyber-darker);
+  color: var(--cyber-red);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Cyberdeck scanlines effect */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 0, 64, 0.03) 2px,
+      rgba(255, 0, 64, 0.03) 4px
+    );
+  pointer-events: none;
+  z-index: 1000;
+}
+
 .app {
   width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--cyber-dark);
+  position: relative;
 }
 
 .app-header {
-  background: #1a1a1a;
+  background: var(--cyber-darker);
   padding: 1rem 2rem;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--cyber-red);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
 }
 
 .app-header h1 {
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   margin: 0;
-  color: #646cff;
+  color: var(--cyber-yellow);
+  font-weight: 400;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.app-header h1::before {
+  content: '> ';
+  color: var(--cyber-red);
 }
 
 .tabs {
@@ -26,26 +90,40 @@
 }
 
 .tabs button {
-  padding: 0.5rem 1rem;
+  padding: 0.75rem 1.5rem;
   background: transparent;
-  border: 1px solid #333;
-  color: #fff;
+  border: 1px solid var(--cyber-red);
+  color: var(--cyber-red);
+  font-family: 'Play', sans-serif;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tabs button:hover {
+  color: var(--cyber-yellow);
+  border-color: var(--cyber-yellow);
 }
 
 .tabs button.active {
-  background: #646cff;
-  border-color: #646cff;
+  color: var(--cyber-yellow);
+  border-color: var(--cyber-yellow);
 }
 
 .app-content {
   flex: 1;
   overflow: hidden;
+  background: var(--cyber-dark);
 }
 
 .mod-manager {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 350px 1fr;
   height: 100%;
+  gap: 1px;
+  background: var(--cyber-red);
 }
 
 .loading-overlay {
@@ -65,8 +143,8 @@
 .spinner {
   width: 50px;
   height: 50px;
-  border: 3px solid #333;
-  border-top-color: #646cff;
+  border: 2px solid var(--cyber-red);
+  border-top-color: transparent;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -79,5 +157,8 @@
 
 .loading-overlay p {
   margin-top: 1rem;
-  color: #fff;
+  color: var(--cyber-red);
+  font-family: 'Play', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }

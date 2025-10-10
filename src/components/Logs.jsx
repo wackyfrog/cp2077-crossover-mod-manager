@@ -111,7 +111,7 @@ function Logs() {
           </label>
 
           <button onClick={loadLogs} className="refresh-button">
-            🔄 Refresh
+            Refresh
           </button>
 
           <button onClick={clearLogs} className="clear-button">

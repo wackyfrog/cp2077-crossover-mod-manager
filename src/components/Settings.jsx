@@ -303,7 +303,7 @@ function Settings() {
           </div>
           <div className="setting-row">
             <button onClick={loadDownloadedMods} className="refresh-button">
-              🔄 Refresh List
+              Refresh List
             </button>
             <p className="help-text">
               Click refresh to update the list if you've added files manually.

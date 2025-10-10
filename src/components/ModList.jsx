@@ -15,7 +15,7 @@ function ModList({ mods, selectedMod, onSelectMod, loading, onRefresh }) {
             disabled={loading}
             title="Refresh mod list"
           >
-            🔄 Refresh
+            Refresh
           </button>
         </div>
       </div>
