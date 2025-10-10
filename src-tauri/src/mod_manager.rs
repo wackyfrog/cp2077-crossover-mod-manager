@@ -82,6 +82,37 @@ impl ModManager {
         self.mods.push(mod_info);
     }
 
+    /// Check if a mod is already installed based on mod_id and file_id
+    pub fn find_existing_mod(&self, mod_id: &str, file_id: &str) -> Option<&ModInfo> {
+        self.mods.iter().find(|mod_info| {
+            if let (Some(existing_mod_id), Some(existing_file_id)) =
+                (&mod_info.mod_id, &mod_info.file_id)
+            {
+                existing_mod_id == mod_id && existing_file_id == file_id
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Check if a mod with the same name and version is already installed
+    pub fn find_existing_mod_by_name(&self, name: &str, version: &str) -> Option<&ModInfo> {
+        self.mods
+            .iter()
+            .find(|mod_info| mod_info.name == name && mod_info.version == version)
+    }
+
+    /// Check if any version of a mod is already installed (by mod_id only)
+    pub fn find_existing_mod_by_id(&self, mod_id: &str) -> Option<&ModInfo> {
+        self.mods.iter().find(|mod_info| {
+            if let Some(existing_mod_id) = &mod_info.mod_id {
+                existing_mod_id == mod_id
+            } else {
+                false
+            }
+        })
+    }
+
     pub async fn install_mod(
         &mut self,
         mod_data: serde_json::Value,

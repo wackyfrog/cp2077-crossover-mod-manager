@@ -1072,6 +1072,60 @@ async fn install_mod_from_nxm(
         return Err("Game path not set in settings. Please configure it first.".to_string());
     }
 
+    // Check for duplicate installations
+    {
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        
+        // Check if exact same mod and file is already installed
+        if let Some(existing_mod) = manager.find_existing_mod(&mod_id, &file_id) {
+            add_log(
+                format!("⚠️ Mod '{}' (File ID: {}) is already installed!", existing_mod.name, file_id),
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            return Err(format!("Mod '{}' with the same file version is already installed. Please uninstall the existing version first if you want to reinstall.", existing_mod.name));
+        }
+        
+        // Check if a different version of the same mod is installed
+        if let Some(existing_mod) = manager.find_existing_mod_by_id(&mod_id) {
+            if existing_mod.file_id.as_ref() != Some(&file_id) {
+                add_log(
+                    format!("🔄 Different version of '{}' detected. Existing: v{}, Installing: v{}", 
+                        existing_mod.name, existing_mod.version, mod_version),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                add_log(
+                    "💡 Consider uninstalling the old version first to avoid conflicts.".to_string(),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                // Allow installation to continue, but warn user
+            }
+        }
+        
+        // Check if mod with same name but different ID exists (potential conflict)
+        if let Some(existing_mod) = manager.find_existing_mod_by_name(&mod_name, &mod_version) {
+            if existing_mod.mod_id.as_ref() != Some(&mod_id) {
+                add_log(
+                    format!("⚠️ Mod with same name '{}' v{} already exists but from different source!", mod_name, mod_version),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                add_log(
+                    "💡 This might be the same mod from a different source. Proceeding with installation.".to_string(),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
+        }
+    }
+
     add_log(
         format!("🚀 Starting installation for mod: {}", mod_name),
         "info".to_string(),
@@ -1261,6 +1315,7 @@ async fn install_mod_from_nxm(
     let mut install_count = 0;
     let mut is_redmod = false;
     let mut is_cet = false;
+    let mut is_red4ext = false;
 
     // Walk through extracted files and install them
     for entry in WalkDir::new(&temp_extract_dir).into_iter().filter_map(|e| e.ok()) {
@@ -1279,8 +1334,29 @@ async fn install_mod_from_nxm(
                 is_cet = true;
             }
             
+            // Check if this is RED4ext
+            if path_str.contains("red4ext.dll") || 
+               path_str.contains("red4ext") ||
+               path_str.ends_with("red4ext.dll") {
+                is_red4ext = true;
+            }
+            
             // Determine installation path based on file type
             let install_path = determine_install_path_for_file(game_dir, relative_path)?;
+            
+            // Log file placement for debugging
+            if install_count % 10 == 0 || path_str.contains("red4ext") {
+                add_log(
+                    format!("📁 Installing: {} → {}", 
+                        relative_path.display(), 
+                        install_path.strip_prefix(game_dir)
+                            .unwrap_or(&install_path)
+                            .display()),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
 
             // Create parent directories
             if let Some(parent) = install_path.parent() {
@@ -1326,17 +1402,85 @@ async fn install_mod_from_nxm(
     // Warn if REDmod detected
     if is_redmod {
         add_log(
-            "⚠️ REDmod detected! You must launch Cyberpunk 2077 with the -modded parameter for this mod to work.".to_string(),
+            "🎮 REDmod detected! This mod uses the official CDPR modding system.".to_string(),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        add_log(
+            "⚠️ CRITICAL: REDmod mods require the '-modded' launch parameter to work!".to_string(),
             "warning".to_string(),
             "installation".to_string(),
             state.clone(),
         )?;
         add_log(
-            "ℹ️ To use REDmod: Add '-modded' to your game launch options in GOG Galaxy/Steam/Epic".to_string(),
-            "info".to_string(),
+            "Without this parameter, your mod will NOT load and you'll see no effects in-game.".to_string(),
+            "warning".to_string(),
             "installation".to_string(),
             state.clone(),
         )?;
+        
+        #[cfg(target_os = "macos")]
+        {
+            add_log(
+                "📋 How to add '-modded' parameter in Crossover:".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "  • GOG Galaxy: Settings → Cyberpunk 2077 → Additional Launch Arguments → Add: -modded".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "  • Steam: Right-click game → Properties → Launch Options → Add: -modded".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "  • Epic Games: Library → Cyberpunk 2077 → ⋯ → Manage → Additional Command Line Arguments → Add: -modded".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "💡 Tip: You only need to set this once, and it applies to all REDmod mods.".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+        
+        #[cfg(target_os = "windows")]
+        {
+            add_log(
+                "📋 How to add '-modded' parameter:".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "  • GOG Galaxy: Settings → Game → Additional Launch Arguments → Add: -modded".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "  • Steam: Right-click game → Properties → Launch Options → Add: -modded".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "  • Epic Games: Library → ⋯ → Manage → Launch Options → Add: -modded".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
     }
     
     // Configure CET if detected
@@ -1371,6 +1515,73 @@ async fn install_mod_from_nxm(
             )?;
             add_log(
                 "📋 Step 3: Click OK and restart GOG Galaxy for CET to work".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+    }
+    
+    // Configure RED4ext if detected
+    if is_red4ext {
+        add_log(
+            "🔴 RED4ext detected! This is a native code extension framework.".to_string(),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        
+        // Check for Windows/Crossover specific requirements
+        #[cfg(target_os = "macos")]
+        {
+            add_log(
+                "⚠️ CRITICAL: RED4ext may not work reliably under Crossover/Wine!".to_string(),
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "❌ RED4ext uses advanced native code injection that often fails in Wine environments.".to_string(),
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "💡 Alternative: Consider using Redscript or CET-based mods instead for better compatibility.".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "🔧 If you want to try anyway: Ensure all Visual C++ Redistributables are installed in the bottle.".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "📖 For detailed troubleshooting, see RED4EXT_COMPATIBILITY.md in the app directory.".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+        
+        #[cfg(target_os = "windows")]
+        {
+            add_log(
+                "ℹ️ RED4ext requires Visual C++ Redistributable 2019 or newer to be installed.".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "⚠️ If the game crashes on startup, install the latest VC++ Redist from Microsoft.".to_string(),
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "🔧 Some RED4ext mods may require running the game as Administrator.".to_string(),
                 "info".to_string(),
                 "installation".to_string(),
                 state.clone(),
@@ -1500,6 +1711,10 @@ fn determine_install_path_for_file(
     // We should preserve this structure and install directly to game_dir
     
     let path_str = relative_path.to_string_lossy().to_lowercase();
+    let file_name = relative_path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     
     // Check if the path already starts with a known game directory
     // Common Cyberpunk 2077 mod structures:
@@ -1508,6 +1723,7 @@ fn determine_install_path_for_file(
     // - archive/pc/mod/...       (Archive mods)
     // - engine/config/...        (Config mods)
     // - mods/...                 (REDmod - official CDPR mod system)
+    // - red4ext/plugins/...      (RED4ext plugins)
     
     if path_str.starts_with("mods/") || path_str.starts_with("mods\\") {
         // REDmod structure: mods/modname/...
@@ -1535,6 +1751,27 @@ fn determine_install_path_for_file(
         return Ok(game_dir.join(relative_path));
     }
     
+    if path_str.starts_with("red4ext/") || path_str.starts_with("red4ext\\") {
+        // Path already has correct structure: red4ext/plugins/...
+        return Ok(game_dir.join(relative_path));
+    }
+    
+    // Special handling for RED4ext core files (case-insensitive)
+    if file_name == "red4ext.dll" {
+        // RED4ext.dll goes in bin/x64/ (preserve original casing)
+        let original_name = relative_path.file_name().unwrap().to_string_lossy();
+        println!("🔴 Detected RED4ext core DLL: {} → bin/x64/", original_name);
+        return Ok(game_dir.join("bin").join("x64").join(original_name.as_ref()));
+    }
+    
+    // Handle RED4ext configuration and other files
+    if path_str.contains("red4ext") && !path_str.starts_with("red4ext/") && !path_str.starts_with("red4ext\\") {
+        // Files that contain "red4ext" but aren't in proper structure - place in red4ext/
+        if path_str.ends_with(".toml") || path_str.ends_with(".ini") || path_str.ends_with(".txt") {
+            return Ok(game_dir.join("red4ext").join(relative_path.file_name().unwrap()));
+        }
+    }
+    
     // If the path doesn't start with a known directory, try to infer from file type
     if path_str.ends_with(".archive") {
         // Standalone .archive file -> archive/pc/mod/
@@ -1554,7 +1791,17 @@ fn determine_install_path_for_file(
     }
     
     if path_str.ends_with(".dll") || path_str.ends_with(".exe") {
-        // Standalone binary -> bin/x64/
+        // Check if this might be a RED4ext plugin
+        if path_str.contains("red4ext") || 
+           relative_path.parent().map(|p| p.to_string_lossy().to_lowercase().contains("plugins")).unwrap_or(false) {
+            // RED4ext plugin -> red4ext/plugins/
+            return Ok(game_dir
+                .join("red4ext")
+                .join("plugins")
+                .join(relative_path.file_name().unwrap()));
+        }
+        
+        // Regular binary -> bin/x64/
         return Ok(game_dir
             .join("bin")
             .join("x64")
