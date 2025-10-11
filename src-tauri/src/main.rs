@@ -1317,6 +1317,7 @@ async fn install_mod_from_nxm(
     let mut is_redmod = false;
     let mut is_cet = false;
     let mut is_red4ext = false;
+    let mut case_mismatch_count = 0;
 
     // Walk through extracted files and install them
     for entry in WalkDir::new(&temp_extract_dir).into_iter().filter_map(|e| e.ok()) {
@@ -1343,8 +1344,60 @@ async fn install_mod_from_nxm(
                 is_red4ext = true;
             }
             
-            // Determine installation path based on file type
+            // Check for case sensitivity issues before installation
+            let (has_case_mismatch, _normalized_path, case_issues) = check_case_mismatch(relative_path);
+            
+            if has_case_mismatch && !case_issues.is_empty() {
+                // Log case mismatch warning
+                for issue in &case_issues {
+                    add_log(
+                        format!("⚠️ Case sensitivity issue detected: {}", issue),
+                        "warning".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                }
+                
+                add_log(
+                    format!("🔧 Auto-correcting path casing to match game structure"),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                
+                case_mismatch_count += 1;
+            }
+            
+            // Determine installation path based on file type (uses normalized paths)
             let install_path = determine_install_path_for_file(game_dir, relative_path)?;
+            
+            // Check if target file already exists with different casing
+            if let Some(parent) = install_path.parent() {
+                if parent.exists() {
+                    if let Some(file_name) = install_path.file_name() {
+                        let target_name = file_name.to_string_lossy();
+                        let target_lower = target_name.to_lowercase();
+                        
+                        if let Ok(entries) = std::fs::read_dir(parent) {
+                            for entry in entries.flatten() {
+                                if let Ok(existing_name) = entry.file_name().into_string() {
+                                    if existing_name.to_lowercase() == target_lower && existing_name != target_name.as_ref() {
+                                        add_log(
+                                            format!(
+                                                "⚠️ Existing file with different casing found: '{}' will be replaced with '{}'",
+                                                existing_name, target_name
+                                            ),
+                                            "warning".to_string(),
+                                            "installation".to_string(),
+                                            state.clone(),
+                                        )?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             
             // Log file placement for debugging (especially for RED4ext files)
             if install_count % 10 == 0 || path_str.contains("red4ext") || path_str.ends_with("version.dll") {
@@ -1400,6 +1453,41 @@ async fn install_mod_from_nxm(
         "installation".to_string(),
         state.clone(),
     )?;
+    
+    // Display case sensitivity summary if any issues were detected
+    if case_mismatch_count > 0 {
+        add_log(
+            format!(
+                "📊 Case Sensitivity Summary: {} file(s) had incorrect casing and were auto-corrected",
+                case_mismatch_count
+            ),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        add_log(
+            "✅ All paths normalized to match Cyberpunk 2077's expected directory structure".to_string(),
+            "success".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        
+        #[cfg(target_os = "macos")]
+        {
+            add_log(
+                "💡 macOS/Crossover Tip: This is normal when installing mods created on Windows".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "The mod manager automatically corrects case mismatches to ensure compatibility".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+    }
     
     // Warn if REDmod detected
     if is_redmod {
@@ -1735,6 +1823,105 @@ async fn install_mod_from_nxm(
     Ok(format!("Mod '{}' installed successfully with {} files!", mod_name, installed_files.len()))
 }
 
+/// Check if a path exists with case-insensitive matching
+/// Returns the correctly-cased path if found, or None if not found
+#[allow(dead_code)]
+fn find_path_case_insensitive(base_dir: &std::path::Path, target_path: &std::path::Path) -> Option<std::path::PathBuf> {
+    
+    // Start with the base directory
+    let mut current = base_dir.to_path_buf();
+    
+    // Iterate through each component of the target path
+    for component in target_path.components() {
+        if let std::path::Component::Normal(comp_str) = component {
+            let comp_lower = comp_str.to_string_lossy().to_lowercase();
+            let mut found = false;
+            
+            // Try to read the directory entries
+            if let Ok(entries) = std::fs::read_dir(&current) {
+                for entry in entries.flatten() {
+                    if let Ok(file_name) = entry.file_name().into_string() {
+                        if file_name.to_lowercase() == comp_lower {
+                            current = current.join(&file_name);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if !found {
+                return None; // Path component not found
+            }
+        }
+    }
+    
+    Some(current)
+}
+
+/// Normalize a path component to match Cyberpunk 2077's expected casing
+/// This ensures consistent casing for game directories
+fn normalize_game_path_component(component: &str) -> String {
+    let lower = component.to_lowercase();
+    
+    // Common Cyberpunk 2077 directory names with correct casing
+    match lower.as_str() {
+        "bin" => "bin".to_string(),
+        "x64" => "x64".to_string(),
+        "archive" => "archive".to_string(),
+        "pc" => "pc".to_string(),
+        "mod" => "mod".to_string(),
+        "mods" => "mods".to_string(),
+        "r6" => "r6".to_string(),
+        "scripts" => "scripts".to_string(),
+        "engine" => "engine".to_string(),
+        "config" => "config".to_string(),
+        "red4ext" => "red4ext".to_string(),
+        "plugins" => "plugins".to_string(),
+        _ => component.to_string(), // Preserve original casing for unknown components
+    }
+}
+
+/// Normalize a full path to use correct game directory casing
+fn normalize_game_path(relative_path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::PathBuf;
+    
+    let mut normalized = PathBuf::new();
+    
+    for component in relative_path.components() {
+        if let std::path::Component::Normal(comp_str) = component {
+            let comp_string = comp_str.to_string_lossy();
+            let normalized_comp = normalize_game_path_component(&comp_string);
+            normalized.push(normalized_comp);
+        } else {
+            normalized.push(component);
+        }
+    }
+    
+    normalized
+}
+
+/// Check if a path has case mismatches compared to expected Cyberpunk 2077 structure
+/// Returns a tuple of (has_mismatch, expected_path, issues)
+fn check_case_mismatch(relative_path: &std::path::Path) -> (bool, std::path::PathBuf, Vec<String>) {
+    let normalized = normalize_game_path(relative_path);
+    let mut issues = Vec::new();
+    
+    let original_str = relative_path.to_string_lossy();
+    let normalized_str = normalized.to_string_lossy();
+    
+    if original_str.to_lowercase() == normalized_str.to_lowercase() && original_str != normalized_str {
+        // Same path but different casing
+        issues.push(format!(
+            "Case mismatch: '{}' should be '{}'",
+            original_str, normalized_str
+        ));
+        return (true, normalized, issues);
+    }
+    
+    (false, normalized, issues)
+}
+
 fn determine_install_path_for_file(
     game_dir: &std::path::Path,
     relative_path: &std::path::Path,
@@ -1742,8 +1929,11 @@ fn determine_install_path_for_file(
     // Most mods already have the correct directory structure (e.g., bin/x64/file.dll)
     // We should preserve this structure and install directly to game_dir
     
-    let path_str = relative_path.to_string_lossy().to_lowercase();
-    let file_name = relative_path.file_name()
+    // Normalize the path to ensure correct casing for game directories
+    let normalized_path = normalize_game_path(relative_path);
+    
+    let path_str = normalized_path.to_string_lossy().to_lowercase();
+    let file_name = normalized_path.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_lowercase();
@@ -1760,32 +1950,32 @@ fn determine_install_path_for_file(
     if path_str.starts_with("mods/") || path_str.starts_with("mods\\") {
         // REDmod structure: mods/modname/...
         // These mods require launching with -modded parameter
-        return Ok(game_dir.join(relative_path));
+        return Ok(game_dir.join(normalized_path));
     }
     
     if path_str.starts_with("bin/") || path_str.starts_with("bin\\") {
-        // Path already has correct structure: bin/x64/file.dll
-        return Ok(game_dir.join(relative_path));
+        // Path already has correct structure: bin/x64/file.dll (with normalized casing)
+        return Ok(game_dir.join(normalized_path));
     }
     
     if path_str.starts_with("r6/") || path_str.starts_with("r6\\") {
-        // Path already has correct structure: r6/scripts/file.reds
-        return Ok(game_dir.join(relative_path));
+        // Path already has correct structure: r6/scripts/file.reds (with normalized casing)
+        return Ok(game_dir.join(normalized_path));
     }
     
     if path_str.starts_with("archive/") || path_str.starts_with("archive\\") {
-        // Path already has correct structure: archive/pc/mod/file.archive
-        return Ok(game_dir.join(relative_path));
+        // Path already has correct structure: archive/pc/mod/file.archive (with normalized casing)
+        return Ok(game_dir.join(normalized_path));
     }
     
     if path_str.starts_with("engine/") || path_str.starts_with("engine\\") {
-        // Path already has correct structure: engine/config/...
-        return Ok(game_dir.join(relative_path));
+        // Path already has correct structure: engine/config/... (with normalized casing)
+        return Ok(game_dir.join(normalized_path));
     }
     
     if path_str.starts_with("red4ext/") || path_str.starts_with("red4ext\\") {
-        // Path already has correct structure: red4ext/plugins/...
-        return Ok(game_dir.join(relative_path));
+        // Path already has correct structure: red4ext/plugins/... (with normalized casing)
+        return Ok(game_dir.join(normalized_path));
     }
     
     // Special handling for RED4ext core files (case-insensitive)
@@ -1848,9 +2038,9 @@ fn determine_install_path_for_file(
             .join(relative_path.file_name().unwrap()));
     }
     
-    // For anything else, preserve the original structure
-    // This handles mods with custom folder structures
-    Ok(game_dir.join(relative_path))
+    // For anything else, preserve the normalized structure
+    // This handles mods with custom folder structures (with correct casing for known directories)
+    Ok(game_dir.join(normalized_path))
 }
 
 #[tauri::command]
