@@ -561,19 +561,29 @@ let _guard = TempFileGuard(temp_file_path);
 
 ### Phase 2: Medium Priority (Next Release)
 
-4. **Symlink detection and handling**
+3. ✅ **Archive load order conflict detection** - **COMPLETED in v1.3.0**
 
-   - Warn about symlinks in mod archives
-   - Option to dereference during installation
+   - ✅ File conflict detection system implemented
+   - ✅ Archive-specific load order awareness
+   - ✅ Alphabetical load order explanations
+   - ✅ Renaming suggestions (0-, z- prefixes)
+   - ✅ Comprehensive conflict warnings
+   - ✅ File ownership tracking across all mods
 
-5. **Archive load order conflict detection**
+4. ✅ **Symlink detection and handling** - **COMPLETED in v1.3.0**
 
-   - Detect overlapping archive mods
-   - Basic conflict warnings
+   - ✅ Automatic symlink detection during installation
+   - ✅ Wine/Crossover compatibility warnings
+   - ✅ Symlink target tracking and display
+   - ✅ Automatic skipping for compatibility
+   - ✅ Platform-specific advice provided
 
-6. **Unicode filename sanitization**
-   - Detect and warn about non-ASCII filenames
-   - Optional sanitization during installation
+5. ✅ **Unicode filename sanitization** - **COMPLETED in v1.3.0**
+   - ✅ Automatic Unicode detection implemented
+   - ✅ Transliteration using unidecode (café→cafe)
+   - ✅ ASCII sanitization during installation
+   - ✅ Before/after filename mapping displayed
+   - ✅ Platform-specific compatibility advice
 
 ### Phase 3: Polish and Edge Cases (Future)
 
