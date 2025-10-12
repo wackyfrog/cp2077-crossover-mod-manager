@@ -428,36 +428,52 @@ fn check_path_length(path: &Path) -> Result<(), String> {
 - Large mod downloads fail unexpectedly
 - No clear error message about space issues
 
-**Current Status**: ❌ Not checked
+**Current Status**: ✅ **IMPLEMENTED in v1.4.0**
 
-**Solutions**:
+**Implementation Details**:
 
-- Check available disk space before downloading large mods
-- Use macOS native disk space check, not Wine's reported space
-- Warn if available space < (mod size \* 3) for extraction buffer
-- Clean up temp files before installation
+- ✅ Checks available disk space before downloading mods
+- ✅ Uses macOS native disk space check (statvfs)
+- ✅ Requires 3x mod size (download + extraction + buffer)
+- ✅ Human-readable size formatting (KB/MB/GB)
+- ✅ Clear error messages with available vs required space
+- ✅ Helpful tips for freeing up space
+- ✅ Separate checks for temp directory and game directory
+
+**What Users See**:
+
+```
+📦 Download size: 125.45 MB
+✓ Sufficient disk space available for download and extraction
+✓ Sufficient disk space in game directory for installation
+```
+
+**Or on failure**:
+
+```
+❌ Insufficient disk space. Required: 376.35 MB (including extraction buffer), Available: 200.00 MB
+💡 Tip: Free up disk space or clean up old mod downloads from system temp folder
+```
 
 **Implementation**:
 
 ```rust
-use std::fs;
-
-fn check_disk_space(path: &Path, required_bytes: u64) -> Result<(), String> {
-    let metadata = fs::metadata(path)?;
-    let available = fs2::available_space(path)?;
-
-    if available < required_bytes * 3 {
+fn check_sufficient_disk_space(path: &Path, required_bytes: u64) -> Result<(), String> {
+    let available = get_available_disk_space(path)?;
+    let required_with_buffer = required_bytes * 3;
+    
+    if available < required_with_buffer {
         return Err(format!(
-            "Insufficient disk space. Required: {} MB, Available: {} MB",
-            required_bytes / 1_000_000,
-            available / 1_000_000
+            "Insufficient disk space. Required: {} (including extraction buffer), Available: {}",
+            format_bytes(required_with_buffer),
+            format_bytes(available)
         ));
     }
     Ok(())
 }
 ```
 
-**User Impact**: LOW - Causes installation failure, but with clear error
+**User Impact**: LOW - Prevents wasted downloads, clear error messages
 
 ---
 

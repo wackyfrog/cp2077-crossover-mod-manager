@@ -1152,11 +1152,41 @@ async fn install_mod_from_nxm(
 
     let total_size = response.content_length().unwrap_or(0);
     add_log(
-        format!("📦 Download size: {} KB", total_size / 1024),
+        format!("📦 Download size: {}", format_bytes(total_size)),
         "info".to_string(),
         "download".to_string(),
         state.clone(),
     )?;
+
+    // Check disk space before downloading
+    if total_size > 0 {
+        let temp_dir = std::env::temp_dir();
+        match check_sufficient_disk_space(&temp_dir, total_size) {
+            Ok(_) => {
+                add_log(
+                    format!("✓ Sufficient disk space available for download and extraction"),
+                    "info".to_string(),
+                    "download".to_string(),
+                    state.clone(),
+                )?;
+            }
+            Err(err) => {
+                add_log(
+                    format!("❌ {}", err),
+                    "error".to_string(),
+                    "download".to_string(),
+                    state.clone(),
+                )?;
+                add_log(
+                    "💡 Tip: Free up disk space or clean up old mod downloads from system temp folder".to_string(),
+                    "info".to_string(),
+                    "download".to_string(),
+                    state.clone(),
+                )?;
+                return Err(err);
+            }
+        }
+    }
 
     let bytes = response.bytes().await.map_err(|e| {
         format!("Failed to read download data: {}", e)
@@ -1205,6 +1235,40 @@ async fn install_mod_from_nxm(
         "installation".to_string(),
         state.clone(),
     )?;
+
+    // Check disk space for extraction (archives typically expand 2-3x)
+    let game_dir_path = Path::new(&game_path);
+    if let Ok(archive_size) = fs::metadata(&temp_archive_path).map(|m| m.len()) {
+        match check_sufficient_disk_space(game_dir_path, archive_size) {
+            Ok(_) => {
+                add_log(
+                    "✓ Sufficient disk space in game directory for installation".to_string(),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
+            Err(err) => {
+                add_log(
+                    format!("❌ {}", err),
+                    "error".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                add_log(
+                    "💡 Tip: Free up disk space in your game directory or Wine bottle".to_string(),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                // Cleanup before returning error
+                if let Some(path) = &archive_path {
+                    fs::remove_file(path).ok();
+                }
+                return Err(err);
+            }
+        }
+    }
 
     let temp_extract_dir = temp_dir.join(format!("mod_extract_{}_{}", mod_id, uuid::Uuid::new_v4()));
     extract_dir = Some(temp_extract_dir.clone());
@@ -2173,6 +2237,76 @@ fn needs_sanitization(name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Get available disk space for a given path in bytes
+/// Returns the available space on the filesystem containing the path
+fn get_available_disk_space(path: &std::path::Path) -> Result<u64, String> {
+    // Find the closest existing parent directory
+    let mut check_path = path;
+    while !check_path.exists() {
+        if let Some(parent) = check_path.parent() {
+            check_path = parent;
+        } else {
+            return Err("Unable to find valid path for disk space check".to_string());
+        }
+    }
+    
+    // Use platform-specific method to get available space
+    #[cfg(unix)]
+    {
+        // Use statvfs to get filesystem statistics
+        let stats = nix::sys::statvfs::statvfs(check_path)
+            .map_err(|e| format!("Failed to get filesystem statistics: {}", e))?;
+        
+        // Available space = block size * available blocks (convert to u64)
+        let available_bytes = stats.blocks_available() as u64 * stats.block_size();
+        Ok(available_bytes)
+    }
+    
+    #[cfg(not(unix))]
+    {
+        // Fallback for non-Unix systems (Windows)
+        // This is a simple estimation - not perfectly accurate
+        Err("Disk space checking not implemented for this platform".to_string())
+    }
+}
+
+/// Format bytes into human-readable format (KB, MB, GB)
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
+/// Check if there's sufficient disk space for mod installation
+/// Returns an error if insufficient space is available
+/// Requires: mod_size * 3 (for download + extraction + buffer)
+fn check_sufficient_disk_space(path: &std::path::Path, required_bytes: u64) -> Result<(), String> {
+    let available = get_available_disk_space(path)?;
+    
+    // Require 3x the size: 1x for download, 1x for extraction, 1x for buffer
+    let required_with_buffer = required_bytes * 3;
+    
+    if available < required_with_buffer {
+        return Err(format!(
+            "Insufficient disk space. Required: {} (including extraction buffer), Available: {}",
+            format_bytes(required_with_buffer),
+            format_bytes(available)
+        ));
+    }
+    
+    Ok(())
 }
 
 /// Normalize a path component to match Cyberpunk 2077's expected casing

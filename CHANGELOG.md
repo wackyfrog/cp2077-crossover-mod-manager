@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-10-12
+
+### Added
+
+- **Disk Space Checking** (Priority #7 - Phase 3)
+  - Automatic disk space verification before mod download
+  - Checks available space before extraction (prevents mid-install failures)
+  - Requires 3x mod size for download + extraction + buffer
+  - Human-readable size formatting (KB, MB, GB)
+  - Clear error messages with available vs required space
+  - Platform-specific implementation using statvfs on Unix
+  - Separate checks for temp directory and game directory
+  - Helpful tips for freeing up space
+
+### Changed
+
+- Enhanced download logging with formatted byte sizes
+- Improved error messages for insufficient disk space scenarios
+
+### Technical
+
+- Added `nix` crate dependency (v0.29) for statvfs filesystem statistics
+- Created disk space utility functions in `main.rs`:
+  - `get_available_disk_space()` - Uses statvfs to get filesystem info
+  - `format_bytes()` - Converts bytes to human-readable format
+  - `check_sufficient_disk_space()` - Validates space before operations
+- Integrated checks at two critical points:
+  - Before downloading (temp directory check)
+  - Before extraction (game directory check)
+
 ## [1.3.0] - 2025-10-11
 
 ### Added
