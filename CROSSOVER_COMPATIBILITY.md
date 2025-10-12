@@ -461,7 +461,7 @@ fn check_path_length(path: &Path) -> Result<(), String> {
 fn check_sufficient_disk_space(path: &Path, required_bytes: u64) -> Result<(), String> {
     let available = get_available_disk_space(path)?;
     let required_with_buffer = required_bytes * 3;
-    
+
     if available < required_with_buffer {
         return Err(format!(
             "Insufficient disk space. Required: {} (including extraction buffer), Available: {}",
