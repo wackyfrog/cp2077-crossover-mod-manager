@@ -4,6 +4,7 @@
 mod mod_manager;
 mod settings;
 mod nexusmods_api;
+mod archive_extractor;
 
 use mod_manager::{ModInfo, ModManager};
 use serde::{Deserialize, Serialize};
@@ -1054,7 +1055,6 @@ async fn install_mod_from_nxm(
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     use std::fs;
-    use std::io;
     use std::path::Path;
     use walkdir::WalkDir;
 
@@ -1191,8 +1191,16 @@ async fn install_mod_from_nxm(
     )?;
 
     // Step 3: Extract the archive
+    let archive_type = archive_extractor::ArchiveExtractor::detect_archive_type(&temp_archive_path);
+    let archive_type_str = match &archive_type {
+        archive_extractor::ArchiveType::Zip => "ZIP",
+        archive_extractor::ArchiveType::SevenZ => "7z",
+        archive_extractor::ArchiveType::Rar => "RAR",
+        archive_extractor::ArchiveType::Unsupported(ext) => ext.as_str(),
+    };
+    
     add_log(
-        "📂 Extracting mod archive...".to_string(),
+        format!("📂 Extracting {} archive...", archive_type_str),
         "info".to_string(),
         "installation".to_string(),
         state.clone(),
@@ -1201,15 +1209,11 @@ async fn install_mod_from_nxm(
     let temp_extract_dir = temp_dir.join(format!("mod_extract_{}_{}", mod_id, uuid::Uuid::new_v4()));
     extract_dir = Some(temp_extract_dir.clone());
     
-    fs::create_dir_all(&temp_extract_dir).map_err(|e| {
-        // Cleanup on error
-        if let Some(path) = &archive_path {
-            fs::remove_file(path).ok();
-        }
-        format!("Failed to create extraction directory: {}", e)
-    })?;
-
-    let file = fs::File::open(&temp_archive_path).map_err(|e| {
+    // Extract using hybrid extractor (supports ZIP, 7z, RAR)
+    let (file_count, extraction_method) = archive_extractor::ArchiveExtractor::extract(
+        &temp_archive_path,
+        &temp_extract_dir
+    ).map_err(|e| {
         // Cleanup on error
         if let Some(path) = &archive_path {
             fs::remove_file(path).ok();
@@ -1217,80 +1221,31 @@ async fn install_mod_from_nxm(
         if let Some(dir) = &extract_dir {
             fs::remove_dir_all(dir).ok();
         }
-        format!("Failed to open archive: {}", e)
+        e
     })?;
 
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-        format!("Failed to read archive: {}", e)
-    })?;
-
-    let file_count = archive.len();
+    let method_name = archive_extractor::ArchiveExtractor::method_name(&extraction_method);
     add_log(
-        format!("Extracting {} files from archive...", file_count),
+        format!("✓ Extracted {} files using {}", file_count, method_name),
         "info".to_string(),
         "installation".to_string(),
         state.clone(),
     )?;
-
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| {
-            // Cleanup on error
-            if let Some(path) = &archive_path {
-                fs::remove_file(path).ok();
-            }
-            if let Some(dir) = &extract_dir {
-                fs::remove_dir_all(dir).ok();
-            }
-            format!("Failed to read archive entry: {}", e)
-        })?;
-
-        let outpath = temp_extract_dir.join(file.name());
-
-        if file.name().ends_with('/') {
-            fs::create_dir_all(&outpath).ok();
-        } else {
-            if let Some(p) = outpath.parent() {
-                fs::create_dir_all(p).ok();
-            }
-            let mut outfile = fs::File::create(&outpath).map_err(|e| {
-                // Cleanup on error
-                if let Some(path) = &archive_path {
-                    fs::remove_file(path).ok();
-                }
-                if let Some(dir) = &extract_dir {
-                    fs::remove_dir_all(dir).ok();
-                }
-                format!("Failed to create file during extraction: {}", e)
-            })?;
-            io::copy(&mut file, &mut outfile).map_err(|e| {
-                // Cleanup on error
-                if let Some(path) = &archive_path {
-                    fs::remove_file(path).ok();
-                }
-                if let Some(dir) = &extract_dir {
-                    fs::remove_dir_all(dir).ok();
-                }
-                format!("Failed to extract file: {}", e)
-            })?;
-        }
-        
-        // Progress indicator for extraction
-        if i % 10 == 0 || i == file_count - 1 {
+    
+    // Show installation hints for system tools if not available
+    let hints = archive_extractor::ArchiveExtractor::get_installation_hints();
+    if !hints.is_empty() && matches!(extraction_method, 
+        archive_extractor::ExtractionMethod::RustSevenz | 
+        archive_extractor::ExtractionMethod::RustUnrar) {
+        for hint in hints {
             add_log(
-                format!("📄 Extracting... ({}/{})", i + 1, file_count),
+                hint,
                 "info".to_string(),
                 "installation".to_string(),
                 state.clone(),
             )?;
         }
     }
-
-    add_log(
-        format!("✓ Extracted {} files", file_count),
-        "info".to_string(),
-        "installation".to_string(),
-        state.clone(),
-    )?;
 
     // Step 4: Install files to game directory
     add_log(

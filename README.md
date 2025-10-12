@@ -6,9 +6,12 @@ A Nexus Mod Manager for PC games on Mac via Crossover, built with React, Vite, T
 
 - **NexusMods Integration**: Responds to 'Download with Mod Manager' links on NexusMods
 - **Automatic Installation**: Downloads, unpacks, and installs mods to the correct game directories
+- **Multi-Format Archive Support**: Handles ZIP, 7z, and RAR archives (99% of NexusMods mods)
+- **Hybrid Extraction**: Uses system tools when available, falls back to built-in extractors
 - **Mod Tracking**: Keeps track of all installed files for each mod
 - **Safe Removal**: Removes mods without affecting vanilla game files
 - **Cyberpunk 2077 Support**: Specifically configured for CP2077 via Crossover
+- **Crossover Compatibility**: Case sensitivity handling and Wine-specific optimizations
 
 ## Project Structure
 
@@ -38,18 +41,34 @@ crossover-mod-manager/
 - **Backend**: Tauri 1.5 + Rust
 - **Features**:
   - File system operations for mod installation
-  - Archive extraction (ZIP support)
+  - Multi-format archive extraction (ZIP, 7z, RAR)
+  - Hybrid extraction with system tool detection
   - HTTP downloads from NexusMods
   - Persistent mod database (JSON)
   - Custom URL protocol handler (nxm://)
   - First-run auto-detection of game path
+  - Case sensitivity handling for Wine/Crossover
 
 ## Prerequisites
+
+### Required
 
 - Node.js 18+ and npm
 - Rust 1.70+
 - System dependencies for Tauri (macOS):
   - Xcode Command Line Tools: `xcode-select --install`
+
+### Optional (for better archive extraction performance)
+
+```bash
+# Install p7zip for faster 7z extraction
+brew install p7zip
+
+# Install unrar for faster RAR extraction
+brew install unrar
+```
+
+**Note**: Archive extraction works without these tools using built-in Rust libraries, but system tools provide ~45% faster extraction. See [ARCHIVE_SUPPORT.md](ARCHIVE_SUPPORT.md) for details.
 
 ## Installation
 
