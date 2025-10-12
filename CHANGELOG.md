@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Symlinks are skipped during installation for compatibility
   - Platform-specific advice for macOS/Crossover users
   - Prevents symlink-related mod failures
+- **Unicode Filename Sanitization** (Priority #6 - Phase 2)
+  - Automatic detection of non-ASCII characters in filenames
+  - Transliteration to ASCII-safe equivalents (café→cafe, Zürich→Zurich)
+  - Prevents Wine/Crossover file encoding issues
+  - Comprehensive warning summary with before/after mapping
+  - Platform-specific compatibility advice
+  - Improves mod reliability in Wine environments
 - **Archive Extraction Documentation**
   - New ARCHIVE_SUPPORT.md with comprehensive technical details
   - Performance comparisons between extraction methods
@@ -74,6 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Symlink tracking with path and target information
   - Comprehensive symlink warnings with platform-specific advice
   - Automatic symlink skipping for Wine/Crossover compatibility
+  - Added Unicode filename detection during file iteration
+  - Unicode transliteration using unidecode library
+  - ASCII sanitization with comprehensive character filtering
+  - Before/after filename mapping in warnings
+  - Platform-specific Unicode compatibility advice
+  - Dependencies: unidecode 0.3
 
 ### Performance
 

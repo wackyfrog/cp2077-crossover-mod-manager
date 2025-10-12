@@ -1275,6 +1275,8 @@ async fn install_mod_from_nxm(
     let mut case_mismatch_count = 0;
     let mut symlink_count = 0;
     let mut symlinks_detected: Vec<(String, Option<String>)> = Vec::new(); // (symlink_path, target)
+    let mut unicode_count = 0;
+    let mut unicode_sanitized: Vec<(String, String)> = Vec::new(); // (original, sanitized)
 
     // Walk through extracted files and install them
     for entry in WalkDir::new(&temp_extract_dir).into_iter().filter_map(|e| e.ok()) {
@@ -1357,8 +1359,39 @@ async fn install_mod_from_nxm(
                 case_mismatch_count += 1;
             }
             
+            // Check for Unicode characters in filename
+            let filename = relative_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            
+            if let Some(sanitized) = needs_sanitization(filename) {
+                unicode_count += 1;
+                unicode_sanitized.push((filename.to_string(), sanitized.clone()));
+                
+                add_log(
+                    format!("🔤 Unicode filename detected: '{}'", filename),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                add_log(
+                    format!("🔧 Sanitizing to ASCII-safe: '{}'", sanitized),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
+            
             // Determine installation path based on file type (uses normalized paths)
-            let install_path = determine_install_path_for_file(game_dir, relative_path)?;
+            let mut install_path = determine_install_path_for_file(game_dir, relative_path)?;
+            
+            // Apply Unicode sanitization to the final filename if needed
+            if let Some(sanitized) = needs_sanitization(filename) {
+                // Replace the filename with sanitized version
+                if let Some(parent) = install_path.parent() {
+                    install_path = parent.join(sanitized);
+                }
+            }
             
             // Check if target file already exists with different casing
             if let Some(parent) = install_path.parent() {
@@ -1623,6 +1656,74 @@ async fn install_mod_from_nxm(
         
         add_log(
             format!("📊 Symlink Summary: {} symlink(s) detected and skipped", symlink_count),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    }
+    
+    // Display Unicode filename warning if any were detected
+    if unicode_count > 0 {
+        add_log(
+            "🔤 Unicode Filename Detection".to_string(),
+            "warning".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        add_log(
+            format!("⚠️  {} filename(s) contained non-ASCII characters", unicode_count),
+            "warning".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        
+        // Show sanitization details
+        for (original, sanitized) in &unicode_sanitized {
+            add_log(
+                format!("  • '{}' → '{}'", original, sanitized),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+        
+        add_log(
+            "ℹ️  Filenames were automatically sanitized to ASCII-safe characters".to_string(),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        add_log(
+            "⚠️  Unicode filenames may cause issues in Wine/Crossover due to encoding differences".to_string(),
+            "warning".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        
+        #[cfg(target_os = "macos")]
+        {
+            add_log(
+                "💡 macOS/Crossover Tip: ASCII sanitization improves Wine compatibility".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "   Examples: 'café.lua' → 'cafe.lua', 'モッド.archive' → 'modo.archive'".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            add_log(
+                "   This prevents file encoding issues and improves mod reliability.".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+        
+        add_log(
+            format!("📊 Unicode Summary: {} filename(s) sanitized to ASCII", unicode_count),
             "info".to_string(),
             "installation".to_string(),
             state.clone(),
@@ -2034,6 +2135,44 @@ fn find_path_case_insensitive(base_dir: &std::path::Path, target_path: &std::pat
     }
     
     Some(current)
+}
+
+/// Sanitize a filename by converting Unicode characters to ASCII-safe equivalents
+/// This helps avoid Wine/Crossover encoding issues
+fn sanitize_filename(name: &str) -> String {
+    use unidecode::unidecode;
+    
+    // First, try to transliterate using unidecode (smart conversion)
+    let transliterated = unidecode(name);
+    
+    // Then ensure all characters are filesystem-safe
+    transliterated
+        .chars()
+        .map(|c| match c {
+            // Allow alphanumeric, hyphen, underscore, period
+            c if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' => c,
+            // Convert spaces to underscores
+            ' ' => '_',
+            // Everything else becomes underscore
+            _ => '_',
+        })
+        .collect()
+}
+
+/// Check if a filename contains non-ASCII characters
+fn contains_unicode(name: &str) -> bool {
+    name.chars().any(|c| !c.is_ascii())
+}
+
+/// Check if sanitization changed the filename
+fn needs_sanitization(name: &str) -> Option<String> {
+    if contains_unicode(name) {
+        let sanitized = sanitize_filename(name);
+        if sanitized != name {
+            return Some(sanitized);
+        }
+    }
+    None
 }
 
 /// Normalize a path component to match Cyberpunk 2077's expected casing

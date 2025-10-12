@@ -298,33 +298,39 @@ if entry.file_type().is_symlink() {
 - Files might copy successfully but fail to load in game
 - Path lookups can fail with encoding mismatches
 
-**Current Status**: ❌ Not explicitly handled
+**Current Status**: ✅ **IMPLEMENTED in v1.3.0** (Priority #6 - Phase 2)
 
-**Solutions**:
+**Implementation Details**:
 
-- Detect non-ASCII characters in mod filenames during installation
-- Warn users about potential compatibility issues
-- Offer to sanitize filenames to ASCII-safe characters
-- Transliterate common characters (ö→o, é→e, etc.)
-- Maintain mapping of original to sanitized names for uninstallation
+- ✅ Automatic Unicode detection during mod installation
+- ✅ Transliteration using `unidecode` library (café→cafe, Zürich→Zurich)
+- ✅ ASCII sanitization with alphanumeric + hyphen/underscore/dot preservation
+- ✅ Comprehensive warnings showing before/after filename mapping
+- ✅ Platform-specific compatibility advice for macOS/Crossover
+- ✅ Transparent automatic sanitization for Wine compatibility
+- ✅ Summary statistics for Unicode files processed
 
-**Sanitization Strategy**:
+**Sanitization Strategy** (Implemented):
 
 ```rust
-// Replace problematic characters
+// Transliterate and sanitize to ASCII-safe characters
 fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| match c {
-            'á'..='ž' => 'a',  // Accented chars → base chars
-            '日'..='龯' => '_',  // CJK → underscore
-            c if c.is_ascii_alphanumeric() || c == '-' || c == '_' => c,
-            _ => '_'
+    unidecode(name)  // café→cafe, Zürich→Zurich
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else if c == ' ' {
+                '_'
+            } else {
+                '_'
+            }
         })
         .collect()
 }
 ```
 
-**User Impact**: MEDIUM - Mod installs but doesn't load, difficult to debug
+**User Impact**: LOW - Automatically handled with clear warnings
 
 ---
 
