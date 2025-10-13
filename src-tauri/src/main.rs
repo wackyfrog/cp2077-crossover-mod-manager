@@ -506,6 +506,7 @@ fn list_downloaded_mods(state: State<AppState>) -> Result<Vec<String>, String> {
 }
 
 // Internal function that can be called from deep link handler
+#[allow(dead_code)] // Used in deep link event handler
 async fn handle_nxm_url_internal(nxm_url: String, app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     handle_nxm_url(nxm_url, state, app.clone()).await
@@ -2790,6 +2791,7 @@ fn detect_wine_windows_version(game_path: &std::path::Path) -> Result<(String, b
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)] // Stub implementation for non-macOS platforms
 fn detect_wine_windows_version(_game_path: &std::path::Path) -> Result<(String, bool), String> {
     // Not applicable on non-macOS systems
     Ok(("Native Windows".to_string(), true))
@@ -3338,7 +3340,7 @@ fn main() {
             install_mod_from_nxm,
             clean_temp_files
         ])
-        .setup(|app| {
+        .setup(|_app| {
             // Clean up orphaned temporary files from previous sessions
             println!("🧹 Running startup cleanup for orphaned temporary files...");
             let (files_removed, dirs_removed, errors, removed_paths) =
