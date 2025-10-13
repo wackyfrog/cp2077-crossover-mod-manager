@@ -129,6 +129,7 @@ Available packages:
 
 - macOS 11.0+ (Big Sur or later)
 - Apple Silicon Mac (M1/M2/M3/M4)
+- CrossOver 25 or later (recommended; v24 may work but is untested)
 
 ### Beta Releases
 
