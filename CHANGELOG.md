@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-10-13
+
+### Added
+
+- **Comprehensive Temporary File Cleanup System** 🧹
+  - **RAII Pattern**: Automatic cleanup using Drop trait (TempFileGuard)
+    - Guarantees cleanup even if function panics or returns early
+    - Wraps archive files and extraction directories
+    - Eliminates manual cleanup code scattered throughout
+  
+  - **Startup Cleanup**: Automatic orphaned file detection on app launch
+    - Removes abandoned mod archives (`mod_*_*.zip`)
+    - Removes abandoned extraction directories (`mod_extract_*_*`)
+    - Age-based filtering (only removes files >1 hour old)
+    - Logs cleanup statistics to console
+  
+  - **Manual Cleanup**: User-initiated cleanup via Settings UI
+    - New "Clean Temporary Files" button in Settings → System Maintenance
+    - Shows success/error messages with file counts
+    - Accessible cleanup for users experiencing disk space issues
+  
+  - **Age-Based Safety**: Smart cleanup prevents race conditions
+    - Only removes temp files older than 1 hour
+    - Protects actively running installations
+    - Prevents accidental deletion of in-progress downloads
+
+### Changed
+
+- Simplified error handling in `install_mod_from_nxm()`
+  - Removed scattered manual cleanup code
+  - All cleanup now handled automatically by RAII guards
+  - Cleaner, more maintainable codebase
+
+### Technical
+
+- Added RAII guard struct `TempFileGuard` with Drop trait
+- Created `cleanup_orphaned_temp_files()` with age-based filtering
+- Created `is_path_older_than()` helper for age detection
+- Added `clean_temp_files` Tauri command for manual cleanup
+- Integrated startup cleanup in `main()` setup hook
+- Updated Settings.jsx with cleanup UI and state management
+- Reduced manual cleanup code from ~50 lines to automatic RAII pattern
+
+### Benefits
+
+- **Robustness**: Cleanup guaranteed even on crashes or panics
+- **Disk Space**: Automatic recovery of space from failed installations
+- **User Control**: Manual cleanup option for power users
+- **Safety**: Age-based filtering prevents race conditions
+- **Maintainability**: Single cleanup pattern instead of scattered code
+
 ## [1.5.0] - 2025-10-12
 
 ### Added

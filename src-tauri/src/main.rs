@@ -10,6 +10,7 @@ use mod_manager::{ModInfo, ModManager};
 use serde::{Deserialize, Serialize};
 use settings::{AppSettings, Settings};
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Emitter, Listener, Manager, State};
 
@@ -1199,17 +1200,19 @@ async fn install_mod_from_nxm(
         state.clone(),
     )?;
 
-    // Step 2: Save to temp file
+    // Step 2: Save to temp file with RAII guard for automatic cleanup
     let temp_dir = std::env::temp_dir();
     let archive_filename = format!("{}_{}.zip", mod_id, file_id);
     let temp_archive_path = temp_dir.join(&archive_filename);
+    
+    // Create RAII guard - will auto-cleanup if function exits early
+    let archive_guard = TempFileGuard::new(
+        temp_archive_path.clone(),
+        format!("archive file: {}", archive_filename)
+    );
     archive_path = Some(temp_archive_path.clone());
 
     fs::write(&temp_archive_path, &bytes).map_err(|e| {
-        // Cleanup on error
-        if let Some(path) = &archive_path {
-            fs::remove_file(path).ok();
-        }
         format!("Failed to save downloaded file: {}", e)
     })?;
 
@@ -1271,6 +1274,12 @@ async fn install_mod_from_nxm(
     }
 
     let temp_extract_dir = temp_dir.join(format!("mod_extract_{}_{}", mod_id, uuid::Uuid::new_v4()));
+    
+    // Create RAII guard - will auto-cleanup if function exits early
+    let extract_guard = TempFileGuard::new(
+        temp_extract_dir.clone(),
+        format!("extraction directory: mod_extract_{}_*", mod_id)
+    );
     extract_dir = Some(temp_extract_dir.clone());
     
     // Extract using hybrid extractor (supports ZIP, 7z, RAR)
@@ -1278,13 +1287,7 @@ async fn install_mod_from_nxm(
         &temp_archive_path,
         &temp_extract_dir
     ).map_err(|e| {
-        // Cleanup on error
-        if let Some(path) = &archive_path {
-            fs::remove_file(path).ok();
-        }
-        if let Some(dir) = &extract_dir {
-            fs::remove_dir_all(dir).ok();
-        }
+        // Guards will auto-cleanup on error
         e
     })?;
 
@@ -1321,13 +1324,7 @@ async fn install_mod_from_nxm(
 
     let game_dir = Path::new(&game_path);
     if !game_dir.exists() {
-        // Cleanup
-        if let Some(path) = &archive_path {
-            fs::remove_file(path).ok();
-        }
-        if let Some(dir) = &extract_dir {
-            fs::remove_dir_all(dir).ok();
-        }
+        // Guards will auto-cleanup temp files
         return Err("Game directory does not exist".to_string());
     }
 
@@ -1349,13 +1346,7 @@ async fn install_mod_from_nxm(
                 "installation".to_string(),
                 state.clone(),
             )?;
-            // Cleanup
-            if let Some(path) = &archive_path {
-                fs::remove_file(path).ok();
-            }
-            if let Some(dir) = &extract_dir {
-                fs::remove_dir_all(dir).ok();
-            }
+            // Guards will auto-cleanup temp files
             return Err(warning);
         } else {
             // Warning - path is approaching limit
@@ -1658,13 +1649,7 @@ async fn install_mod_from_nxm(
 
             // Copy file
             fs::copy(entry.path(), &install_path).map_err(|e| {
-                // Cleanup on error
-                if let Some(path) = &archive_path {
-                    fs::remove_file(path).ok();
-                }
-                if let Some(dir) = &extract_dir {
-                    fs::remove_dir_all(dir).ok();
-                }
+                // Guards will auto-cleanup temp files on error
                 format!("Failed to copy file to game directory: {}", e)
             })?;
 
@@ -2236,29 +2221,17 @@ async fn install_mod_from_nxm(
 
     {
         let mut manager = state.mod_manager.lock().map_err(|e| {
-            // Cleanup on error
-            if let Some(path) = &archive_path {
-                fs::remove_file(path).ok();
-            }
-            if let Some(dir) = &extract_dir {
-                fs::remove_dir_all(dir).ok();
-            }
+            // Guards will auto-cleanup temp files on error
             e.to_string()
         })?;
         manager.add_mod(mod_info.clone());
         manager.save_database().map_err(|e| {
-            // Cleanup on error
-            if let Some(path) = &archive_path {
-                fs::remove_file(path).ok();
-            }
-            if let Some(dir) = &extract_dir {
-                fs::remove_dir_all(dir).ok();
-            }
+            // Guards will auto-cleanup temp files on error
             e
         })?;
     }
 
-    // Step 6: Cleanup temporary files
+    // Step 6: Cleanup temporary files (RAII guards will handle this automatically)
     add_log(
         "🧹 Cleaning up temporary files...".to_string(),
         "info".to_string(),
@@ -2266,39 +2239,22 @@ async fn install_mod_from_nxm(
         state.clone(),
     )?;
     
-    if let Some(dir) = &extract_dir {
-        match fs::remove_dir_all(dir) {
-            Ok(_) => add_log(
-                "✓ Removed extraction directory".to_string(),
-                "info".to_string(),
-                "installation".to_string(),
-                state.clone(),
-            )?,
-            Err(e) => add_log(
-                format!("⚠ Failed to remove extraction directory: {}", e),
-                "warning".to_string(),
-                "installation".to_string(),
-                state.clone(),
-            )?,
-        }
-    }
+    // Drop the guards explicitly to clean up temp files
+    drop(extract_guard);
+    add_log(
+        "✓ Removed extraction directory".to_string(),
+        "info".to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
     
-    if let Some(path) = &archive_path {
-        match fs::remove_file(path) {
-            Ok(_) => add_log(
-                "✓ Removed archive file".to_string(),
-                "info".to_string(),
-                "installation".to_string(),
-                state.clone(),
-            )?,
-            Err(e) => add_log(
-                format!("⚠ Failed to remove archive file: {}", e),
-                "warning".to_string(),
-                "installation".to_string(),
-                state.clone(),
-            )?,
-        }
-    }
+    drop(archive_guard);
+    add_log(
+        "✓ Removed archive file".to_string(),
+        "info".to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
 
     add_log(
         format!("✅ Successfully installed mod '{}' with {} files!", mod_name, installed_files.len()),
@@ -2647,6 +2603,164 @@ fn detect_wine_windows_version(_game_path: &std::path::Path) -> Result<(String, 
     Ok(("Native Windows".to_string(), true))
 }
 
+/// RAII guard for temporary files/directories
+/// Automatically cleans up the path when dropped (goes out of scope)
+/// This ensures cleanup even if the function panics or returns early
+struct TempFileGuard {
+    path: PathBuf,
+    description: String,
+    keep: bool, // If true, don't cleanup on drop
+}
+
+impl TempFileGuard {
+    fn new(path: PathBuf, description: String) -> Self {
+        Self {
+            path,
+            description,
+            keep: false,
+        }
+    }
+    
+    /// Mark this file to be kept (don't delete on drop)
+    #[allow(dead_code)]
+    fn keep(&mut self) {
+        self.keep = true;
+    }
+    
+    /// Get the path
+    #[allow(dead_code)]
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if self.keep || !self.path.exists() {
+            return;
+        }
+        
+        let result = if self.path.is_file() {
+            std::fs::remove_file(&self.path)
+        } else {
+            std::fs::remove_dir_all(&self.path)
+        };
+        
+        match result {
+            Ok(_) => println!("🧹 Auto-cleaned: {}", self.description),
+            Err(e) => eprintln!("⚠️  Failed to auto-clean {}: {}", self.description, e),
+        }
+    }
+}
+
+/// Check if a file/directory is older than the specified number of hours
+fn is_path_older_than(path: &Path, hours: u64) -> bool {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if let Ok(modified) = metadata.modified() {
+            if let Ok(elapsed) = modified.elapsed() {
+                return elapsed.as_secs() > hours * 3600;
+            }
+        }
+    }
+    false
+}
+
+/// Clean up orphaned temporary files from previous sessions
+/// Returns (files_removed, dirs_removed, errors)
+fn cleanup_orphaned_temp_files() -> (usize, usize, usize) {
+    let temp_dir = std::env::temp_dir();
+    let mut files_removed = 0;
+    let mut dirs_removed = 0;
+    let mut errors = 0;
+    
+    // Pattern 1: Clean up old mod archives (mod_*_*.zip)
+    // Pattern 2: Clean up old extraction directories (mod_extract_*_*)
+    // Only remove if older than 1 hour to avoid race conditions with active installations
+    
+    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_name) = entry.file_name().into_string() {
+                let path = entry.path();
+                
+                // Check if this is a mod archive file
+                let is_mod_archive = file_name.starts_with("mod_") && 
+                                    file_name.ends_with(".zip") &&
+                                    file_name.matches('_').count() >= 2;
+                
+                // Check if this is a mod extraction directory
+                let is_mod_extract_dir = file_name.starts_with("mod_extract_") &&
+                                        file_name.matches('_').count() >= 2;
+                
+                if (is_mod_archive || is_mod_extract_dir) && is_path_older_than(&path, 1) {
+                    let result = if path.is_file() {
+                        std::fs::remove_file(&path).map(|_| {
+                            files_removed += 1;
+                            println!("🧹 Cleaned orphaned file: {}", file_name);
+                        })
+                    } else if path.is_dir() {
+                        std::fs::remove_dir_all(&path).map(|_| {
+                            dirs_removed += 1;
+                            println!("🧹 Cleaned orphaned directory: {}", file_name);
+                        })
+                    } else {
+                        Ok(())
+                    };
+                    
+                    if result.is_err() {
+                        errors += 1;
+                        eprintln!("⚠️  Failed to clean {}", file_name);
+                    }
+                }
+            }
+        }
+    }
+    
+    (files_removed, dirs_removed, errors)
+}
+
+/// Tauri command to manually clean temporary files
+#[tauri::command]
+fn clean_temp_files(state: State<AppState>) -> Result<String, String> {
+    add_log(
+        "🧹 Starting manual cleanup of temporary files...".to_string(),
+        "info".to_string(),
+        "cleanup".to_string(),
+        state.clone(),
+    )?;
+    
+    let (files_removed, dirs_removed, errors) = cleanup_orphaned_temp_files();
+    
+    let total_removed = files_removed + dirs_removed;
+    
+    if total_removed == 0 {
+        add_log(
+            "✓ No temporary files found to clean".to_string(),
+            "info".to_string(),
+            "cleanup".to_string(),
+            state,
+        )?;
+        Ok("No temporary files found. Your system is clean!".to_string())
+    } else {
+        let mut message = format!(
+            "Cleaned {} temporary file(s) and {} directory/directories",
+            files_removed, dirs_removed
+        );
+        
+        if errors > 0 {
+            message.push_str(&format!(" ({} error(s) encountered)", errors));
+        }
+        
+        add_log(
+            format!("✓ {}", message),
+            "info".to_string(),
+            "cleanup".to_string(),
+            state,
+        )?;
+        
+        Ok(message)
+    }
+}
+
 /// Normalize a path component to match Cyberpunk 2077's expected casing
 /// This ensures consistent casing for game directories
 fn normalize_game_path_component(component: &str) -> String {
@@ -2939,9 +3053,26 @@ fn main() {
             list_downloaded_mods,
             test_nxm_event,
             check_and_run_first_setup,
-            install_mod_from_nxm
+            install_mod_from_nxm,
+            clean_temp_files
         ])
         .setup(|app| {
+            // Clean up orphaned temporary files from previous sessions
+            println!("🧹 Running startup cleanup for orphaned temporary files...");
+            let (files_removed, dirs_removed, errors) = cleanup_orphaned_temp_files();
+            
+            if files_removed > 0 || dirs_removed > 0 {
+                println!(
+                    "✓ Startup cleanup: Removed {} file(s) and {} directory/directories",
+                    files_removed, dirs_removed
+                );
+                if errors > 0 {
+                    println!("⚠️  Startup cleanup: {} error(s) encountered", errors);
+                }
+            } else {
+                println!("✓ Startup cleanup: No orphaned files found");
+            }
+            
             // Register deep link handler for nxm:// URLs
             #[cfg(target_os = "macos")]
             {

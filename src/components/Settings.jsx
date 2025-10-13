@@ -189,6 +189,25 @@ function Settings() {
     }
   };
 
+  const [cleaningTemp, setCleaningTemp] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState("");
+
+  const cleanTempFiles = async () => {
+    setCleaningTemp(true);
+    setCleanupResult("");
+    try {
+      const result = await invoke("clean_temp_files");
+      setCleanupResult(`✓ ${result}`);
+      setTimeout(() => setCleanupResult(""), 5000);
+    } catch (error) {
+      console.error("Failed to clean temp files:", error);
+      setCleanupResult(`❌ Cleanup failed: ${error}`);
+      setTimeout(() => setCleanupResult(""), 5000);
+    } finally {
+      setCleaningTemp(false);
+    }
+  };
+
   return (
     <div className="settings">
       <div className="settings-content">
@@ -307,6 +326,33 @@ function Settings() {
             </button>
             <p className="help-text">
               Click refresh to update the list if you've added files manually.
+            </p>
+          </div>
+        </div>
+
+        <div className="setting-section">
+          <h3>System Maintenance</h3>
+          <p>Cleanup and maintenance tools</p>
+          <div className="setting-row">
+            <button 
+              onClick={cleanTempFiles} 
+              className="test-nxm-button"
+              disabled={cleaningTemp}
+            >
+              {cleaningTemp ? "🧹 Cleaning..." : "🧹 Clean Temporary Files"}
+            </button>
+            {cleanupResult && (
+              <p
+                className={`cleanup-result ${
+                  cleanupResult.includes("✓") ? "success" : "error"
+                }`}
+              >
+                {cleanupResult}
+              </p>
+            )}
+            <p className="help-text">
+              Removes orphaned mod archives and extraction directories from failed installations.
+              The app automatically cleans up on startup, but you can manually trigger cleanup here.
             </p>
           </div>
         </div>
