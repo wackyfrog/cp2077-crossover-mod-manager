@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*" # Trigger on version tags like v1.6.0, v1.6.1, etc.
+      - "v*-beta*" # Trigger on beta version tags like v1.6.0-beta1, v1.6.0-beta2, etc.
   workflow_dispatch: # Allow manual trigger
 
 jobs:
@@ -43,10 +43,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name || format('v{0}', steps.get_version.outputs.version) }}
-          release_name: Release v${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.ref_name || format('v{0}-beta', steps.get_version.outputs.version) }}
+          release_name: 🧪 BETA Release v${{ steps.get_version.outputs.version }}
           body: |
-            # Crossover Mod Manager v${{ steps.get_version.outputs.version }}
+            # 🧪 Crossover Mod Manager v${{ steps.get_version.outputs.version }} BETA
+
+            > ⚠️ **This is a BETA release** - Use at your own risk. Please report any issues you encounter!
 
             ## 📦 Downloads
 
@@ -65,9 +67,16 @@ jobs:
 
             **Requirements**: macOS 11.0+ (Big Sur or later) with Apple Silicon
 
+            ## 🐛 Found a Bug?
+
+            Please [report issues here](https://github.com/${{ github.repository }}/issues/new) with:
+            - Steps to reproduce
+            - Expected vs actual behavior
+            - macOS version and Mac model
+
             **Full Changelog**: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md
           draft: false
-          prerelease: false
+          prerelease: true
 
   build-macos-apple-silicon:
     name: Build macOS Apple Silicon

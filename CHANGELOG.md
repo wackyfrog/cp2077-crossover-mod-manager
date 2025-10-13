@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2025-10-13
+
+### Added
+
+- 🎉 **Initial BETA Release** - macOS Apple Silicon only
+- Complete CI/CD pipeline with automated releases
+- Comprehensive mod management features for Cyberpunk 2077
+- Multi-format archive support (ZIP, 7z, RAR)
+- NexusMods integration with nxm:// protocol handler
+- Automatic file conflict detection
+- Unicode filename sanitization
+- Case sensitivity handling for Wine/CrossOver
+- RED4ext, CET, and REDmod compatibility
+- Temporary file cleanup system
+- Complete documentation and development guides
+
+### Notes
+
+- This is a BETA release for testing on Apple Silicon Macs
+- Target platform: macOS 11.0+ with M1/M2/M3/M4 processors
+- Report issues at: https://github.com/beneccles/crossover-mod-manager/issues
+
 ## [1.6.0] - 2025-10-13
 
 ### Added

@@ -2,19 +2,22 @@
 
 ## Quick Commands
 
-### Create a New Release
+### Create a New BETA Release
 
 ```bash
-# Easy way (recommended)
-./scripts/release.sh 1.7.0
+# Easy way (recommended) - Creates a beta release
+./scripts/release.sh 0.1.0 1
+
+# This creates tag: v0.1.0-beta1
+# For subsequent betas: ./scripts/release.sh 0.1.0 2
 
 # Manual way
 # 1. Update version in src-tauri/tauri.conf.json
 # 2. Update CHANGELOG.md
 # 3. Commit and tag
 git add .
-git commit -m "chore: Release v1.7.0"
-git tag v1.7.0
+git commit -m "chore: BETA Release v0.1.0-beta1"
+git tag v0.1.0-beta1
 git push origin main --tags
 ```
 
@@ -53,11 +56,14 @@ npm run tauri build
 
 ## Version Numbering
 
-Use semantic versioning: `MAJOR.MINOR.PATCH`
+Use semantic versioning with BETA suffix: `MAJOR.MINOR.PATCH-betaN`
 
-- **MAJOR**: Breaking changes (e.g., 1.0.0 → 2.0.0)
-- **MINOR**: New features, backward compatible (e.g., 1.6.0 → 1.7.0)
-- **PATCH**: Bug fixes, backward compatible (e.g., 1.6.0 → 1.6.1)
+- **MAJOR**: Breaking changes (e.g., 0.1.0 → 1.0.0)
+- **MINOR**: New features, backward compatible (e.g., 0.1.0 → 0.2.0)
+- **PATCH**: Bug fixes, backward compatible (e.g., 0.1.0 → 0.1.1)
+- **BETA**: Pre-release for testing (e.g., 0.1.0-beta1, 0.1.0-beta2)
+
+Current policy: All releases are BETA until further notice
 
 ## CHANGELOG Format
 
@@ -100,15 +106,15 @@ Use semantic versioning: `MAJOR.MINOR.PATCH`
 ### Tag Already Exists
 
 ```bash
-# Delete local tag
-git tag -d v1.7.0
+# Delete local tag (example with beta tag)
+git tag -d v0.1.0-beta1
 
 # Delete remote tag
-git push origin :refs/tags/v1.7.0
+git push origin :refs/tags/v0.1.0-beta1
 
 # Recreate tag
-git tag v1.7.0
-git push origin v1.7.0
+git tag v0.1.0-beta1
+git push origin v0.1.0-beta1
 ```
 
 ### Release Artifacts Missing

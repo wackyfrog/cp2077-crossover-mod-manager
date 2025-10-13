@@ -51,8 +51,10 @@ The project uses GitHub Actions for automated building, testing, and releasing. 
 
 **Trigger**:
 
-- Push of version tags (e.g., `v1.6.0`, `v1.7.0`)
+- Push of BETA version tags (e.g., `v1.6.0-beta1`, `v1.7.0-beta2`)
 - Manual workflow dispatch
+
+**Note**: All releases are currently marked as BETA/pre-release
 
 **Jobs**:
 
@@ -97,14 +99,14 @@ Builds for Apple Silicon (M1/M2/M3/M4) Macs:
 
    ```json
    {
-     "version": "1.7.0"
+     "version": "0.2.0"
    }
    ```
 
 2. **Update CHANGELOG.md** with the new version:
 
    ```markdown
-   ## [1.7.0] - 2025-10-13
+   ## [0.2.0] - 2025-10-13
 
    ### Added
 
@@ -119,18 +121,19 @@ Builds for Apple Silicon (M1/M2/M3/M4) Macs:
 
    ```bash
    git add src-tauri/tauri.conf.json CHANGELOG.md
-   git commit -m "chore: Release v1.7.0"
+   git commit -m "chore: BETA Release v0.2.0-beta1"
    git push origin main
    ```
 
-4. **Create and push tag**:
+4. **Create and push BETA tag**:
 
    ```bash
-   git tag v1.7.0
-   git push origin v1.7.0
+   git tag v0.2.0-beta1
+   git push origin v0.2.0-beta1
    ```
 
-5. **Monitor the release**:
+   For subsequent betas, increment the number: `v0.2.0-beta2`, `v0.2.0-beta3`, etc.5. **Monitor the release**:
+
    - Go to Actions tab on GitHub
    - Watch the Release workflow progress
    - Once complete, check the Releases page

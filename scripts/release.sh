@@ -27,13 +27,24 @@ print_error() {
 
 # Check if version argument is provided
 if [ -z "$1" ]; then
-    print_error "Usage: ./scripts/release.sh <version>"
-    print_info "Example: ./scripts/release.sh 1.7.0"
+    print_error "Usage: ./scripts/release.sh <version> [beta_number]"
+    print_info "Example: ./scripts/release.sh 0.1.0 1"
+    print_info "         (creates tag v0.1.0-beta1)"
     exit 1
 fi
 
 VERSION=$1
-TAG="v$VERSION"
+BETA_NUM=$2
+
+# Create tag based on whether beta number is provided
+if [ -n "$BETA_NUM" ]; then
+    TAG="v$VERSION-beta$BETA_NUM"
+    print_info "🧪 Starting BETA release process for version $VERSION-beta$BETA_NUM"
+else
+    print_error "Beta number is required for now. Please provide a beta number."
+    print_info "Example: ./scripts/release.sh 0.1.0 1"
+    exit 1
+fi
 
 # Validate version format (semantic versioning)
 if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -41,7 +52,11 @@ if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-print_info "Starting release process for version $VERSION"
+# Validate beta number if provided
+if [ -n "$BETA_NUM" ] && ! [[ $BETA_NUM =~ ^[0-9]+$ ]]; then
+    print_error "Invalid beta number format. Use a number (e.g., 1, 2, 3)"
+    exit 1
+fi
 echo ""
 
 # Check for uncommitted changes
@@ -116,7 +131,11 @@ print_info "The following changes will be committed:"
 git diff src-tauri/tauri.conf.json CHANGELOG.md
 
 echo ""
-print_warning "Ready to create release v$VERSION"
+if [ -n "$BETA_NUM" ]; then
+    print_warning "🧪 Ready to create BETA release $TAG"
+else
+    print_warning "Ready to create release v$VERSION"
+fi
 read -p "Do you want to continue? (y/N) " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -127,15 +146,27 @@ fi
 # Commit version changes
 print_info "Committing version changes..."
 git add src-tauri/tauri.conf.json CHANGELOG.md
-git commit -m "chore: Release v$VERSION
+if [ -n "$BETA_NUM" ]; then
+    git commit -m "chore: BETA Release $TAG
+
+- Update version to $VERSION
+- Update CHANGELOG.md with release notes
+- BETA release for testing"
+else
+    git commit -m "chore: Release v$VERSION
 
 - Update version to $VERSION
 - Update CHANGELOG.md with release notes"
+fi
 print_success "Changes committed"
 
 # Create and push tag
 print_info "Creating tag $TAG..."
-git tag -a "$TAG" -m "Release v$VERSION"
+if [ -n "$BETA_NUM" ]; then
+    git tag -a "$TAG" -m "BETA Release $TAG"
+else
+    git tag -a "$TAG" -m "Release v$VERSION"
+fi
 print_success "Tag created"
 
 # Push changes
@@ -148,7 +179,12 @@ git push origin "$TAG"
 print_success "Tag pushed"
 
 echo ""
-print_success "Release process complete! 🎉"
+if [ -n "$BETA_NUM" ]; then
+    print_success "🧪 BETA Release process complete! 🎉"
+    print_warning "This is a BETA release - it will be marked as pre-release on GitHub"
+else
+    print_success "Release process complete! 🎉"
+fi
 print_info "GitHub Actions will now build and publish the release."
 print_info "Monitor progress at: https://github.com/beneccles/crossover-mod-manager/actions"
 print_info "Release will be available at: https://github.com/beneccles/crossover-mod-manager/releases/tag/$TAG"
