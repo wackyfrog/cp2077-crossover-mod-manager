@@ -6,6 +6,8 @@
 
 A Nexus Mod Manager for PC games on Mac via Crossover, built with React, Vite, Tauri, and Rust.
 
+**Currently this only works with Cyberpunk 2077, but I have plans to support more games in the future.**
+
 ## Features
 
 - **NexusMods Integration**: Responds to 'Download with Mod Manager' links on NexusMods
