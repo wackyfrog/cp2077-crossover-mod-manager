@@ -1,5 +1,9 @@
 # Crossover Mod Manager
 
+[![Build Status](https://github.com/beneccles/crossover-mod-manager/workflows/Build%20and%20Test/badge.svg)](https://github.com/beneccles/crossover-mod-manager/actions)
+[![Release](https://img.shields.io/github/v/release/beneccles/crossover-mod-manager)](https://github.com/beneccles/crossover-mod-manager/releases)
+[![License](https://img.shields.io/github/license/beneccles/crossover-mod-manager)](LICENSE)
+
 A Nexus Mod Manager for PC games on Mac via Crossover, built with React, Vite, Tauri, and Rust.
 
 ## Features
@@ -108,6 +112,33 @@ npm run tauri:build
 ```
 
 The built application will be available in `src-tauri/target/release/bundle/`.
+
+## Download / Installation
+
+### Pre-built Releases
+
+Download the latest release for your platform:
+
+**[📦 Download Latest Release](https://github.com/beneccles/crossover-mod-manager/releases/latest)**
+
+Available packages:
+- **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3 Macs
+- **macOS (Intel)**: `.dmg` file for Intel Macs
+- **Linux (AppImage)**: Universal Linux package
+- **Linux (Deb)**: Debian/Ubuntu package
+
+### macOS Installation
+1. Download the appropriate `.dmg` file for your Mac
+2. Open the DMG and drag the app to your Applications folder
+3. Right-click the app and select "Open" the first time (to bypass Gatekeeper)
+
+### Linux Installation
+- **AppImage**: Make executable (`chmod +x`) and run
+- **Deb**: Install with `sudo dpkg -i crossover-mod-manager_*.deb`
+
+### Building from Source
+
+If you want to build from source, see the [Development](#development) section above.
 
 ## Usage
 
@@ -220,6 +251,47 @@ All mod information is stored in `~/.crossover-mod-manager/`:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Ensure all tests pass and code is formatted:
+   ```bash
+   cargo fmt --check  # Check Rust formatting
+   cargo clippy       # Check Rust linting
+   cargo test         # Run tests
+   ```
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to your branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### CI/CD Pipeline
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Automated Testing**: Every push and PR is tested on Linux
+- **Code Quality**: Automatic linting with Clippy and formatting checks
+- **Security Audits**: Dependency vulnerability scanning
+- **Automated Releases**: Tag-based releases build for macOS and Linux
+
+See [CI_CD.md](CI_CD.md) for detailed information about the build and release process.
+
+### Creating a Release
+
+Maintainers can create releases using the included script:
+
+```bash
+./scripts/release.sh 1.7.0
+```
+
+This will:
+1. Update version in `tauri.conf.json`
+2. Create/update CHANGELOG entry
+3. Commit changes
+4. Create and push a git tag
+5. Trigger automated builds for all platforms
 
 ## License
 

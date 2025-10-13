@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags like v1.6.0, v1.6.1, etc.
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Read CHANGELOG
+        id: changelog
+        run: |
+          # Extract the latest version's changelog
+          VERSION=${{ steps.get_version.outputs.version }}
+          CHANGELOG=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md || echo "See CHANGELOG.md for details")
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name || format('v{0}', steps.get_version.outputs.version) }}
+          release_name: Release v${{ steps.get_version.outputs.version }}
+          body: |
+            # Crossover Mod Manager v${{ steps.get_version.outputs.version }}
+            
+            ## 📦 Downloads
+            
+            - **macOS (Apple Silicon)**: `Crossover.Mod.Manager_${{ steps.get_version.outputs.version }}_aarch64.dmg`
+            - **macOS (Intel)**: `Crossover.Mod.Manager_${{ steps.get_version.outputs.version }}_x64.dmg`
+            - **Linux (AppImage)**: `crossover-mod-manager_${{ steps.get_version.outputs.version }}_amd64.AppImage`
+            - **Linux (Deb)**: `crossover-mod-manager_${{ steps.get_version.outputs.version }}_amd64.deb`
+            
+            ## 📝 What's Changed
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ## 🔧 Installation
+            
+            ### macOS
+            1. Download the appropriate DMG file for your Mac (Apple Silicon or Intel)
+            2. Open the DMG and drag the app to your Applications folder
+            3. Right-click and select "Open" the first time to bypass Gatekeeper
+            
+            ### Linux
+            - **AppImage**: Download, make executable (`chmod +x`), and run
+            - **Deb**: Install with `sudo dpkg -i crossover-mod-manager_*.deb`
+            
+            **Full Changelog**: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md
+          draft: false
+          prerelease: false
+
+  build-macos:
+    name: Build macOS
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            runner: macos-14 # Apple Silicon runner
+          - arch: x86_64
+            runner: macos-13 # Intel runner
+    runs-on: ${{ matrix.runner }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri app
+        run: npm run tauri build -- --target ${{ matrix.arch }}-apple-darwin
+
+      - name: Rename DMG file
+        run: |
+          VERSION=${{ needs.create-release.outputs.version }}
+          cd src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/dmg
+          # Find the DMG file (may have spaces in name)
+          DMG_FILE=$(ls *.dmg | head -1)
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            NEW_NAME="Crossover.Mod.Manager_${VERSION}_aarch64.dmg"
+          else
+            NEW_NAME="Crossover.Mod.Manager_${VERSION}_x64.dmg"
+          fi
+          mv "$DMG_FILE" "$NEW_NAME"
+          echo "DMG_PATH=src-tauri/target/${{ matrix.arch }}-apple-darwin/release/bundle/dmg/$NEW_NAME" >> $GITHUB_ENV
+          echo "DMG_NAME=$NEW_NAME" >> $GITHUB_ENV
+
+      - name: Upload DMG to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.DMG_PATH }}
+          asset_name: ${{ env.DMG_NAME }}
+          asset_content_type: application/x-apple-diskimage
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}-dmg
+          path: ${{ env.DMG_PATH }}
+
+  build-linux:
+    name: Build Linux
+    needs: create-release
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      - name: Rename artifacts
+        run: |
+          VERSION=${{ needs.create-release.outputs.version }}
+          cd src-tauri/target/release/bundle
+          
+          # Rename AppImage
+          if [ -d "appimage" ]; then
+            cd appimage
+            APPIMAGE_FILE=$(ls *.AppImage | head -1)
+            NEW_APPIMAGE="crossover-mod-manager_${VERSION}_amd64.AppImage"
+            mv "$APPIMAGE_FILE" "$NEW_APPIMAGE"
+            echo "APPIMAGE_PATH=src-tauri/target/release/bundle/appimage/$NEW_APPIMAGE" >> $GITHUB_ENV
+            echo "APPIMAGE_NAME=$NEW_APPIMAGE" >> $GITHUB_ENV
+            cd ..
+          fi
+          
+          # Rename Deb package
+          if [ -d "deb" ]; then
+            cd deb
+            DEB_FILE=$(ls *.deb | head -1)
+            NEW_DEB="crossover-mod-manager_${VERSION}_amd64.deb"
+            mv "$DEB_FILE" "$NEW_DEB"
+            echo "DEB_PATH=src-tauri/target/release/bundle/deb/$NEW_DEB" >> $GITHUB_ENV
+            echo "DEB_NAME=$NEW_DEB" >> $GITHUB_ENV
+          fi
+
+      - name: Upload AppImage to Release
+        if: env.APPIMAGE_PATH != ''
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.APPIMAGE_PATH }}
+          asset_name: ${{ env.APPIMAGE_NAME }}
+          asset_content_type: application/x-executable
+
+      - name: Upload Deb to Release
+        if: env.DEB_PATH != ''
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.DEB_PATH }}
+          asset_name: ${{ env.DEB_NAME }}
+          asset_content_type: application/vnd.debian.binary-package
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundles
+          path: |
+            ${{ env.APPIMAGE_PATH }}
+            ${{ env.DEB_PATH }}
+
+  post-release:
+    name: Post-Release Notifications
+    needs: [create-release, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Check build status
+        run: |
+          if [ "${{ needs.build-macos.result }}" = "success" ] && [ "${{ needs.build-linux.result }}" = "success" ]; then
+            echo "✅ All builds completed successfully!"
+            echo "Release v${{ needs.create-release.outputs.version }} is ready"
+          else
+            echo "❌ Some builds failed"
+            exit 1
+          fi

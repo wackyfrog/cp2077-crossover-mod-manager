@@ -113,4 +113,21 @@ jobs:
       - name: Run Clippy
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
-        continue-on-error: true
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run security audit
+        working-directory: src-tauri
+        run: cargo audit
+        continue-on-error: true # Don't fail build on audit issues, just warn
