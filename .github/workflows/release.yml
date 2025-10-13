@@ -97,6 +97,10 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
+      - name: Install system dependencies
+        run: |
+          brew install glib
+
       - name: Install dependencies
         run: npm ci
 
