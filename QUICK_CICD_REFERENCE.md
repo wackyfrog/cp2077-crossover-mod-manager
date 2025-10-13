@@ -65,18 +65,22 @@ Use semantic versioning: `MAJOR.MINOR.PATCH`
 ## [1.7.0] - 2025-10-13
 
 ### Added
+
 - New feature that adds X
 - Support for Y
 
 ### Changed
+
 - Improved performance of Z
 - Updated dependency A to version B
 
 ### Fixed
+
 - Fixed bug where X would crash
 - Resolved issue with Y on macOS
 
 ### Security
+
 - Fixed security vulnerability in Z
 ```
 
@@ -124,15 +128,12 @@ git push origin v1.7.0
 
 ## Platform-Specific Notes
 
-### macOS
-- Builds on macOS-14 (Apple Silicon) and macOS-13 (Intel)
-- Produces DMG files for installation
-- Uses ad-hoc signing (for distribution, need proper certificate)
+### macOS Apple Silicon Only
 
-### Linux
-- Builds on Ubuntu 22.04
-- Produces AppImage and Deb packages
-- Requires libwebkit2gtk-4.1
+- Builds on macOS-14 (native Apple Silicon runner)
+- Produces DMG file for M1/M2/M3/M4 Macs
+- Uses ad-hoc signing (for distribution, need proper certificate)
+- Targets aarch64-apple-darwin
 
 ## Security
 

@@ -16,12 +16,14 @@ The project uses GitHub Actions for automated building, testing, and releasing. 
 **Jobs**:
 
 ### 1. Build Frontend
+
 - Runs on Ubuntu
 - Installs Node.js dependencies
 - Builds the React frontend with Vite
 - Uploads the `dist/` folder as an artifact
 
 ### 2. Check Rust Code
+
 - Runs on Ubuntu
 - Sets up Rust toolchain
 - Installs Linux system dependencies (webkit2gtk, GTK, etc.)
@@ -33,67 +35,57 @@ The project uses GitHub Actions for automated building, testing, and releasing. 
   - Cargo build artifacts
 
 ### 3. Lint
+
 - Runs on Ubuntu
 - Checks Rust code formatting with `cargo fmt --check`
 - Runs Clippy with strict mode (`-D warnings`)
 - Ensures code follows Rust best practices
 
 ### 4. Security Audit
+
 - Runs on Ubuntu
 - Uses `cargo-audit` to check for known security vulnerabilities
 - Runs as a warning (doesn't fail the build)
 
 ## Release Workflow
 
-**Trigger**: 
+**Trigger**:
+
 - Push of version tags (e.g., `v1.6.0`, `v1.7.0`)
 - Manual workflow dispatch
 
 **Jobs**:
 
 ### 1. Create Release
+
 - Extracts version from tag or `tauri.conf.json`
 - Reads changelog from `CHANGELOG.md`
 - Creates a GitHub Release with:
   - Release notes from changelog
-  - Download links for all platforms
+  - Download links
   - Installation instructions
 
-### 2. Build macOS (Matrix Strategy)
-Builds for both architectures:
-- **Apple Silicon (aarch64)**: Runs on `macos-14`
-- **Intel (x86_64)**: Runs on `macos-13`
+### 2. Build macOS Apple Silicon
+
+Builds for Apple Silicon (M1/M2/M3/M4) Macs:
+
+- Runs on `macos-14` (native Apple Silicon runner)
+- Targets `aarch64-apple-darwin`
 
 **Steps**:
+
 1. Setup Node.js and Rust
 2. Install npm dependencies
 3. Build frontend
-4. Build Tauri app for target architecture
+4. Build Tauri app for Apple Silicon
 5. Rename DMG to standardized format:
    - `Crossover.Mod.Manager_{version}_aarch64.dmg`
-   - `Crossover.Mod.Manager_{version}_x64.dmg`
 6. Upload to GitHub Release
 7. Upload as workflow artifact
 
-### 3. Build Linux
-Builds on Ubuntu 22.04 with support for:
-- **AppImage** - Universal Linux package
-- **Deb** - Debian/Ubuntu package
+### 3. Post-Release Notifications
 
-**Steps**:
-1. Setup Node.js and Rust
-2. Install Linux system dependencies
-3. Install npm dependencies
-4. Build frontend
-5. Build Tauri app (creates both AppImage and Deb)
-6. Rename artifacts to standardized format:
-   - `crossover-mod-manager_{version}_amd64.AppImage`
-   - `crossover-mod-manager_{version}_amd64.deb`
-7. Upload to GitHub Release
-8. Upload as workflow artifacts
-
-### 4. Post-Release Notifications
-- Checks status of all build jobs
+- Checks status of the build job
 - Reports success or failure
 - Can be extended to send notifications (Slack, Discord, etc.)
 
@@ -102,6 +94,7 @@ Builds on Ubuntu 22.04 with support for:
 ### Automatic Release (Recommended)
 
 1. **Update version** in `src-tauri/tauri.conf.json`:
+
    ```json
    {
      "version": "1.7.0"
@@ -109,17 +102,21 @@ Builds on Ubuntu 22.04 with support for:
    ```
 
 2. **Update CHANGELOG.md** with the new version:
+
    ```markdown
    ## [1.7.0] - 2025-10-13
-   
+
    ### Added
+
    - New feature description
-   
+
    ### Fixed
+
    - Bug fix description
    ```
 
 3. **Commit changes**:
+
    ```bash
    git add src-tauri/tauri.conf.json CHANGELOG.md
    git commit -m "chore: Release v1.7.0"
@@ -127,6 +124,7 @@ Builds on Ubuntu 22.04 with support for:
    ```
 
 4. **Create and push tag**:
+
    ```bash
    git tag v1.7.0
    git push origin v1.7.0
@@ -140,6 +138,7 @@ Builds on Ubuntu 22.04 with support for:
 ### Manual Release
 
 You can also trigger a release manually from the GitHub Actions tab:
+
 1. Go to Actions → Release workflow
 2. Click "Run workflow"
 3. Select the branch
@@ -149,42 +148,28 @@ You can also trigger a release manually from the GitHub Actions tab:
 
 Each release includes:
 
-### macOS
-- `Crossover.Mod.Manager_{version}_aarch64.dmg` - Apple Silicon (M1/M2/M3)
-- `Crossover.Mod.Manager_{version}_x64.dmg` - Intel Macs
+### macOS Apple Silicon
 
-### Linux
-- `crossover-mod-manager_{version}_amd64.AppImage` - Universal Linux
-- `crossover-mod-manager_{version}_amd64.deb` - Debian/Ubuntu
+- `Crossover.Mod.Manager_{version}_aarch64.dmg` - Apple Silicon (M1/M2/M3/M4)
 
 ## System Requirements
 
 ### Build Requirements
 
 **macOS Builds**:
-- macOS 13+ (Intel) or macOS 14+ (Apple Silicon)
+
+- macOS 14+ (Apple Silicon runner)
 - Xcode Command Line Tools
 - Node.js 20+
-- Rust stable toolchain
-
-**Linux Builds**:
-- Ubuntu 22.04+
-- libwebkit2gtk-4.1-dev
-- GTK 3 development libraries
-- Node.js 20+
-- Rust stable toolchain
+- Rust stable toolchain with aarch64-apple-darwin target
 
 ### Runtime Requirements
 
 **macOS**:
-- macOS 10.15 (Catalina) or later
-- CrossOver 23+ recommended
 
-**Linux**:
-- Ubuntu 22.04+ / Debian 12+
-- GTK 3
-- webkit2gtk-4.1
-- Wine/CrossOver (for running Windows games)
+- macOS 11.0+ (Big Sur or later)
+- Apple Silicon Mac (M1/M2/M3/M4)
+- CrossOver 23+ recommended
 
 ## Caching Strategy
 
@@ -196,6 +181,7 @@ The workflows use aggressive caching to speed up builds:
 4. **Cargo build**: Caches compiled dependencies
 
 Typical build times:
+
 - Cold build: 5-8 minutes
 - Cached build: 2-3 minutes
 
@@ -204,15 +190,18 @@ Typical build times:
 ### Build Failures
 
 **"No space left on device"**:
+
 - GitHub runners have limited disk space
 - Clean up artifacts: `cargo clean` before build
 - Consider splitting into multiple jobs
 
 **"Could not find libwebkit2gtk-4.1"**:
+
 - Update system dependencies in workflow
 - Ensure using Ubuntu 22.04+
 
 **DMG signing failures on macOS**:
+
 - Currently using ad-hoc signing (`-`)
 - For distribution, set up proper signing:
   - Add Apple Developer certificates to secrets
@@ -237,11 +226,13 @@ If a release job fails:
 ### Secrets
 
 The workflows use these GitHub secrets:
+
 - `GITHUB_TOKEN` - Automatically provided, used for releases
 
 ### Future Enhancements
 
 Consider adding:
+
 - **Code signing** for macOS (requires Apple Developer account)
 - **Notarization** for macOS (requires Apple Developer account)
 - **Auto-update** mechanism in the app
@@ -253,6 +244,7 @@ Consider adding:
 ### Build Status Badge
 
 Add to README.md:
+
 ```markdown
 [![Build Status](https://github.com/beneccles/crossover-mod-manager/workflows/Build%20and%20Test/badge.svg)](https://github.com/beneccles/crossover-mod-manager/actions)
 ```
@@ -260,6 +252,7 @@ Add to README.md:
 ### Release Notifications
 
 Future improvements:
+
 - Discord webhook for release notifications
 - Automatic changelog generation from commits
 - Version bump automation
@@ -290,6 +283,7 @@ open "src-tauri/target/release/bundle/macos/Crossover Mod Manager.app"
 ## Continuous Improvement
 
 Planned enhancements:
+
 - [ ] Add Windows build support
 - [ ] Implement auto-update functionality
 - [ ] Add performance benchmarks
@@ -301,6 +295,7 @@ Planned enhancements:
 ## Support
 
 For CI/CD issues:
+
 1. Check [GitHub Actions documentation](https://docs.github.com/en/actions)
 2. Check [Tauri v2 CI/CD guide](https://v2.tauri.app/distribute/ci-cd/)
 3. Open an issue with the `ci/cd` label

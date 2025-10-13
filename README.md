@@ -122,19 +122,19 @@ Download the latest release for your platform:
 **[📦 Download Latest Release](https://github.com/beneccles/crossover-mod-manager/releases/latest)**
 
 Available packages:
-- **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3 Macs
-- **macOS (Intel)**: `.dmg` file for Intel Macs
-- **Linux (AppImage)**: Universal Linux package
-- **Linux (Deb)**: Debian/Ubuntu package
 
-### macOS Installation
-1. Download the appropriate `.dmg` file for your Mac
+- **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3/M4 Macs
+
+**Platform Requirements**:
+
+- macOS 11.0+ (Big Sur or later)
+- Apple Silicon Mac (M1/M2/M3/M4)
+
+### Installation
+
+1. Download the `.dmg` file
 2. Open the DMG and drag the app to your Applications folder
 3. Right-click the app and select "Open" the first time (to bypass Gatekeeper)
-
-### Linux Installation
-- **AppImage**: Make executable (`chmod +x`) and run
-- **Deb**: Install with `sudo dpkg -i crossover-mod-manager_*.deb`
 
 ### Building from Source
 
@@ -287,6 +287,7 @@ Maintainers can create releases using the included script:
 ```
 
 This will:
+
 1. Update version in `tauri.conf.json`
 2. Create/update CHANGELOG entry
 3. Commit changes
