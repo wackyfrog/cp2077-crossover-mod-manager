@@ -7,7 +7,6 @@ function Settings() {
   const [gamePath, setGamePath] = useState("");
   const [modStoragePath, setModStoragePath] = useState("");
   const [nexusmodsApiKey, setNexusmodsApiKey] = useState("");
-  const [downloadedMods, setDownloadedMods] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
@@ -18,7 +17,6 @@ function Settings() {
 
   useEffect(() => {
     loadSettings();
-    loadDownloadedMods();
   }, []);
 
   const loadSettings = async () => {
@@ -32,14 +30,7 @@ function Settings() {
     }
   };
 
-  const loadDownloadedMods = async () => {
-    try {
-      const mods = await invoke("list_downloaded_mods");
-      setDownloadedMods(mods);
-    } catch (error) {
-      console.error("Failed to load downloaded mods:", error);
-    }
-  };
+
 
   const selectGamePath = async () => {
     try {
@@ -124,10 +115,8 @@ function Settings() {
       const testUrl =
         "nxm://cyberpunk2077/mods/107/files/123169?key=SIMRrmIOUwWBwlUHBwf-Gzw&expires=1760073185&user_id=260682775";
       await invoke("handle_nxm_url", { nxm_url: testUrl });
-      // Refresh downloaded mods list
-      await loadDownloadedMods();
       alert(
-        "NXM URL test completed! Check the Logs tab and Downloaded Mods section."
+        "NXM URL test completed! Check the Logs tab."
       );
     } catch (error) {
       console.error("Failed to test NXM URL:", error);
@@ -138,10 +127,8 @@ function Settings() {
   const testCustomNxmUrl = async () => {
     try {
       await invoke("handle_nxm_url", { nxm_url: customNxmUrl });
-      // Refresh downloaded mods list
-      await loadDownloadedMods();
       alert(
-        "Custom NXM URL processed! Check the Logs tab and Downloaded Mods section."
+        "Custom NXM URL processed! Check the Logs tab."
       );
     } catch (error) {
       console.error("Failed to process custom NXM URL:", error);
@@ -167,10 +154,8 @@ function Settings() {
         mod_name: "Test_Mod",
         download_url: testUrl,
       });
-      // Refresh downloaded mods list
-      await loadDownloadedMods();
       alert(
-        `Test download completed! File saved to: ${filePath}\nCheck the Logs tab and Downloaded Mods section.`
+        `Test download completed! File saved to: ${filePath}\nCheck the Logs tab.`
       );
     } catch (error) {
       console.error("Failed to test download:", error);
@@ -295,37 +280,6 @@ function Settings() {
                 NexusMods API settings
               </a>
               . Required for downloading mods via NXM links.
-            </p>
-          </div>
-        </div>
-
-        <div className="setting-section">
-          <h3>Downloaded Mods</h3>
-          <p>
-            Mods that have been downloaded via NXM links or manual downloads
-          </p>
-          <div className="setting-row">
-            {downloadedMods.length === 0 ? (
-              <p className="help-text">
-                No mods downloaded yet. Use NXM links or the test download
-                button to download mods.
-              </p>
-            ) : (
-              <div className="downloaded-mods-list">
-                {downloadedMods.map((modFile, index) => (
-                  <div key={index} className="downloaded-mod-item">
-                    <span className="mod-filename">📦 {modFile}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="setting-row">
-            <button onClick={loadDownloadedMods} className="refresh-button">
-              Refresh List
-            </button>
-            <p className="help-text">
-              Click refresh to update the list if you've added files manually.
             </p>
           </div>
         </div>
