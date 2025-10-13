@@ -22,8 +22,8 @@ Comprehensive guide to all features and capabilities of the Crossover Mod Manage
 
 The mod manager supports multiple archive formats using a hybrid extraction approach:
 
-| Format | Extension | System Tool | Rust Fallback | Status |
-|--------|-----------|-------------|---------------|--------|
+| Format | Extension | System Tool | Rust Fallback | Status          |
+| ------ | --------- | ----------- | ------------- | --------------- |
 | ZIP    | `.zip`    | Built-in    | `zip` crate   | ✅ Full Support |
 | 7-Zip  | `.7z`     | `p7zip`     | `sevenz-rust` | ✅ Full Support |
 | RAR    | `.rar`    | `unrar`     | `unrar` crate | ✅ Full Support |
@@ -35,6 +35,7 @@ The mod manager supports multiple archive formats using a hybrid extraction appr
 3. **User Notifications**: Shows which method was used and suggests installing tools for better performance
 
 **Example Output:**
+
 ```
 📦 Extracting mod archive... (7z format)
 ✅ Extracted 847 files using system 7z (recommended)
@@ -60,11 +61,13 @@ This ensures correct handling even when files have incorrect extensions.
 Cyberpunk 2077 on Windows uses case-insensitive paths, but Crossover/Wine on macOS uses case-sensitive filesystems.
 
 **Auto-Detection:**
+
 - Checks for common casing errors (`Archive/`, `archive/`, `ARCHIVE/`)
 - Normalizes paths to match game structure (`archive/pc/mod/`)
 - Logs warnings about case mismatches
 
 **Example:**
+
 ```
 ⚠️ Case sensitivity issue detected: 'Archive/pc/mod/' should be 'archive/pc/mod/'
 🔧 Auto-correcting path casing to match game structure
@@ -73,6 +76,7 @@ Cyberpunk 2077 on Windows uses case-insensitive paths, but Crossover/Wine on mac
 ### Path Validation
 
 Validates and corrects common path issues:
+
 - Removes `.cp77` subdirectories (modding tool artifacts)
 - Handles `_MACOSX` folders from macOS zip creation
 - Detects Red4ext mods and installs to correct location
@@ -86,6 +90,7 @@ Validates and corrects common path issues:
 Detects when multiple mods modify the same files:
 
 **Archive Conflicts:**
+
 ```
 ⚠️ File Conflict Detection
 📦 2 .archive file(s) will override existing mod archives:
@@ -97,6 +102,7 @@ Detects when multiple mods modify the same files:
 ```
 
 **Non-Archive Conflicts:**
+
 ```
 ⚠️ 3 other file(s) will overwrite existing files:
   • 'plugins/cyber_engine_tweaks/mods/config.lua' was previously installed by 'CET Config v2.1'
@@ -117,6 +123,7 @@ Detects when multiple mods modify the same files:
 Cyberpunk 2077 loads `.archive` files alphabetically. Last-loaded archives override earlier ones.
 
 **Load Order Education:**
+
 ```
 🔧 To control load order, you can rename archives:
    - Prefix with '0-' to load first (e.g., '0-basegame_textures.archive')
@@ -124,16 +131,18 @@ Cyberpunk 2077 loads `.archive` files alphabetically. Last-loaded archives overr
 ```
 
 **Current Status:**
+
 - ✅ Conflict detection implemented
 - ✅ Load order warnings shown during installation
 - ✅ Renaming suggestions provided
 - ⏳ Active UI management (planned)
 
 **Example Load Order:**
+
 ```
 Archives in game/archive/pc/mod/:
   0-basegame_first.archive     ← Loads FIRST
-  basegame_middle.archive      ← Loads second  
+  basegame_middle.archive      ← Loads second
   z-basegame_final.archive     ← Loads LAST (wins conflicts)
 ```
 
@@ -146,10 +155,12 @@ Archives in game/archive/pc/mod/:
 Checks available disk space before downloading or extracting:
 
 **Safety Multipliers:**
+
 - Downloads: 3x file size (for download + extraction + safety margin)
 - Extraction: 2x archive size (for extracted files + safety margin)
 
 **Example:**
+
 ```
 📦 Download size: 156.8 MB
 ✓ Sufficient disk space available for download and extraction
@@ -158,6 +169,7 @@ Available: 45.2 GB | Required: 470.4 MB (3x safety margin)
 ```
 
 **Error Handling:**
+
 ```
 ❌ Insufficient disk space!
    Required: 2.3 GB (with 3x safety margin)
@@ -187,12 +199,14 @@ let archive_guard = TempFileGuard::new(temp_archive_path, "archive");
 ### Safety Features
 
 **Strict Validation:**
+
 - Only removes files matching exact patterns
 - Validates numeric IDs (must be purely digits)
 - Validates UUID format (8-4-4-4-12 hex structure)
 - Never touches user directories
 
 **Protected Patterns:**
+
 ```
 ✅ Will Remove:
   mod_12345_67890.zip
@@ -211,6 +225,7 @@ let archive_guard = TempFileGuard::new(temp_archive_path, "archive");
 3. **Manual**: User-triggered cleanup via Settings UI
 
 **Startup Log:**
+
 ```
 🧹 Cleaning up orphaned temporary files...
   🗑️  Removed: /var/folders/.../mod_12345_67890.zip
@@ -227,14 +242,16 @@ let archive_guard = TempFileGuard::new(temp_archive_path, "archive");
 Converts non-ASCII characters to filesystem-safe equivalents:
 
 **Transliteration Examples:**
+
 ```
 café.lua          → cafe.lua
-日本語.archive    → ri_ben_yu.archive  
+日本語.archive    → ri_ben_yu.archive
 Москва.txt        → moskva.txt
 naïve.json        → naive.json
 ```
 
 **Detection & Warnings:**
+
 ```
 ⚠️ Unicode character detected in filename: 'café_mod.archive'
 🔧 Sanitizing filename for compatibility: 'cafe_mod.archive'
@@ -257,6 +274,7 @@ naïve.json        → naive.json
 Symbolic links don't work correctly in Wine/Crossover environments.
 
 **Auto-Detection:**
+
 ```
 ⚠️ Symlink Detected: 'mods/link_to_shared_config'
   → Target: '../shared/config'
@@ -266,6 +284,7 @@ Symbolic links don't work correctly in Wine/Crossover environments.
 ```
 
 **Handling:**
+
 - Detects symlinks during installation
 - Automatically skips symlink files
 - Tracks both symlink path and target
@@ -278,6 +297,7 @@ Symbolic links don't work correctly in Wine/Crossover environments.
 ### Auto-Detection
 
 Recognizes Red4ext mods by:
+
 - Presence of `red4ext` directory
 - Files ending in `red4ext.dll`
 - `version.dll` in root (Red4ext loader)
@@ -287,6 +307,7 @@ Recognizes Red4ext mods by:
 Red4ext mods install to: `{game_root}/red4ext/plugins/{mod_name}/`
 
 **Example:**
+
 ```
 ✅ Red4ext mod detected - installing to red4ext/plugins/ directory
 📁 Installing files to: Cyberpunk 2077/red4ext/plugins/CyberEngineTweaks/
@@ -299,6 +320,7 @@ Red4ext mods install to: `{game_root}/red4ext/plugins/{mod_name}/`
 - Warns users about Red4ext dependency
 
 **Warning:**
+
 ```
 ⚠️ This mod requires Red4ext Framework
 💡 Install Red4ext from: https://github.com/WopsS/RED4ext
@@ -308,21 +330,21 @@ Red4ext mods install to: `{game_root}/red4ext/plugins/{mod_name}/`
 
 ## Feature Status Summary
 
-| Feature | Status | Version |
-|---------|--------|---------|
-| Multi-format archives | ✅ Complete | v1.0.0 |
-| Hybrid extraction | ✅ Complete | v1.2.0 |
-| Case sensitivity handling | ✅ Complete | v1.3.0 |
-| File conflict detection | ✅ Complete | v1.3.0 |
-| Load order detection | ✅ Complete | v1.3.0 |
-| Load order UI management | ⏳ Planned | TBD |
-| Disk space checking | ✅ Complete | v1.4.0 |
-| Unicode sanitization | ✅ Complete | v1.3.0 |
-| Symlink detection | ✅ Complete | v1.3.0 |
-| Red4ext detection | ✅ Complete | v1.5.0 |
-| Temp file cleanup (RAII) | ✅ Complete | v1.6.0 |
-| Startup cleanup | ✅ Complete | v1.6.0 |
-| Manual cleanup UI | ✅ Complete | v1.6.0 |
+| Feature                   | Status      | Version |
+| ------------------------- | ----------- | ------- |
+| Multi-format archives     | ✅ Complete | v1.0.0  |
+| Hybrid extraction         | ✅ Complete | v1.2.0  |
+| Case sensitivity handling | ✅ Complete | v1.3.0  |
+| File conflict detection   | ✅ Complete | v1.3.0  |
+| Load order detection      | ✅ Complete | v1.3.0  |
+| Load order UI management  | ⏳ Planned  | TBD     |
+| Disk space checking       | ✅ Complete | v1.4.0  |
+| Unicode sanitization      | ✅ Complete | v1.3.0  |
+| Symlink detection         | ✅ Complete | v1.3.0  |
+| Red4ext detection         | ✅ Complete | v1.5.0  |
+| Temp file cleanup (RAII)  | ✅ Complete | v1.6.0  |
+| Startup cleanup           | ✅ Complete | v1.6.0  |
+| Manual cleanup UI         | ✅ Complete | v1.6.0  |
 
 ---
 
