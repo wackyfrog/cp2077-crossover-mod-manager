@@ -2178,7 +2178,7 @@ async fn install_mod_from_nxm(
                 state.clone(),
             )?;
             add_log(
-                "📖 Full setup guide: See RED4EXT_COMPATIBILITY.md for detailed instructions.".to_string(),
+                "📖 Full setup guide: See FEATURES.md for detailed instructions.".to_string(),
                 "info".to_string(),
                 "installation".to_string(),
                 state.clone(),

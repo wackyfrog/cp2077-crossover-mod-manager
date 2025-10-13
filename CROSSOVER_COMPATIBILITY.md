@@ -636,7 +636,7 @@ let _guard = TempFileGuard(temp_file_path);
    - ✅ Helper functions for future case-insensitive operations
 
 3. **Wine/CET configuration documentation** - ✅ DOCUMENTED
-   - ✅ Comprehensive RED4ext setup guide created (RED4EXT_COMPATIBILITY.md)
+   - ✅ Comprehensive RED4ext setup guide created (see FEATURES.md)
    - ✅ Step-by-step Crossover configuration instructions
    - ✅ CET warnings included during installation
    - Future: Add bottle detection (automation)
@@ -769,6 +769,6 @@ Found a Crossover-specific issue not listed here? Please:
 
 ---
 
-_Last updated: October 12, 2025_
-_Version: 1.5.0 - Phase 3 Complete_
-_For RED4ext-specific issues, see: [RED4EXT_COMPATIBILITY.md](RED4EXT_COMPATIBILITY.md)_
+_Last updated: October 13, 2025_
+_Version: 1.6.0_
+_For detailed feature documentation, see: [FEATURES.md](FEATURES.md)_

@@ -13,6 +13,8 @@ A Nexus Mod Manager for PC games on Mac via Crossover, built with React, Vite, T
 - **Cyberpunk 2077 Support**: Specifically configured for CP2077 via Crossover
 - **Crossover Compatibility**: Case sensitivity handling and Wine-specific optimizations
 
+📖 **[See detailed feature documentation →](FEATURES.md)**
+
 ## Project Structure
 
 ```
@@ -68,7 +70,7 @@ brew install p7zip
 brew install unrar
 ```
 
-**Note**: Archive extraction works without these tools using built-in Rust libraries, but system tools provide ~45% faster extraction. See [ARCHIVE_SUPPORT.md](ARCHIVE_SUPPORT.md) for details.
+**Note**: Archive extraction works without these tools using built-in Rust libraries, but system tools provide ~45% faster extraction. See [FEATURES.md](FEATURES.md#archive-support) for details.
 
 ## Installation
 
