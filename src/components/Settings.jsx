@@ -30,8 +30,6 @@ function Settings() {
     }
   };
 
-
-
   const selectGamePath = async () => {
     try {
       const selected = await openDialog({
@@ -115,9 +113,7 @@ function Settings() {
       const testUrl =
         "nxm://cyberpunk2077/mods/107/files/123169?key=SIMRrmIOUwWBwlUHBwf-Gzw&expires=1760073185&user_id=260682775";
       await invoke("handle_nxm_url", { nxm_url: testUrl });
-      alert(
-        "NXM URL test completed! Check the Logs tab."
-      );
+      alert("NXM URL test completed! Check the Logs tab.");
     } catch (error) {
       console.error("Failed to test NXM URL:", error);
       alert("NXM URL test failed: " + error);
@@ -127,9 +123,7 @@ function Settings() {
   const testCustomNxmUrl = async () => {
     try {
       await invoke("handle_nxm_url", { nxm_url: customNxmUrl });
-      alert(
-        "Custom NXM URL processed! Check the Logs tab."
-      );
+      alert("Custom NXM URL processed! Check the Logs tab.");
     } catch (error) {
       console.error("Failed to process custom NXM URL:", error);
       alert("Custom NXM URL processing failed: " + error);

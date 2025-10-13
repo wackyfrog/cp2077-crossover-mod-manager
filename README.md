@@ -155,6 +155,7 @@ rm -rf ~/.crossover-mod-manager
 ```
 
 This directory contains:
+
 - `settings.json`: Your game path, API key, and preferences
 - `mods.json`: Database of installed mods and tracked files
 
