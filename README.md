@@ -132,6 +132,41 @@ The built application will be available in `src-tauri/target/release/bundle/`.
 - **Mod Details**: Click on a mod to view its details, version, and installed files
 - **Remove Mod**: Click "Remove Mod" to uninstall and delete all mod files
 
+## Uninstalling
+
+To completely remove Crossover Mod Manager from your system:
+
+### 1. Delete the Application
+
+```bash
+# Remove the app bundle
+rm -rf "/Applications/Crossover Mod Manager.app"
+```
+
+Or simply drag `Crossover Mod Manager.app` from Applications to the Trash.
+
+### 2. Remove Configuration Data (Optional)
+
+The app stores settings and mod database separately from the application bundle. To completely remove all data:
+
+```bash
+# Remove configuration and mod database
+rm -rf ~/.crossover-mod-manager
+```
+
+This directory contains:
+- `settings.json`: Your game path, API key, and preferences
+- `mods.json`: Database of installed mods and tracked files
+
+**Note**: Deleting the app without removing `~/.crossover-mod-manager` will preserve your settings if you reinstall later.
+
+### 3. Mods Remain in Game Directory
+
+Uninstalling Crossover Mod Manager does **not** remove mods from your game installation. To remove installed mods:
+
+- Use the "Remove Mod" button in the app **before** uninstalling, or
+- Manually delete mod files from your Cyberpunk 2077 directory
+
 ## Architecture
 
 ### Frontend (React + Vite)
