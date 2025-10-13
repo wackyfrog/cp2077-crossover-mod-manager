@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-10-12
+
+### Added
+
+- **Phase 3 Crossover Compatibility Complete** 🎉
+  - **File Permissions Management** (Priority #8)
+    - Automatic Wine-compatible permission setting after file installation
+    - Files set to 0o644 (rw-r--r--) for proper Wine DLL loading
+    - Directories set to 0o755 (rwxr-xr-x) for traversability
+    - Improves Wine DLL loading and config file writability
+    - Unix-only feature (no-op on Windows)
+  
+  - **Long Path Validation** (Priority #9)
+    - Checks PATH_MAX (1024 characters) before installation
+    - Warns if path approaches 900 characters (safety margin)
+    - Hard error if path exceeds maximum allowed length
+    - Suggests shorter Crossover bottle names or paths
+    - Prevents cryptic macOS filesystem failures
+  
+  - **Windows Version Detection** (Priority #11)
+    - Automatic detection of Wine's configured Windows version
+    - Reads Wine registry (system.reg) from bottle
+    - Validates against recommended version (Windows 10)
+    - Warns if older versions (Win 7/8) are detected
+    - Provides step-by-step instructions to change Wine version
+    - macOS-specific feature with graceful fallback
+
+### Changed
+
+- Enhanced installation flow with pre-installation validation checks
+- Improved logging for Wine/Crossover compatibility issues
+- Better error messages for path and permission issues
+
+### Technical
+
+- Added Wine compatibility functions in `main.rs`:
+  - `set_wine_compatible_permissions()` - Sets Unix permissions on files/directories
+  - `check_path_length()` - Validates path length against macOS limits
+  - `detect_wine_windows_version()` - Parses Wine registry for version info
+- Integrated checks into installation flow:
+  - Path length validation before file installation begins
+  - Windows version detection and warnings
+  - Permission setting after each file copy
+  - Directory permission setting after creation
+- Cross-platform compatibility with conditional compilation
+
 ## [1.4.0] - 2025-10-12
 
 ### Added

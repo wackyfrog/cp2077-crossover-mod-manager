@@ -1331,6 +1331,144 @@ async fn install_mod_from_nxm(
         return Err("Game directory does not exist".to_string());
     }
 
+    // Check path length to prevent macOS PATH_MAX issues
+    add_log(
+        "📏 Checking path length compatibility...".to_string(),
+        "info".to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
+    
+    if let Err(warning) = check_path_length(game_dir) {
+        // Log the warning but continue (unless it's a hard error)
+        if warning.contains("Maximum allowed is") {
+            // Hard error - path is too long
+            add_log(
+                format!("❌ {}", warning),
+                "error".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            // Cleanup
+            if let Some(path) = &archive_path {
+                fs::remove_file(path).ok();
+            }
+            if let Some(dir) = &extract_dir {
+                fs::remove_dir_all(dir).ok();
+            }
+            return Err(warning);
+        } else {
+            // Warning - path is approaching limit
+            add_log(
+                warning,
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+    } else {
+        add_log(
+            "✓ Path length is within safe limits".to_string(),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    }
+
+    // Detect Wine Windows version (macOS only)
+    #[cfg(target_os = "macos")]
+    {
+        add_log(
+            "🪟 Detecting Wine Windows version...".to_string(),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+        
+        match detect_wine_windows_version(game_dir) {
+            Ok((version_string, is_recommended)) => {
+                if is_recommended {
+                    add_log(
+                        format!("✓ Wine is configured to emulate: {}", version_string),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  This is the recommended version for Cyberpunk 2077 mods".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                } else {
+                    add_log(
+                        format!("⚠️  Wine is configured to emulate: {}", version_string),
+                        "warning".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  Some modern mods require Windows 10 or later".to_string(),
+                        "warning".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "💡 To change Windows version in Crossover:".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  1. Open CrossOver → Right-click your bottle".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  2. Select 'Wine Configuration' (or Run Command → winecfg)".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  3. Go to 'Applications' tab".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  4. Set 'Windows Version' to 'Windows 10'".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "  5. Click Apply and restart your game launcher".to_string(),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                }
+            }
+            Err(e) => {
+                // Just log as info - not critical
+                add_log(
+                    format!("ℹ️  Could not detect Wine version: {}", e),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
+        }
+    }
+
     let mut installed_files = Vec::new();
     let mut install_count = 0;
     let mut is_redmod = false;
@@ -1504,6 +1642,18 @@ async fn install_mod_from_nxm(
                 fs::create_dir_all(parent).map_err(|e| {
                     format!("Failed to create directory: {}", e)
                 })?;
+                
+                // Set Wine-compatible permissions on created directory
+                if let Err(e) = set_wine_compatible_permissions(parent, true) {
+                    // Log warning but continue - not critical
+                    add_log(
+                        format!("⚠️  Could not set directory permissions for {}: {}", 
+                            parent.display(), e),
+                        "warning".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
+                }
             }
 
             // Copy file
@@ -1517,6 +1667,19 @@ async fn install_mod_from_nxm(
                 }
                 format!("Failed to copy file to game directory: {}", e)
             })?;
+
+            // Set Wine-compatible permissions (macOS/Unix only)
+            // This helps Wine load DLLs and access config files properly
+            if let Err(e) = set_wine_compatible_permissions(&install_path, false) {
+                // Log warning but continue - not critical
+                add_log(
+                    format!("⚠️  Could not set permissions for {}: {}", 
+                        install_path.display(), e),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
 
             installed_files.push(install_path.to_string_lossy().to_string());
             install_count += 1;
@@ -2307,6 +2470,181 @@ fn check_sufficient_disk_space(path: &std::path::Path, required_bytes: u64) -> R
     }
     
     Ok(())
+}
+
+/// Set Wine-compatible permissions on installed files
+/// Files: 0o644 (rw-r--r--), Directories: 0o755 (rwxr-xr-x)
+/// This improves Wine DLL loading and config file writability
+#[cfg(unix)]
+fn set_wine_compatible_permissions(path: &std::path::Path, is_directory: bool) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    
+    let mode = if is_directory {
+        0o755 // rwxr-xr-x - directories need execute permission to be traversable
+    } else {
+        0o644 // rw-r--r-- - files should be readable and writable by owner
+    };
+    
+    let mut perms = std::fs::metadata(path)
+        .map_err(|e| format!("Failed to get metadata for {:?}: {}", path, e))?
+        .permissions();
+    
+    perms.set_mode(mode);
+    
+    std::fs::set_permissions(path, perms)
+        .map_err(|e| format!("Failed to set permissions for {:?}: {}", path, e))?;
+    
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_wine_compatible_permissions(_path: &std::path::Path, _is_directory: bool) -> Result<(), String> {
+    // No-op on non-Unix systems
+    Ok(())
+}
+
+/// Check if path length exceeds safe limits for macOS/Wine
+/// macOS has PATH_MAX of 1024 characters
+/// Warns if path approaches 900 characters (safety margin)
+fn check_path_length(path: &std::path::Path) -> Result<(), String> {
+    const PATH_MAX_MACOS: usize = 1024;
+    const SAFE_PATH_LIMIT: usize = 900; // Leave safety margin
+    
+    let path_str = path.to_string_lossy();
+    let path_len = path_str.len();
+    
+    if path_len >= PATH_MAX_MACOS {
+        return Err(format!(
+            "Path too long ({} chars). Maximum allowed is {} characters.\n\
+             Path: {}\n\n\
+             💡 This will cause installation to fail.\n\
+             Please use a shorter Crossover bottle name or move your bottle to a shorter path.",
+            path_len, PATH_MAX_MACOS, path_str
+        ));
+    } else if path_len >= SAFE_PATH_LIMIT {
+        return Err(format!(
+            "⚠️  Path approaching maximum length ({} chars, limit is {}).\n\
+             Path: {}\n\n\
+             💡 Consider using a shorter Crossover bottle name to avoid future issues.\n\
+             While this path works now, adding more mods could exceed the limit.",
+            path_len, PATH_MAX_MACOS, path_str
+        ));
+    }
+    
+    Ok(())
+}
+
+/// Detect Wine's configured Windows version from the bottle's registry
+/// Returns version info and whether it's the recommended version (Windows 10)
+#[cfg(target_os = "macos")]
+fn detect_wine_windows_version(game_path: &std::path::Path) -> Result<(String, bool), String> {
+    use std::fs;
+    use std::path::PathBuf;
+    
+    // Try to find the Wine bottle by walking up from game path to find drive_c
+    let mut current_path = game_path.to_path_buf();
+    let mut bottle_path: Option<PathBuf> = None;
+    
+    // Walk up the directory tree looking for drive_c
+    while let Some(parent) = current_path.parent() {
+        let drive_c = parent.join("drive_c");
+        if drive_c.exists() && drive_c.is_dir() {
+            bottle_path = Some(parent.to_path_buf());
+            break;
+        }
+        current_path = parent.to_path_buf();
+    }
+    
+    let bottle_path = bottle_path.ok_or_else(|| {
+        "Unable to locate Wine bottle (drive_c not found in path hierarchy)".to_string()
+    })?;
+    
+    // Try to read system.reg for Windows version information
+    let system_reg = bottle_path.join("system.reg");
+    
+    if !system_reg.exists() {
+        return Err("Wine registry file (system.reg) not found".to_string());
+    }
+    
+    let reg_content = fs::read_to_string(&system_reg)
+        .map_err(|e| format!("Failed to read system.reg: {}", e))?;
+    
+    // Parse registry for Windows version
+    // Look for: [Software\\Microsoft\\Windows NT\\CurrentVersion]
+    let mut current_version = String::new();
+    let mut current_build = String::new();
+    let mut product_name = String::new();
+    
+    let mut in_version_section = false;
+    for line in reg_content.lines() {
+        // Check if we're in the CurrentVersion section
+        if line.contains("[Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion]") {
+            in_version_section = true;
+            continue;
+        }
+        
+        // Exit section when we hit a new section
+        if in_version_section && line.starts_with('[') {
+            break;
+        }
+        
+        if in_version_section {
+            // Parse version values (format: "KeyName"="Value")
+            if line.contains("\"CurrentVersion\"=") {
+                current_version = line
+                    .split('=')
+                    .nth(1)
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
+            } else if line.contains("\"CurrentBuild\"=") {
+                current_build = line
+                    .split('=')
+                    .nth(1)
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
+            } else if line.contains("\"ProductName\"=") {
+                product_name = line
+                    .split('=')
+                    .nth(1)
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
+            }
+        }
+    }
+    
+    // Determine if this is a recommended version
+    let is_recommended = current_version.starts_with("10.") || product_name.contains("Windows 10");
+    
+    // Build version string
+    let version_string = if !product_name.is_empty() {
+        if !current_build.is_empty() {
+            format!("{} (Build {})", product_name, current_build)
+        } else {
+            product_name
+        }
+    } else if !current_version.is_empty() {
+        if !current_build.is_empty() {
+            format!("Windows {} (Build {})", current_version, current_build)
+        } else {
+            format!("Windows {}", current_version)
+        }
+    } else {
+        "Unknown Windows version".to_string()
+    };
+    
+    Ok((version_string, is_recommended))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn detect_wine_windows_version(_game_path: &std::path::Path) -> Result<(String, bool), String> {
+    // Not applicable on non-macOS systems
+    Ok(("Native Windows".to_string(), true))
 }
 
 /// Normalize a path component to match Cyberpunk 2077's expected casing

@@ -347,28 +347,34 @@ fn sanitize_filename(name: &str) -> String {
 - Config files might be read-only when they should be writable
 - Permission issues can cause silent failures
 
-**Current Status**: ❌ Not explicitly handled
+**Current Status**: ✅ **IMPLEMENTED in v1.5.0** (Priority #8 - Phase 3)
 
-**Solutions**:
+**Implementation Details**:
 
-- Set appropriate Unix permissions after file copy on macOS
-- DLL files: `0o644` (rw-r--r--)
-- Config files: `0o644` (rw-r--r--)
-- Directories: `0o755` (rwxr-xr-x)
+- ✅ **Automatic Permission Setting**: All installed files and directories get Wine-compatible permissions
+  - Files: `0o644` (rw-r--r--) - Read/write for owner, read for others
+  - Directories: `0o755` (rwxr-xr-x) - Full permissions for owner, read/execute for others
+  - Applied immediately after file copy and directory creation
+  - Unix-only feature (no-op on Windows)
 
-**Implementation**:
+- ✅ **Benefits**:
+  - Improves Wine DLL loading reliability
+  - Ensures config files are writable
+  - Directories are properly traversable
+  - Reduces permission-related silent failures
 
-```rust
-#[cfg(target_os = "macos")]
-{
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = fs::metadata(&install_path)?.permissions();
-    perms.set_mode(0o644); // Read/write for owner, read for others
-    fs::set_permissions(&install_path, perms)?;
-}
+- ✅ **Error Handling**:
+  - Logs warnings if permission setting fails (non-critical)
+  - Installation continues even if permissions can't be set
+  - Graceful degradation for edge cases
+
+**What Users See**:
 ```
+⚠️  Could not set permissions for /path/to/file: Permission denied
+```
+(Only shown if permission setting fails - rare)
 
-**User Impact**: LOW - Rare issue, mostly affects advanced mods
+**User Impact**: LOW - Prevents rare issues, mostly affects advanced mods (✅ NOW RESOLVED)
 
 ---
 
@@ -389,32 +395,45 @@ fn sanitize_filename(name: &str) -> String {
 - Path operations fail when limit exceeded
 - Error messages are often cryptic
 
-**Current Status**: ❌ Not handled
+**Current Status**: ✅ **IMPLEMENTED in v1.5.0** (Priority #9 - Phase 3)
 
-**Solutions**:
+**Implementation Details**:
 
-- Calculate full installation path length before copying files
-- Warn if path approaches 900 characters (safety margin)
-- Suggest shortening bottle name or moving bottle location
-- Offer to use shorter mod folder names
+- ✅ **Path Length Validation**: Automatic check before mod installation
+  - PATH_MAX: 1024 characters (macOS limit)
+  - SAFE_PATH_LIMIT: 900 characters (warning threshold)
+  - Hard error if path exceeds 1024 characters
+  - Warning if path approaches 900 characters
 
-**Check Implementation**:
+- ✅ **User Feedback**:
+  - Shows exact path length in characters
+  - Displays the problematic path
+  - Provides actionable solutions:
+    - Use shorter Crossover bottle name
+    - Move bottle to shorter path location
+    - Warning for approaching limit (future-proofing)
 
-```rust
-fn check_path_length(path: &Path) -> Result<(), String> {
-    let path_str = path.to_string_lossy();
-    if path_str.len() > 900 {
-        return Err(format!(
-            "Path too long ({} chars). Maximum safe length is 900 characters.\n\
-             Consider using a shorter bottle name or game path.",
-            path_str.len()
-        ));
-    }
-    Ok(())
-}
+**What Users See**:
+
+Hard error (≥1024 chars):
+```
+❌ Path too long (1087 chars). Maximum allowed is 1024 characters.
+Path: /Users/username/Library/Application Support/CrossOver/Bottles/...
+
+💡 This will cause installation to fail.
+Please use a shorter Crossover bottle name or move your bottle to a shorter path.
 ```
 
-**User Impact**: LOW - Rare, but causes installation failure when encountered
+Warning (≥900 chars):
+```
+⚠️  Path approaching maximum length (945 chars, limit is 1024).
+Path: /Users/username/Library/Application Support/CrossOver/Bottles/...
+
+💡 Consider using a shorter Crossover bottle name to avoid future issues.
+While this path works now, adding more mods could exceed the limit.
+```
+
+**User Impact**: LOW - Rare, but prevents cryptic installation failures (✅ NOW RESOLVED)
 
 ---
 
@@ -488,14 +507,50 @@ fn check_sufficient_disk_space(path: &Path, required_bytes: u64) -> Result<(), S
 - Mods expecting Windows 11 might refuse to install
 - Version checks might be hardcoded
 
-**Current Status**: ❌ Not addressed
+**Current Status**: ✅ **IMPLEMENTED in v1.5.0** (Priority #11 - Phase 3)
 
-**Solutions**:
+**Implementation Details**:
 
-- Document recommended Wine version settings for Crossover bottles
-- Suggest setting Wine to emulate Windows 10 (most compatible)
-- Configuration: `winecfg → Applications → Windows Version → Windows 10`
-- Add to troubleshooting documentation
+- ✅ **Automatic Wine Version Detection**: Reads Wine registry during installation
+  - Locates Wine bottle by walking up from game path to find `drive_c/`
+  - Parses `system.reg` file for Windows version information
+  - Reads registry keys:
+    - `CurrentVersion` (e.g., "10.0")
+    - `CurrentBuild` (e.g., "19041")
+    - `ProductName` (e.g., "Windows 10")
+
+- ✅ **Version Validation**:
+  - ✅ Recommended: Windows 10 (version 10.0)
+  - ⚠️ Warning: Windows 7/8 (older, some mods may fail)
+  - ℹ️ Info: Windows 11 (newer, generally works but less tested)
+
+- ✅ **User Guidance**:
+  - Shows detected version with build number
+  - Warns if not Windows 10 (recommended version)
+  - Provides step-by-step Crossover configuration instructions
+  - macOS-specific feature with graceful fallback
+
+**What Users See**:
+
+Recommended version detected:
+```
+🪟 Detecting Wine Windows version...
+✓ Wine is configured to emulate: Windows 10 (Build 19041)
+  This is the recommended version for Cyberpunk 2077 mods
+```
+
+Older version detected:
+```
+⚠️  Wine is configured to emulate: Windows 7
+  Some modern mods require Windows 10 or later
+
+💡 To change Windows version in Crossover:
+  1. Open CrossOver → Right-click your bottle
+  2. Select 'Wine Configuration' (or Run Command → winecfg)
+  3. Go to 'Applications' tab
+  4. Set 'Windows Version' to 'Windows 10'
+  5. Click Apply and restart your game launcher
+```
 
 **Recommended Settings**:
 
@@ -504,7 +559,7 @@ CrossOver → Bottle → Wine Configuration → Applications
 Windows Version: Windows 10
 ```
 
-**User Impact**: LOW - Rare, mostly affects very new or old mods
+**User Impact**: LOW - Rare, mostly affects very new or old mods (✅ NOW RESOLVED)
 
 ---
 
@@ -601,12 +656,35 @@ let _guard = TempFileGuard(temp_file_path);
    - ✅ Before/after filename mapping displayed
    - ✅ Platform-specific compatibility advice
 
-### Phase 3: Polish and Edge Cases (Future)
+### Phase 3: Polish and Edge Cases - ✅ COMPLETED in v1.5.0
 
-7. Path length validation
-8. File permissions management
-9. Disk space checking
-10. Improved temp file cleanup
+7. ✅ **Disk space checking** - **COMPLETED in v1.4.0**
+   - ✅ Pre-download and pre-extraction space validation
+   - ✅ 3x safety multiplier for space calculation
+   - ✅ Human-readable size formatting
+   - ✅ Clear error messages with actionable tips
+
+8. ✅ **File permissions management** - **COMPLETED in v1.5.0**
+   - ✅ Automatic Wine-compatible permission setting
+   - ✅ Files: 0o644, Directories: 0o755
+   - ✅ Applied after each file copy and directory creation
+   - ✅ Improves Wine DLL loading and config file writability
+
+9. ✅ **Path length validation** - **COMPLETED in v1.5.0**
+   - ✅ PATH_MAX (1024) validation before installation
+   - ✅ Warning at 900 characters (safety margin)
+   - ✅ Helpful suggestions for shorter bottle names
+   - ✅ Prevents cryptic macOS filesystem errors
+
+10. ✅ **Windows version emulation detection** - **COMPLETED in v1.5.0**
+    - ✅ Automatic Wine registry reading
+    - ✅ Validates against recommended Windows 10
+    - ✅ Step-by-step configuration instructions
+    - ✅ macOS-specific with graceful fallback
+
+11. **Improved temp file cleanup** - Partial (good enough)
+    - Current cleanup is sufficient for most cases
+    - Could add RAII pattern for guaranteed cleanup (future enhancement)
 
 ---
 
@@ -676,5 +754,6 @@ Found a Crossover-specific issue not listed here? Please:
 
 ---
 
-_Last updated: October 9, 2025_
+_Last updated: October 12, 2025_
+_Version: 1.5.0 - Phase 3 Complete_
 _For RED4ext-specific issues, see: [RED4EXT_COMPATIBILITY.md](RED4EXT_COMPATIBILITY.md)_

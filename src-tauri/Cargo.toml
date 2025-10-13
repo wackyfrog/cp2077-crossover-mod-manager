@@ -1,6 +1,6 @@
 [package]
 name = "crossover-mod-manager"
-version = "1.4.0"
+version = "1.5.0"
 description = "Nexus Mod Manager for CP2077 on Mac via Crossover"
 authors = ["Benjamin Eccles"]
 license = "MIT"
