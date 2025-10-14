@@ -51,7 +51,7 @@ During beta testing, releases are marked with the 🧪 BETA tag. To download a b
      3. Click "Open" again in the security dialog
    - After this first time, the app will open normally with a regular double-click
 
-**Why the security warning?** Beta releases use ad-hoc signing to allow for rapid iteration. A fully signed and notarized version will be available with the stable v1.0.0 release. See [APPLE_DISTRIBUTION.md](APPLE_DISTRIBUTION.md) for details.
+**Why the security warning?** Beta releases use ad-hoc signing to allow for rapid iteration. A fully signed and notarized version will be available with the stable v1.0.0 release.
 
 ### Building from Source
 
