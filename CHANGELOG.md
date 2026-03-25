@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-03-24
+
+### Fixed
+
+- Browse button in Settings no longer silently fails — missing Tauri dialog permission was added
+- Browse for game path now opens directly inside `~/Library/Application Support/CrossOver/Bottles` instead of the home directory, bypassing macOS's hidden Library folder issue
+
+### Security
+
+- Tauri capabilities reduced to principle of least privilege (`core:default` + `dialog:allow-open` only)
+
+### Dependencies
+
+- Bumped `@tauri-apps/api` to 2.10.1
+- Bumped `@tauri-apps/cli` to 2.10.1
+- Bumped `@tauri-apps/plugin-deep-link` to 2.4.7
+- Bumped `@tauri-apps/plugin-dialog` to 2.6.0
+- Bumped `react` / `react-dom` to 19.2.4
+- Bumped `@vitejs/plugin-react` to 5.2.0
+- Updated `bytes` transitive Rust dependency (1.10.1 → 1.11.1)
+
 ## [0.1.0] - 2025-10-13
 
 ### Added
@@ -32,22 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Comprehensive Temporary File Cleanup System** 🧹
-
   - **RAII Pattern**: Automatic cleanup using Drop trait (TempFileGuard)
-
     - Guarantees cleanup even if function panics or returns early
     - Wraps archive files and extraction directories
     - Eliminates manual cleanup code scattered throughout
 
   - **Startup Cleanup**: Automatic orphaned file detection on app launch
-
     - Removes abandoned mod archives (`mod_*_*.zip`)
     - Removes abandoned extraction directories (`mod_extract_*_*`)
     - Age-based filtering (only removes files >1 hour old)
     - Logs cleanup statistics to console
 
   - **Manual Cleanup**: User-initiated cleanup via Settings UI
-
     - New "Clean Temporary Files" button in Settings → System Maintenance
     - Shows success/error messages with file counts
     - Accessible cleanup for users experiencing disk space issues
@@ -87,9 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Phase 3 Crossover Compatibility Complete** 🎉
-
   - **File Permissions Management** (Priority #8)
-
     - Automatic Wine-compatible permission setting after file installation
     - Files set to 0o644 (rw-r--r--) for proper Wine DLL loading
     - Directories set to 0o755 (rwxr-xr-x) for traversability
@@ -97,7 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Unix-only feature (no-op on Windows)
 
   - **Long Path Validation** (Priority #9)
-
     - Checks PATH_MAX (1024 characters) before installation
     - Warns if path approaches 900 characters (safety margin)
     - Hard error if path exceeds maximum allowed length
@@ -295,14 +309,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **REDmod Launch Parameter Detection** (Priority #1 - Critical)
-
   - Automatic detection of REDmod mods during installation
   - Prominent warnings about `-modded` parameter requirement
   - Platform-specific launcher instructions (GOG/Steam/Epic)
   - Clear guidance to prevent silent mod failures
 
 - **Duplicate Mod Detection**
-
   - Check for exact same mod and file version
   - Detect different versions of same mod
   - Warn about potential name conflicts
