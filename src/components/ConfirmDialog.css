@@ -1,0 +1,180 @@
+.cdlg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cdlg {
+  background: var(--cyber-darker);
+  border: 1px solid var(--cyber-red);
+  box-shadow:
+    0 0 0 1px rgba(255, 0, 64, 0.15),
+    0 0 40px rgba(255, 0, 64, 0.12),
+    inset 0 0 60px rgba(255, 0, 64, 0.03);
+  min-width: 560px;
+  max-width: 660px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ─────────────────────────────── */
+.cdlg-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--cyber-border-bright);
+  background: rgba(255, 0, 64, 0.05);
+}
+
+.cdlg-prefix {
+  color: var(--cyber-red);
+  font-size: 0.9rem;
+}
+
+.cdlg-title {
+  color: var(--cyber-yellow);
+  font-family: 'Play', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ── Body ────────────────────────────────── */
+.cdlg-body {
+  padding: 1.4rem 1.5rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cdlg-line {
+  margin: 0;
+  font-family: 'Play', sans-serif;
+  font-size: 0.83rem;
+  color: var(--cyber-text);
+  line-height: 1.6;
+}
+
+.cdlg-line:not(:last-child) {
+  color: var(--cyber-text-dim);
+}
+
+/* ── Info items list ─────────────────────── */
+.cdlg-items {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  border: 1px solid var(--cyber-border-bright);
+  background: rgba(255, 0, 64, 0.03);
+  display: flex;
+  flex-direction: column;
+}
+
+.cdlg-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--cyber-border);
+}
+
+.cdlg-item:last-child {
+  border-bottom: none;
+}
+
+.cdlg-item-icon {
+  flex-shrink: 0;
+  color: var(--cyber-red);
+  font-size: 0.75rem;
+  width: 1rem;
+  text-align: center;
+}
+
+.cdlg-item-label {
+  flex: 1;
+  color: var(--cyber-text-dim);
+  letter-spacing: 0.3px;
+}
+
+.cdlg-item-value {
+  flex-shrink: 0;
+  color: var(--cyber-yellow);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+/* ── Footer ──────────────────────────────── */
+.cdlg-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--cyber-border);
+}
+
+.cdlg-footer-right {
+  display: flex;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.cdlg-btn {
+  padding: 0.5rem 1.4rem;
+  font-family: 'Play', sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+  outline: none;
+}
+
+.cdlg-btn-cancel {
+  border: 1px solid var(--cyber-border-bright);
+  color: var(--cyber-text-dim);
+}
+
+.cdlg-btn-cancel:hover {
+  border-color: var(--cyber-text-dim);
+  color: var(--cyber-text);
+}
+
+.cdlg-btn-confirm {
+  border: 1px solid var(--cyber-blue);
+  color: var(--cyber-blue);
+}
+
+.cdlg-btn-confirm:hover {
+  background: rgba(0, 255, 255, 0.08);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.25);
+  color: var(--cyber-blue-bright);
+}
+
+.cdlg-btn-confirm.danger {
+  border-color: var(--cyber-red);
+  color: var(--cyber-red);
+}
+
+.cdlg-btn-aux {
+  border: 1px solid var(--cyber-border-bright);
+  color: var(--cyber-text-dim);
+}
+
+.cdlg-btn-aux:hover {
+  border-color: var(--cyber-yellow);
+  color: var(--cyber-yellow);
+}
+
+.cdlg-btn-confirm.danger:hover {
+  background: rgba(255, 0, 64, 0.1);
+  box-shadow: 0 0 10px rgba(255, 0, 64, 0.3);
+  color: var(--cyber-red-bright);
+}

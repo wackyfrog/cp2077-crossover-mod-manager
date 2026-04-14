@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use settings::{AppSettings, Settings};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 #[allow(unused_imports)] // Listener is used for trait methods (.listen())
 use tauri::{Emitter, Listener, Manager, State};
 
@@ -23,15 +24,49 @@ pub struct LogEntry {
     pub category: String, // "download", "installation", "system"
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InstallProgress {
+    pub stage: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes_received: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_total: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mod_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nxm_url: Option<String>,
+}
+
+fn emit_install_progress(app: &tauri::AppHandle, progress: InstallProgress) {
+    if let Some(window) = app.get_webview_window("main") {
+        window.emit("install-progress", &progress).ok();
+    }
+}
+
 struct AppState {
     mod_manager: Mutex<ModManager>,
     settings: Mutex<AppSettings>,
     logs: Mutex<VecDeque<LogEntry>>,
+    sync_cancel: Arc<AtomicBool>,
+    install_cancel: Arc<AtomicBool>,
+    installing: Arc<AtomicBool>,
+    startup_nxm_url: Mutex<Option<String>>,
+    force_reinstall: AtomicBool,
+    reinstall_mod_id: Mutex<Option<String>>,
+    pending_file_name: Mutex<Option<String>>,
+    pending_file_version: Mutex<Option<String>>,
+    pending_file_description: Mutex<Option<String>>,
 }
 
 #[tauri::command]
 fn get_installed_mods(state: State<AppState>) -> Result<Vec<ModInfo>, String> {
-    let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    manager.reload_if_changed();
     Ok(manager.get_installed_mods())
 }
 
@@ -212,6 +247,81 @@ fn remove_mod(
     }
 
     Ok(result_message)
+}
+
+#[tauri::command]
+fn forget_mod(
+    mod_id: String,
+    state: State<AppState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let mod_name = {
+        let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.forget_mod(&mod_id)?
+    };
+
+    add_log(
+        format!("🗑 Purged record for mod '{}'", mod_name),
+        "info".to_string(),
+        "removal".to_string(),
+        state.clone(),
+    )?;
+
+    if let Some(window) = app.get_webview_window("main") {
+        window.emit("mod-removed", &mod_id).ok();
+    }
+
+    Ok(format!("Record for '{}' permanently deleted.", mod_name))
+}
+
+#[tauri::command]
+fn deduplicate_mods(
+    state: State<AppState>,
+) -> Result<Vec<String>, String> {
+    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    manager.deduplicate_mods()
+}
+
+#[tauri::command]
+fn toggle_mod(
+    mod_id: String,
+    state: State<AppState>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    let (enabled, log_entries) = {
+        let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.toggle_mod(&mod_id)?
+    };
+
+    let status = if enabled { "enabled" } else { "disabled" };
+    add_log(
+        format!("🔄 Mod {}: {}", mod_id, status),
+        "info".to_string(),
+        "system".to_string(),
+        state.clone(),
+    )?;
+
+    for entry in &log_entries {
+        add_log(
+            entry.clone(),
+            "info".to_string(),
+            "system".to_string(),
+            state.clone(),
+        )?;
+    }
+
+    add_log(
+        format!("✅ {} file(s) renamed", log_entries.len()),
+        "info".to_string(),
+        "system".to_string(),
+        state.clone(),
+    )?;
+
+    if let Some(window) = app.get_webview_window("main") {
+        window.emit("mod-toggled", &mod_id).ok();
+    }
+
+    Ok(enabled)
 }
 
 #[tauri::command]
@@ -520,7 +630,20 @@ fn list_downloaded_mods(state: State<AppState>) -> Result<Vec<String>, String> {
 #[allow(dead_code)] // Used in deep link event handler
 async fn handle_nxm_url_internal(nxm_url: String, app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    handle_nxm_url(nxm_url, state, app.clone()).await
+    let result = handle_nxm_url(nxm_url, state.clone(), app.clone()).await;
+
+    // If install failed and we were doing a reinstall, abort it gracefully
+    if result.is_err() {
+        if let Ok(mut slot) = state.reinstall_mod_id.lock() {
+            if let Some(mod_id) = slot.take() {
+                if let Ok(mut mgr) = state.mod_manager.lock() {
+                    mgr.abort_reinstall(&mod_id).ok();
+                }
+            }
+        }
+    }
+
+    result
 }
 
 #[tauri::command]
@@ -685,6 +808,12 @@ async fn handle_nxm_url(
             state.clone(),
         )?;
 
+        emit_install_progress(&app, InstallProgress {
+            stage: "fetching".into(),
+            message: format!("Fetching mod #{} info from Nexus...", mod_id),
+            ..Default::default()
+        });
+
         let (mod_name, mod_version, mod_author) =
             match nexusmods_api::get_mod_info(game, mod_id, &api_key).await {
                 Ok(info) => info,
@@ -703,8 +832,34 @@ async fn handle_nxm_url(
                 }
             };
 
+        emit_install_progress(&app, InstallProgress {
+            stage: "fetching".into(),
+            message: format!("{} v{} by {}", mod_name, mod_version, mod_author),
+            mod_name: Some(mod_name.clone()),
+            ..Default::default()
+        });
+
+        // Fetch file name for this specific file_id
+        let install_file_info = match nexusmods_api::get_file_names(game, &mod_id, &api_key).await {
+            Ok(names) => {
+                let fid = file_id.to_string();
+                names.get(&fid).cloned()
+            },
+            Err(_) => None,
+        };
+        if let Ok(mut slot) = state.pending_file_name.lock() {
+            *slot = install_file_info.as_ref().map(|(n, _, _)| n.clone());
+        }
+        if let Ok(mut slot) = state.pending_file_version.lock() {
+            *slot = install_file_info.as_ref().and_then(|(_, v, _)| v.clone());
+        }
+        if let Ok(mut slot) = state.pending_file_description.lock() {
+            *slot = install_file_info.as_ref().and_then(|(_, _, d)| d.clone());
+        }
+
         add_log(
-            format!("📝 Mod: {} v{} by {}", mod_name, mod_version, mod_author),
+            format!("📝 Mod: {} v{} by {}{}", mod_name, mod_version, mod_author,
+                install_file_info.as_ref().map(|(n, _, _)| format!(" ({})", n)).unwrap_or_default()),
             "info".to_string(),
             "download".to_string(),
             state.clone(),
@@ -846,6 +1001,12 @@ async fn handle_nxm_url(
                     "installation".to_string(),
                     state.clone(),
                 )?;
+                emit_install_progress(&app, InstallProgress {
+                    stage: "error".into(),
+                    message: e.clone(),
+                    nxm_url: Some(nxm_url.clone()),
+                    ..Default::default()
+                });
                 return Err(format!("Installation failed: {}", e));
             }
         }
@@ -1093,6 +1254,317 @@ async fn test_nxm_event(app: tauri::AppHandle, test_url: String) -> Result<(), S
     }
 }
 
+/// Emit a relay-status event to the main window.
+fn emit_relay_status(app: &tauri::AppHandle, stage: &str, message: &str, show_actions: bool, nxm_url: Option<&str>, cold_start: bool) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("relay-status", serde_json::json!({
+            "stage": stage,
+            "message": message,
+            "show_actions": show_actions,
+            "nxm_url": nxm_url,
+            "cold_start": cold_start,
+        }));
+    }
+}
+
+#[tauri::command]
+async fn handle_relay_action(
+    action: String,   // "process" | "exit"
+    nxm_url: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    match action.as_str() {
+        "process" => {
+            if let Some(url) = nxm_url {
+                handle_nxm_url_internal(url, app).await?;
+            }
+        }
+        _ => {
+            app.exit(0);
+        }
+    }
+    Ok(())
+}
+
+/// Returns the NXM URL that launched this app (if any), then clears it.
+#[tauri::command]
+fn get_startup_nxm_url(state: State<AppState>) -> Option<String> {
+    state.startup_nxm_url.lock().ok()?.take()
+}
+
+/// Core relay-or-process logic shared by startup and event-based deep link handling.
+/// `cold_start` = true when app was launched by the NXM link (not already running).
+async fn handle_nxm_deep_link(url: String, app: tauri::AppHandle, cold_start: bool) {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().ok();
+        window.set_focus().ok();
+    }
+
+    // Try to relay via Unix socket
+    match try_relay_to_dev(&url) {
+        Ok(true) => {
+            println!("🔥 DEEP LINK: relayed to dev instance via socket");
+            emit_relay_status(&app, "relaying", "Forwarding to dev instance…", false, Some(&url), cold_start);
+
+            // Brief pause then show done
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            if cold_start {
+                for i in (1..=5).rev() {
+                    emit_relay_status(
+                        &app, "done",
+                        &format!("Forwarded to dev instance. Closing in {}s...", i),
+                        false, Some(&url), true,
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                app.exit(0);
+            } else {
+                emit_relay_status(&app, "done", "Forwarded to dev instance", false, Some(&url), false);
+            }
+        }
+        Ok(false) => {
+            println!("🔥 DEEP LINK: no dev instance, processing directly");
+            match handle_nxm_url_internal(url, app).await {
+                Ok(_) => println!("🔥 DEEP LINK: processed successfully"),
+                Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
+            }
+        }
+        Err(e) => {
+            println!("🔥 DEEP LINK: relay failed ({}), processing directly", e);
+            emit_relay_status(&app, "error", &format!("Relay failed: {}", e), true, Some(&url), cold_start);
+            match handle_nxm_url_internal(url, app).await {
+                Ok(_) => println!("🔥 DEEP LINK: processed successfully (fallback)"),
+                Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
+            }
+        }
+    }
+}
+
+/// Returns true when running via `tauri dev` (not a bundled release).
+#[tauri::command]
+async fn get_mod_changelog(
+    mod_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let api_key = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.get_settings().nexusmods_api_key.clone()
+    };
+    if api_key.is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+
+    let client = reqwest::Client::new();
+
+    // Fetch changelog
+    let changelog_url = format!(
+        "https://api.nexusmods.com/v1/games/cyberpunk2077/mods/{}/changelogs.json",
+        mod_id
+    );
+    let changelog_resp = client
+        .get(&changelog_url)
+        .header("apikey", &api_key)
+        .header("User-Agent", "CrossoverModManager/2.0")
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !changelog_resp.status().is_success() {
+        return Ok(serde_json::json!({}));
+    }
+
+    let changelog: serde_json::Value = changelog_resp
+        .json()
+        .await
+        .map_err(|_| "Failed to parse changelog".to_string())?;
+
+    // Fetch files to get version → date mapping
+    let files_url = format!(
+        "https://api.nexusmods.com/v1/games/cyberpunk2077/mods/{}/files.json",
+        mod_id
+    );
+    let mut version_dates: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    if let Ok(files_resp) = client
+        .get(&files_url)
+        .header("apikey", &api_key)
+        .header("User-Agent", "CrossoverModManager/2.0")
+        .send()
+        .await
+    {
+        if files_resp.status().is_success() {
+            #[derive(serde::Deserialize)]
+            struct FilesResp { files: Vec<FileEntry> }
+            #[derive(serde::Deserialize)]
+            struct FileEntry { version: Option<String>, uploaded_timestamp: Option<i64> }
+
+            if let Ok(data) = files_resp.json::<FilesResp>().await {
+                for f in data.files {
+                    if let (Some(ver), Some(ts)) = (f.version, f.uploaded_timestamp) {
+                        // Keep the latest timestamp per version
+                        let date = chrono::DateTime::from_timestamp(ts, 0)
+                            .map(|dt| dt.format("%d %b %Y").to_string())
+                            .unwrap_or_default();
+                        if !date.is_empty() {
+                            version_dates.entry(ver).or_insert(date);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Merge: return { "version": { "lines": [...], "date": "..." } }
+    if let Some(obj) = changelog.as_object() {
+        let mut result = serde_json::Map::new();
+        for (ver, lines) in obj {
+            result.insert(ver.clone(), serde_json::json!({
+                "lines": lines,
+                "date": version_dates.get(ver).cloned()
+            }));
+        }
+        Ok(serde_json::Value::Object(result))
+    } else {
+        Ok(changelog)
+    }
+}
+
+#[tauri::command]
+fn is_dev_build() -> bool {
+    tauri::is_dev() || cfg!(debug_assertions)
+}
+
+#[tauri::command]
+fn set_force_reinstall(state: State<AppState>) {
+    state.force_reinstall.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn abort_reinstall(state: State<AppState>) -> Result<(), String> {
+    let mod_id = state.reinstall_mod_id.lock().map_err(|e| e.to_string())?.take();
+    if let Some(id) = mod_id {
+        let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        mgr.abort_reinstall(&id)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_build_timestamp() -> String {
+    env!("BUILD_TIMESTAMP").to_string()
+}
+
+/// Compare version strings: returns true if `latest` is newer than `installed`.
+/// Handles semver-like versions: "1.4.3" > "1.4.2", "2.0" > "1.9.9", "1.0" < "2.1.1"
+fn is_newer_version(latest: &str, installed: &str) -> bool {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split(|c: char| c == '.' || c == '-')
+            .filter_map(|p| p.parse::<u64>().ok())
+            .collect()
+    };
+    let lv = parse(latest);
+    let iv = parse(installed);
+    let len = lv.len().max(iv.len());
+    for i in 0..len {
+        let l = lv.get(i).copied().unwrap_or(0);
+        let r = iv.get(i).copied().unwrap_or(0);
+        if l > r { return true; }
+        if l < r { return false; }
+    }
+    false // equal
+}
+
+fn socket_path() -> std::path::PathBuf {
+    // Use /tmp (not $TMPDIR) so both dev and bundled app share the same path.
+    std::path::PathBuf::from("/tmp/crossover-mod-manager-dev-relay.sock")
+}
+
+/// Try to relay an NXM URL to a dev instance via Unix socket.
+/// Returns Ok(true) if relayed, Ok(false) if no dev instance, Err on failure.
+fn try_relay_to_dev(url: &str) -> Result<bool, String> {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+
+    let sock = socket_path();
+    let mut stream = match UnixStream::connect(&sock) {
+        Ok(s) => s,
+        Err(_) => return Ok(false), // No socket = no dev instance
+    };
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(5))).ok();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).ok();
+
+    stream.write_all(url.as_bytes()).map_err(|e| e.to_string())?;
+    stream.shutdown(std::net::Shutdown::Write).map_err(|e| e.to_string())?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response).map_err(|e| e.to_string())?;
+
+    Ok(response.trim() == "OK")
+}
+
+/// Start listening for relay URLs on Unix socket (dev instance only).
+fn start_socket_listener(app: tauri::AppHandle) {
+    use std::os::unix::net::UnixListener;
+
+    let sock = socket_path();
+    // Remove stale socket
+    std::fs::remove_file(&sock).ok();
+
+    let listener = match UnixListener::bind(&sock) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("📡 Failed to bind relay socket: {}", e);
+            return;
+        }
+    };
+    println!("📡 DEV: listening on {}", sock.display());
+
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(mut stream) => {
+                    use std::io::{Read, Write};
+                    let mut url = String::new();
+                    if stream.read_to_string(&mut url).is_ok() && !url.is_empty() {
+                        let url = url.trim().to_string();
+                        println!("📡 DEV: received relay URL: {}", url);
+                        let app_clone = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            match handle_nxm_url_internal(url, app_clone).await {
+                                Ok(_) => println!("📡 DEV: relay URL processed successfully"),
+                                Err(e) => println!("📡 DEV: relay URL failed: {}", e),
+                            }
+                        });
+                        stream.write_all(b"OK").ok();
+                    }
+                }
+                Err(e) => eprintln!("📡 Socket accept error: {}", e),
+            }
+        }
+    });
+}
+
+/// Try to relay URL to dev instance. Returns true if relayed, false if should process locally.
+#[tauri::command]
+fn try_relay(nxm_url: String) -> bool {
+    match try_relay_to_dev(&nxm_url) {
+        Ok(true) => {
+            println!("📡 try_relay: forwarded to dev");
+            true
+        }
+        _ => {
+            println!("📡 try_relay: no dev instance, process locally");
+            false
+        }
+    }
+}
+
+/// Cleanup socket on shutdown
+fn cleanup_socket() {
+    std::fs::remove_file(socket_path()).ok();
+}
+
 fn is_valid_cyberpunk_installation(path: &std::path::Path) -> bool {
     // Check if the directory exists and contains key Cyberpunk 2077 files
     if !path.exists() || !path.is_dir() {
@@ -1139,13 +1611,44 @@ async fn install_mod_from_nxm(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    // Set installing flag and reset cancel
+    state.install_cancel.store(false, Ordering::Relaxed);
+    state.installing.store(true, Ordering::Relaxed);
+
+    let result = install_mod_from_nxm_inner(&params, &state, &app).await;
+
+    state.installing.store(false, Ordering::Relaxed);
+    state.install_cancel.store(false, Ordering::Relaxed);
+    result
+}
+
+async fn install_mod_from_nxm_inner(
+    params: &ModInstallParams,
+    state: &State<'_, AppState>,
+    app: &tauri::AppHandle,
+) -> Result<String, String> {
+    let cancel = Arc::clone(&state.install_cancel);
+
+    macro_rules! check_cancel {
+        () => {
+            if cancel.load(Ordering::Relaxed) {
+                emit_install_progress(app, InstallProgress {
+                    stage: "error".into(),
+                    message: "Installation cancelled".into(),
+                    ..Default::default()
+                });
+                return Err("Installation cancelled by user".into());
+            }
+        };
+    }
+
     // Extract parameters
-    let mod_name = params.mod_name;
-    let mod_version = params.mod_version;
-    let mod_author = params.mod_author;
-    let mod_id = params.mod_id;
-    let file_id = params.file_id;
-    let download_url = params.download_url;
+    let mod_name = params.mod_name.clone();
+    let mod_version = params.mod_version.clone();
+    let mod_author = params.mod_author.clone();
+    let mod_id = params.mod_id.clone();
+    let file_id = params.file_id.clone();
+    let download_url = params.download_url.clone();
     use std::fs;
     use std::path::Path;
     use walkdir::WalkDir;
@@ -1167,43 +1670,107 @@ async fn install_mod_from_nxm(
 
     // Check for duplicate installations
     {
-        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
 
         // Check if exact same mod and file is already installed
         if let Some(existing_mod) = manager.find_existing_mod(&mod_id, &file_id) {
+            if state.force_reinstall.load(std::sync::atomic::Ordering::Relaxed) {
+                state.force_reinstall.store(false, std::sync::atomic::Ordering::Relaxed);
+                let existing_id = existing_mod.id.clone();
+                let existing_name = existing_mod.name.clone();
+
+                // Phase 1: prepare
+                add_log(
+                    format!("🔄 Reinstall: preparing '{}'", existing_name),
+                    "info".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                drop(manager);
+
+                {
+                    let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                    mgr.set_reinstall_status(&existing_id, Some("prepare"))?;
+                }
+
+                // Phase 2: removing old files
+                {
+                    let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                    mgr.set_reinstall_status(&existing_id, Some("removing"))?;
+                    mgr.remove_mod_files(&existing_id)?;
+                }
+
+                // Phase 3: set installing status
+                {
+                    let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                    mgr.set_reinstall_status(&existing_id, Some("installing"))?;
+                }
+
+                // Store existing_id so registration step updates this record
+                if let Ok(mut slot) = state.reinstall_mod_id.lock() {
+                    *slot = Some(existing_id);
+                }
+
+                manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            } else {
+                let err_msg = format!("Mod '{}' with the same file version is already installed. Please uninstall the existing version first if you want to reinstall.", existing_mod.name);
+                add_log(
+                    format!(
+                        "⚠️ Mod '{}' (File ID: {}) is already installed!",
+                        existing_mod.name, file_id
+                    ),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+                emit_install_progress(&app, InstallProgress {
+                    stage: "error".into(),
+                    message: err_msg.clone(),
+                    mod_name: Some(existing_mod.name.clone()),
+                    ..Default::default()
+                });
+                return Err(err_msg);
+            }
+        }
+
+        // Check if a different version of the same part is installed → auto-update
+        // Match by mod_id + file_name (not just mod_id) to distinguish parts from updates
+        let installing_file_name: Option<String> = state.pending_file_name.lock().ok().and_then(|s| s.clone());
+        let existing_same_part = manager.get_installed_mods().into_iter().find(|m| {
+            m.mod_id.as_deref() == Some(&mod_id)
+                && !m.removed
+                && m.file_id.as_deref() != Some(&file_id)
+                && installing_file_name.is_some()
+                && m.file_name.as_deref() == installing_file_name.as_deref()
+        });
+        if let Some(existing_mod) = existing_same_part {
+            let existing_id = existing_mod.id.clone();
+            let existing_name = existing_mod.name.clone();
+            let existing_version = existing_mod.version.clone();
+
             add_log(
                 format!(
-                    "⚠️ Mod '{}' (File ID: {}) is already installed!",
-                    existing_mod.name, file_id
+                    "🔄 Updating '{}': v{} → v{}",
+                    existing_name, existing_version, mod_version
                 ),
-                "warning".to_string(),
+                "info".to_string(),
                 "installation".to_string(),
                 state.clone(),
             )?;
-            return Err(format!("Mod '{}' with the same file version is already installed. Please uninstall the existing version first if you want to reinstall.", existing_mod.name));
-        }
 
-        // Check if a different version of the same mod is installed
-        if let Some(existing_mod) = manager.find_existing_mod_by_id(&mod_id) {
-            if existing_mod.file_id.as_ref() != Some(&file_id) {
-                add_log(
-                    format!(
-                        "🔄 Different version of '{}' detected. Existing: v{}, Installing: v{}",
-                        existing_mod.name, existing_mod.version, mod_version
-                    ),
-                    "info".to_string(),
-                    "installation".to_string(),
-                    state.clone(),
-                )?;
-                add_log(
-                    "💡 Consider uninstalling the old version first to avoid conflicts."
-                        .to_string(),
-                    "info".to_string(),
-                    "installation".to_string(),
-                    state.clone(),
-                )?;
-                // Allow installation to continue, but warn user
+            drop(manager);
+
+            {
+                let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                mgr.set_reinstall_status(&existing_id, Some("installing"))?;
             }
+
+            // Store existing_id so registration step updates this record instead of creating new
+            if let Ok(mut slot) = state.reinstall_mod_id.lock() {
+                *slot = Some(existing_id);
+            }
+
+            manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
         }
 
         // Check if mod with same name but different ID exists (potential conflict)
@@ -1234,6 +1801,8 @@ async fn install_mod_from_nxm(
         "installation".to_string(),
         state.clone(),
     )?;
+
+    check_cancel!();
 
     // Step 1: Download the mod
     add_log(
@@ -1292,13 +1861,51 @@ async fn install_mod_from_nxm(
         }
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read download data: {}", e))?;
+    // Stream download with progress events
+    use futures_util::StreamExt;
+    let total_size_opt: Option<u64> = if total_size > 0 { Some(total_size) } else { None };
+    let mut stream = response.bytes_stream();
+    let mut bytes: Vec<u8> = Vec::new();
+    if let Some(sz) = total_size_opt {
+        bytes.reserve(sz as usize);
+    }
+    let mut received: u64 = 0;
+    let mut last_progress_at: u64 = 0;
+    let emit_interval = total_size_opt.map(|t| (t / 50).max(65536)).unwrap_or(131072);
+
+    emit_install_progress(&app, InstallProgress {
+        stage: "downloading".into(),
+        message: match total_size_opt {
+            Some(t) => format!("Downloading 0 / {}", format_bytes(t)),
+            None => "Downloading...".into(),
+        },
+        bytes_received: Some(0),
+        total_bytes: total_size_opt,
+        ..Default::default()
+    });
+
+    while let Some(chunk) = stream.next().await {
+        check_cancel!();
+        let chunk = chunk.map_err(|e| format!("Failed to read download data: {}", e))?;
+        received += chunk.len() as u64;
+        bytes.extend_from_slice(&chunk);
+        if received - last_progress_at >= emit_interval {
+            last_progress_at = received;
+            emit_install_progress(&app, InstallProgress {
+                stage: "downloading".into(),
+                message: match total_size_opt {
+                    Some(t) => format!("Downloading {} / {}", format_bytes(received), format_bytes(t)),
+                    None => format!("Downloading {}...", format_bytes(received)),
+                },
+                bytes_received: Some(received),
+                total_bytes: total_size_opt,
+                ..Default::default()
+            });
+        }
+    }
 
     add_log(
-        format!("✓ Downloaded {} KB", bytes.len() / 1024),
+        format!("✓ Downloaded {}", format_bytes(received)),
         "info".to_string(),
         "download".to_string(),
         state.clone(),
@@ -1326,6 +1933,8 @@ async fn install_mod_from_nxm(
         state.clone(),
     )?;
 
+    check_cancel!();
+
     // Step 3: Extract the archive
     let archive_type = archive_extractor::ArchiveExtractor::detect_archive_type(&temp_archive_path);
     let archive_type_str = match &archive_type {
@@ -1334,6 +1943,12 @@ async fn install_mod_from_nxm(
         archive_extractor::ArchiveType::Rar => "RAR",
         archive_extractor::ArchiveType::Unsupported(ext) => ext.as_str(),
     };
+
+    emit_install_progress(&app, InstallProgress {
+        stage: "extracting".into(),
+        message: format!("Extracting {} archive...", archive_type_str),
+        ..Default::default()
+    });
 
     add_log(
         format!("📂 Extracting {} archive...", archive_type_str),
@@ -1416,7 +2031,17 @@ async fn install_mod_from_nxm(
         }
     }
 
+    check_cancel!();
+
     // Step 4: Install files to game directory
+    emit_install_progress(&app, InstallProgress {
+        stage: "installing".into(),
+        message: format!("Installing {} files to game directory...", file_count),
+        file_count: Some(0),
+        file_total: Some(file_count),
+        ..Default::default()
+    });
+
     add_log(
         "🎮 Installing mod files to game directory...".to_string(),
         "info".to_string(),
@@ -1780,6 +2405,9 @@ async fn install_mod_from_nxm(
                 }
             }
 
+            // Validate path stays within game directory
+            validate_path_within_game_dir(&install_path, game_dir)?;
+
             // Copy file
             fs::copy(entry.path(), &install_path).map_err(|e| {
                 // Guards will auto-cleanup temp files on error
@@ -1805,8 +2433,17 @@ async fn install_mod_from_nxm(
             installed_files.push(install_path.to_string_lossy().to_string());
             install_count += 1;
 
+            check_cancel!();
+
             // Progress indicator for installation (every 5 files)
             if install_count % 5 == 0 {
+                emit_install_progress(&app, InstallProgress {
+                    stage: "installing".into(),
+                    message: format!("Installing file {}/{}...", install_count, file_count),
+                    file_count: Some(install_count),
+                    file_total: Some(file_count),
+                    ..Default::default()
+                });
                 add_log(
                     format!("🔧 Installing... ({} files)", install_count),
                     "info".to_string(),
@@ -2382,6 +3019,12 @@ async fn install_mod_from_nxm(
     }
 
     // Step 5: Add to mod database
+    emit_install_progress(&app, InstallProgress {
+        stage: "registering".into(),
+        message: "Registering mod in database...".into(),
+        ..Default::default()
+    });
+
     add_log(
         "📝 Registering mod in database...".to_string(),
         "info".to_string(),
@@ -2389,34 +3032,92 @@ async fn install_mod_from_nxm(
         state.clone(),
     )?;
 
-    let mod_info = ModInfo {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: mod_name.clone(),
-        version: mod_version.clone(),
-        author: if mod_author.is_empty() || mod_author == "Unknown" {
-            None
-        } else {
-            Some(mod_author.clone())
-        },
-        description: Some(format!(
-            "Installed from NexusMods (Mod ID: {}, File ID: {})",
-            mod_id, file_id
-        )),
-        mod_id: Some(mod_id.clone()),
-        file_id: Some(file_id.clone()),
-        enabled: true,
-        files: installed_files.clone(),
-        file_conflicts: std::collections::HashMap::new(), // Will be populated if conflicts exist
-        installed_at: Some(chrono::Utc::now().to_rfc3339()),
-    };
+    // Check if this is a reinstall (existing record to update)
+    let reinstall_id = state.reinstall_mod_id.lock().map_err(|e| e.to_string())?.take();
 
-    {
+    if let Some(ref existing_id) = reinstall_id {
+        // Reinstall/update: clean up stale files from old version, then update record
+        {
+            let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            if let Some(old_mod) = manager.get_installed_mods().into_iter().find(|m| m.id == *existing_id) {
+                let new_files_lower: std::collections::HashSet<String> = installed_files.iter()
+                    .map(|f| f.to_lowercase())
+                    .collect();
+                for old_file in &old_mod.files {
+                    if !new_files_lower.contains(&old_file.to_lowercase()) {
+                        // Path safety: only delete files within game directory
+                        if old_file.contains("..") || !old_file.to_lowercase().contains("cyberpunk 2077") {
+                            eprintln!("⛔ Skipping unsafe stale path: {}", old_file);
+                            continue;
+                        }
+                        if let Err(e) = std::fs::remove_file(old_file) {
+                            eprintln!("Failed to remove stale file {}: {}", old_file, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        let new_file_name = state.pending_file_name.lock().ok().and_then(|mut s| s.take());
+        let new_file_version = state.pending_file_version.lock().ok().and_then(|mut s| s.take());
+        let new_file_description = state.pending_file_description.lock().ok().and_then(|mut s| s.take());
+
+        let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.complete_reinstall(
+            existing_id,
+            installed_files.clone(),
+            &mod_version,
+            Some(&file_id),
+            new_file_name,
+            new_file_version,
+            new_file_description,
+        )?;
+        add_log(
+            format!("🔄 Update complete: '{}' → v{}", mod_name, mod_version),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    } else {
+        // Fresh install: create new record
+        let mod_info = ModInfo {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: mod_name.clone(),
+            version: mod_version.clone(),
+            author: if mod_author.is_empty() || mod_author == "Unknown" {
+                None
+            } else {
+                Some(mod_author.clone())
+            },
+            description: Some(format!(
+                "Installed from NexusMods (Mod ID: {}, File ID: {})",
+                mod_id, file_id
+            )),
+            mod_id: Some(mod_id.clone()),
+            file_id: Some(file_id.clone()),
+            enabled: true,
+            files: installed_files.clone(),
+            file_conflicts: std::collections::HashMap::new(),
+            installed_at: Some(chrono::Utc::now().to_rfc3339()),
+            picture_url: None,
+            update_available: None,
+            latest_version: None,
+            summary: None,
+            nexus_updated_at: None,
+            removed: false,
+            removed_at: None,
+            file_name: state.pending_file_name.lock().ok().and_then(|mut s| s.take()),
+            file_version: state.pending_file_version.lock().ok().and_then(|mut s| s.take()),
+            file_description: state.pending_file_description.lock().ok().and_then(|mut s| s.take()),
+            latest_file_id: None,
+            reinstall_status: None,
+        };
+
         let mut manager = state.mod_manager.lock().map_err(|e| {
-            // Guards will auto-cleanup temp files on error
             e.to_string()
         })?;
         manager.add_mod(mod_info.clone());
-        manager.save_database()?; // Guards will auto-cleanup temp files on error
+        manager.save_database()?;
     }
 
     // Step 6: Cleanup temporary files (RAII guards will handle this automatically)
@@ -2455,6 +3156,13 @@ async fn install_mod_from_nxm(
         state.clone(),
     )?;
 
+    emit_install_progress(&app, InstallProgress {
+        stage: "done".into(),
+        message: format!("v{} · {} files installed", mod_version, installed_files.len()),
+        mod_name: Some(mod_name.clone()),
+        ..Default::default()
+    });
+
     // Step 7: Notify frontend to refresh mod list
     if let Some(window) = app.get_webview_window("main") {
         add_log(
@@ -2463,7 +3171,11 @@ async fn install_mod_from_nxm(
             "installation".to_string(),
             state.clone(),
         )?;
-        window.emit("mod-installed", &mod_info).ok();
+        window.emit("mod-installed", serde_json::json!({
+            "name": mod_name,
+            "version": mod_version,
+            "reinstall": reinstall_id.is_some(),
+        })).ok();
     } else {
         add_log(
             "⚠️ No main window found, cannot emit mod-installed event".to_string(),
@@ -3108,12 +3820,73 @@ fn check_case_mismatch(relative_path: &std::path::Path) -> (bool, std::path::Pat
     (false, normalized, issues)
 }
 
+/// Validate that a path stays within the game directory (no path traversal).
+/// Returns the canonicalized path, or an error if it escapes game_dir.
+fn validate_path_within_game_dir(
+    path: &std::path::Path,
+    game_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    // Resolve the path: expand ../ and symlinks
+    // If the target doesn't exist yet, resolve the parent and append the filename
+    let resolved = if path.exists() {
+        path.canonicalize()
+            .map_err(|e| format!("Failed to resolve path {}: {}", path.display(), e))?
+    } else {
+        let parent = path.parent().unwrap_or(path);
+        let parent_resolved = if parent.exists() {
+            parent.canonicalize()
+                .map_err(|e| format!("Failed to resolve parent {}: {}", parent.display(), e))?
+        } else {
+            // Parent doesn't exist yet — just normalize textually
+            let mut cleaned = std::path::PathBuf::new();
+            for component in parent.components() {
+                match component {
+                    std::path::Component::ParentDir => { cleaned.pop(); },
+                    std::path::Component::CurDir => {},
+                    c => cleaned.push(c),
+                }
+            }
+            cleaned
+        };
+        match path.file_name() {
+            Some(name) => parent_resolved.join(name),
+            None => parent_resolved,
+        }
+    };
+
+    let game_canonical = if game_dir.exists() {
+        game_dir.canonicalize()
+            .map_err(|e| format!("Failed to resolve game dir: {}", e))?
+    } else {
+        game_dir.to_path_buf()
+    };
+
+    if !resolved.starts_with(&game_canonical) {
+        return Err(format!(
+            "🛑 Path traversal blocked: '{}' is outside game directory '{}'",
+            path.display(),
+            game_canonical.display()
+        ));
+    }
+
+    Ok(resolved)
+}
+
 fn determine_install_path_for_file(
     game_dir: &std::path::Path,
     relative_path: &std::path::Path,
 ) -> Result<std::path::PathBuf, String> {
     // Most mods already have the correct directory structure (e.g., bin/x64/file.dll)
     // We should preserve this structure and install directly to game_dir
+
+    // Reject path traversal in relative paths
+    let rel_str = relative_path.to_string_lossy();
+    if rel_str.contains("..") {
+        return Err(format!(
+            "🛑 Path traversal detected in archive: '{}'. Skipping file.",
+            rel_str
+        ));
+    }
 
     // Normalize the path to ensure correct casing for game directories
     let normalized_path = normalize_game_path(relative_path);
@@ -3243,6 +4016,264 @@ fn determine_install_path_for_file(
 }
 
 #[tauri::command]
+fn cancel_sync(state: State<'_, AppState>) {
+    state.sync_cancel.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn cancel_install(state: State<'_, AppState>) {
+    state.install_cancel.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn is_installing(state: State<'_, AppState>) -> bool {
+    state.installing.load(Ordering::Relaxed)
+}
+
+#[tauri::command]
+async fn sync_mod_data(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let api_key = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.get_settings().nexusmods_api_key.clone()
+    };
+
+    if api_key.is_empty() {
+        return Err("NexusMods API key not configured. Please add it in Settings.".to_string());
+    }
+
+    // Reset cancel flag before starting
+    state.sync_cancel.store(false, Ordering::Relaxed);
+
+    let cancel = Arc::clone(&state.sync_cancel);
+
+    let mods = {
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.get_installed_mods()
+    };
+
+    // Only mods that have a mod_id
+    let syncable: Vec<_> = mods.into_iter()
+        .filter(|m| m.mod_id.is_some())
+        .collect();
+
+    let total = syncable.len();
+    let mut synced = 0;
+    let mut updated_count = 0;
+    let mut errors = 0;
+
+    add_log(
+        format!("Sync started: {} mods queued", total),
+        "info".to_string(), "sync".to_string(), state.clone(),
+    )?;
+
+    for mod_info in &syncable {
+        if cancel.load(Ordering::Relaxed) {
+            add_log(
+                format!("Sync cancelled: processed {}/{} mods", synced + errors, total),
+                "warning".to_string(), "sync".to_string(), state.clone(),
+            )?;
+            app_handle.emit("sync-complete", serde_json::json!({
+                "synced": synced, "total": total,
+                "updated": updated_count, "errors": errors, "cancelled": true
+            })).ok();
+            return Ok(format!("Sync cancelled after {}/{} mods", synced + errors, total));
+        }
+
+        let mod_id = mod_info.mod_id.as_deref().unwrap();
+
+        let details = nexusmods_api::get_mod_details("cyberpunk2077", mod_id, &api_key).await;
+
+        match details {
+            Err(e) => {
+                add_log(
+                    format!("Sync error: {} — {}", mod_info.name, e),
+                    "error".to_string(), "sync".to_string(), state.clone(),
+                )?;
+                errors += 1;
+
+                let display_name = if let Some(ref fname) = mod_info.file_name {
+                    format!("{} ({})", mod_info.name, fname)
+                } else if let Some(ref fid) = mod_info.file_id {
+                    format!("{} [file:{}]", mod_info.name, fid)
+                } else {
+                    mod_info.name.clone()
+                };
+                app_handle.emit("sync-progress", serde_json::json!({
+                    "current": synced + errors,
+                    "total": total,
+                    "mod_name": display_name,
+                    "error": format!("{}", e),
+                })).ok();
+            }
+            Ok(d) => {
+                // Use mod-level version from Nexus (not file-level)
+                let latest = Some(d.version.clone());
+                let update_available = is_newer_version(&d.version, &mod_info.version);
+
+                if update_available {
+                    updated_count += 1;
+                }
+
+                // Fetch file names (for sub-mod display)
+                let file_names = nexusmods_api::get_file_names("cyberpunk2077", mod_id, &api_key)
+                    .await.unwrap_or_default();
+
+                {
+                    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                    manager.update_mod_sync_data(
+                        &mod_info.id,
+                        d.summary,
+                        d.picture_url,
+                        update_available,
+                        latest,
+                        d.nexus_updated_at,
+                    )?;
+
+                    // Update file_name for this mod and all parts with same mod_id
+                    if !file_names.is_empty() {
+                        manager.update_file_info(mod_id, &file_names)?;
+                    }
+                }
+
+                synced += 1;
+            }
+        }
+
+        // Get latest update status for this mod
+        let (mod_ver, has_update) = {
+            let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            let m = manager.get_installed_mods().into_iter().find(|m| m.id == mod_info.id);
+            (
+                m.as_ref().map(|m| m.version.clone()).unwrap_or_default(),
+                m.and_then(|m| m.update_available).unwrap_or(false),
+            )
+        };
+
+        app_handle.emit("sync-progress", serde_json::json!({
+            "current": synced + errors,
+            "total": total,
+            "mod_name": mod_info.name,
+            "version": mod_ver,
+            "update_available": has_update,
+        })).ok();
+    }
+
+    let summary = format!(
+        "Sync complete: {}/{} synced, {} updates available, {} errors",
+        synced, total, updated_count, errors
+    );
+    add_log(summary.clone(), "info".to_string(), "sync".to_string(), state.clone())?;
+
+    app_handle.emit("sync-complete", serde_json::json!({
+        "synced": synced, "total": total,
+        "updated": updated_count, "errors": errors, "cancelled": false
+    })).ok();
+
+    Ok(summary)
+}
+
+#[tauri::command]
+fn reveal_in_finder(path: String) -> Result<(), String> {
+    std::process::Command::new("open")
+        .args(["-R", &path])
+        .spawn()
+        .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let mut issues: Vec<serde_json::Value> = Vec::new();
+
+    // 1. Check game directory
+    let game_path = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        let settings = settings_guard.get_settings();
+        settings.game_path.clone()
+    };
+
+    if game_path.is_empty() {
+        issues.push(serde_json::json!({
+            "type": "warning",
+            "code": "no_game_path",
+            "message": "Game path not configured"
+        }));
+    } else {
+        let gp = std::path::Path::new(&game_path);
+        if !gp.exists() {
+            issues.push(serde_json::json!({
+                "type": "error",
+                "code": "game_path_missing",
+                "message": format!("Game directory not found: {}", game_path)
+            }));
+        } else {
+            // Check write access
+            let test_file = gp.join(".cmm_write_test");
+            match std::fs::write(&test_file, b"test") {
+                Ok(_) => { std::fs::remove_file(&test_file).ok(); }
+                Err(_) => {
+                    issues.push(serde_json::json!({
+                        "type": "error",
+                        "code": "game_path_readonly",
+                        "message": format!("No write access to game directory: {}", game_path)
+                    }));
+                }
+            }
+        }
+    }
+
+    // 2. Check API key
+    let api_key = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        let settings = settings_guard.get_settings();
+        settings.nexusmods_api_key.clone()
+    };
+
+    if api_key.is_empty() {
+        issues.push(serde_json::json!({
+            "type": "warning",
+            "code": "no_api_key",
+            "message": "NexusMods API key not configured — sync and auto-download won't work"
+        }));
+    }
+
+    // 3. Check NXM URL handler (macOS: check if nxm:// scheme is registered)
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        // Use `open -Ra` to check if any app handles nxm:// URLs is not straightforward.
+        // Instead check if our app bundle is registered via lsregister.
+        let output = Command::new("python3")
+            .args(["-c", "from Foundation import NSWorkspace; ws = NSWorkspace.sharedWorkspace(); url = __import__('Foundation').NSURL.URLWithString_('nxm://test'); app = ws.URLForApplicationToOpenURL_(url); print(app.path() if app else 'none')"])
+            .output();
+
+        match output {
+            Ok(out) => {
+                let result = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if result == "none" || result.is_empty() {
+                    issues.push(serde_json::json!({
+                        "type": "warning",
+                        "code": "nxm_handler_missing",
+                        "message": "NXM URL handler not registered — 'Download with Mod Manager' button on NexusMods won't work"
+                    }));
+                }
+            }
+            Err(_) => {
+                // Can't check — not critical
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "healthy": issues.is_empty(),
+        "issues": issues
+    }))
+}
+
+#[tauri::command]
 fn check_and_run_first_setup(state: State<'_, AppState>) -> Result<String, String> {
     add_log(
         "Checking first run status".to_string(),
@@ -3322,6 +4353,12 @@ fn main() {
     let app_settings = AppSettings::new();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Focus existing window when second instance is launched
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_focus().ok();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
@@ -3331,11 +4368,26 @@ fn main() {
             mod_manager: Mutex::new(mod_manager),
             settings: Mutex::new(app_settings),
             logs: Mutex::new(VecDeque::new()),
+            sync_cancel: Arc::new(AtomicBool::new(false)),
+            install_cancel: Arc::new(AtomicBool::new(false)),
+            installing: Arc::new(AtomicBool::new(false)),
+            startup_nxm_url: Mutex::new(None),
+            force_reinstall: AtomicBool::new(false),
+            reinstall_mod_id: Mutex::new(None),
+            pending_file_name: Mutex::new(None),
+            pending_file_version: Mutex::new(None),
+            pending_file_description: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_installed_mods,
+            get_mod_changelog,
+            set_force_reinstall,
+            abort_reinstall,
             install_mod,
             remove_mod,
+            forget_mod,
+            deduplicate_mods,
+            toggle_mod,
             get_settings,
             save_settings,
             get_crossover_bottles_path,
@@ -3349,9 +4401,20 @@ fn main() {
             download_and_save_mod,
             list_downloaded_mods,
             test_nxm_event,
+            handle_relay_action,
+            try_relay,
+            get_startup_nxm_url,
+            is_dev_build,
+            get_build_timestamp,
+            check_startup_health,
             check_and_run_first_setup,
             install_mod_from_nxm,
-            clean_temp_files
+            clean_temp_files,
+            reveal_in_finder,
+            sync_mod_data,
+            cancel_sync,
+            cancel_install,
+            is_installing
         ])
         .setup(|app| {
             // Clean up orphaned temporary files from previous sessions
@@ -3379,58 +4442,35 @@ fn main() {
             // Register deep link handler for nxm:// URLs
             #[cfg(target_os = "macos")]
             {
+                use tauri_plugin_deep_link::DeepLinkExt;
+
+                // Handle URL passed at app launch (app was not running when link was clicked)
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    if let Some(url) = urls.first() {
+                        let url_str = url.as_str().to_string();
+                        println!("🔥 STARTUP URL: {}", url_str);
+                        // Store for frontend — it will try relay then process after mount.
+                        if let Some(state) = app.try_state::<AppState>() {
+                            if let Ok(mut slot) = state.startup_nxm_url.lock() {
+                                *slot = Some(url_str.clone());
+                            }
+                        }
+                    }
+                }
+
                 let app_handle = app.handle().clone();
 
-                // Listen for deep link events
+                // Listen for deep link events (app was already running when link was clicked)
                 app.listen("deep-link://new-url", move |event| {
                     let payload = event.payload();
-                    println!("🔥 DEEP LINK: Received NXM URL: {}", payload);
-                    std::fs::write("/tmp/nxm_deep_link.txt", format!("Deep link: {}", payload))
-                        .ok();
+                    println!("🔥 DEEP LINK EVENT: {}", payload);
 
-                    // Extract the URL from the payload
                     if let Ok(urls) = serde_json::from_str::<Vec<String>>(payload) {
                         if let Some(url) = urls.first() {
-                            println!("🔥 DEEP LINK: Extracted URL: {}", url);
-
-                            // Log to app's internal log system
-                            if let Some(state) = app_handle.try_state::<AppState>() {
-                                let mut logs = state.logs.lock().unwrap();
-                                logs.push_back(LogEntry {
-                                    timestamp: chrono::Utc::now()
-                                        .format("%Y-%m-%d %H:%M:%S UTC")
-                                        .to_string(),
-                                    level: "info".to_string(),
-                                    message: format!("Received NXM URL from system: {}", url),
-                                    category: "NXM_PROTOCOL".to_string(),
-                                });
-                                while logs.len() > 1000 {
-                                    logs.pop_front();
-                                }
-                            }
-
-                            // Emit to main window
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                println!("🔥 DEEP LINK: Emitting to main window");
-                                window.emit("nxm-url-received", url).ok();
-                                window.show().ok();
-                                window.set_focus().ok();
-                            }
-
-                            // Also call handle_nxm_url directly as a fallback
-                            // (in case the frontend listener isn't set up yet)
                             let url_clone = url.clone();
                             let app_clone = app_handle.clone();
                             tauri::async_runtime::spawn(async move {
-                                println!("🔥 DEEP LINK: Calling handle_nxm_url directly");
-                                match handle_nxm_url_internal(url_clone.to_string(), app_clone)
-                                    .await
-                                {
-                                    Ok(_) => println!(
-                                        "🔥 DEEP LINK: handle_nxm_url completed successfully"
-                                    ),
-                                    Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
-                                }
+                                handle_nxm_deep_link(url_clone, app_clone, false).await;
                             });
                         }
                     }
@@ -3439,8 +4479,55 @@ fn main() {
                 println!("🔥 SETUP: Deep link handler registered for nxm:// scheme");
             }
 
+            // Start Unix socket listener for NXM relay (dev instance only).
+            // Release bundles process URLs directly; dev instance receives relayed URLs.
+            let is_dev = tauri::is_dev() || cfg!(debug_assertions);
+            let is_bundled = std::env::current_exe()
+                .map(|p| p.to_string_lossy().contains(".app/Contents/MacOS"))
+                .unwrap_or(false);
+            if is_dev && !is_bundled {
+                start_socket_listener(app.handle().clone());
+            }
+
+            // Log startup message
+            if let Some(state) = app.try_state::<AppState>() {
+                let mut logs = state.logs.lock().unwrap();
+                logs.push_back(LogEntry {
+                    timestamp: chrono::Utc::now()
+                        .format("%Y-%m-%d %H:%M:%S UTC")
+                        .to_string(),
+                    level: "info".to_string(),
+                    message: format!(
+                        "Crossover Mod Manager v{} started",
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                    category: "system".to_string(),
+                });
+            }
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            match event {
+                tauri::RunEvent::WindowEvent {
+                    event: tauri::WindowEvent::CloseRequested { api, .. },
+                    ..
+                } => {
+                    let state = app.state::<AppState>();
+                    if state.installing.load(Ordering::Relaxed) {
+                        api.prevent_close();
+                        if let Some(window) = app.get_webview_window("main") {
+                            window.emit("close-requested", ()).ok();
+                        }
+                    }
+                }
+                tauri::RunEvent::Exit => {
+                    // Don't cleanup socket here — HMR restarts cause a window
+                    // where socket doesn't exist. New process cleans stale socket on bind.
+                }
+                _ => {}
+            }
+        });
 }

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default capabilities for the Crossover Mod Manager",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-confirm", "shell:allow-open", "deep-link:default"]
 }

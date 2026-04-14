@@ -31,3 +31,6 @@ dist-ssr
 # Environment variables
 .env
 .env.local
+
+# Dev-only files
+CHANGELOG_DEV.md

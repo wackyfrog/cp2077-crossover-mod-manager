@@ -3,17 +3,20 @@
 :root {
   --cyber-red: #ff0040;
   --cyber-red-bright: #ff3366;
-  --cyber-red-dim: #cc002a;
+  --cyber-red-dim: #992233;
   --cyber-blue: #00ffff;
   --cyber-blue-bright: #66ffff;
   --cyber-green: #00ff88;
   --cyber-green-bright: #00ff88;
   --cyber-yellow: #ffff00;
   --cyber-yellow-bright: #ffff66;
-  --cyber-dark: #0a0a0a;
-  --cyber-darker: #050505;
-  --cyber-border: #220000;
-  --cyber-text: #ffcccc;
+  --cyber-dark: #0d0d0d;
+  --cyber-darker: #080808;
+  --cyber-surface: #111111;
+  --cyber-border: #2a0010;
+  --cyber-border-bright: #550020;
+  --cyber-text: #f0cccc;
+  --cyber-text-dim: #996677;
   --cyber-glow: 0 0 10px rgba(255, 0, 64, 0.5);
   --cyber-text-glow: 0 0 5px rgba(255, 0, 64, 0.6);
 }
@@ -27,6 +30,8 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  min-width: 780px;
+  min-height: 480px;
 }
 
 body {
@@ -63,74 +68,473 @@ body::before {
   background: var(--cyber-dark);
   position: relative;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .app-header {
   background: var(--cyber-darker);
-  padding: 1rem 2rem;
+  padding: 0.8rem 1.5rem;
   border-bottom: 1px solid var(--cyber-red);
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
+  gap: 2rem;
 }
 
-.app-header h1 {
-  font-size: 1.8rem;
+.app-header-title {
+  flex-shrink: 0;
+}
+
+.app-header-game {
+  font-size: 1.3rem;
   margin: 0;
   color: var(--cyber-yellow);
-  font-weight: 400;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 0 0 12px rgba(255, 255, 0, 0.3);
+  line-height: 1.2;
+}
+
+.app-header-app {
+  font-size: 0.78rem;
+  margin: 0;
+  color: var(--cyber-red);
   letter-spacing: 2px;
   text-transform: uppercase;
+  opacity: 0.7;
+  line-height: 1.2;
 }
 
-.app-header h1::before {
-  content: '> ';
-  color: var(--cyber-red);
-}
-
-.tabs {
+.nav {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.3rem;
 }
 
-.tabs button {
-  padding: 0.75rem 1.5rem;
+.nav button {
+  padding: 0.4rem 0.9rem;
   background: transparent;
-  border: 1px solid var(--cyber-red);
-  color: var(--cyber-red);
+  border: none;
+  color: rgba(0, 255, 255, 0.55);
   font-family: 'Play', sans-serif;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.nav button:hover {
+  color: rgba(0, 255, 255, 0.85);
+}
+
+.nav button.active {
+  color: var(--cyber-yellow);
+}
+
+
+
+/* legacy — kept for potential reuse */
+.sync-progress-bar-wrap {
+  height: 3px;
+  background: var(--cyber-darker);
+  position: relative;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.sync-progress-bar {
+  height: 100%;
+  background: var(--cyber-blue);
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+  transition: width 0.3s ease;
+}
+
+.sync-progress-label {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  font-size: 0.7rem;
+  color: var(--cyber-blue);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding-left: 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Action bar (below header, mods tab only) ── */
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.5rem;
+  border-bottom: 1px solid var(--cyber-red);
+  background: rgba(255, 0, 64, 0.04);
+  flex-shrink: 0;
+}
+
+.action-btn {
+  padding: 0.35rem 0.75rem;
+  background: transparent;
+  font-family: 'Play', sans-serif;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
-.tabs button:hover {
-  color: var(--cyber-yellow);
-  border-color: var(--cyber-yellow);
+.action-bar .sync-button {
+  border: 1px solid var(--cyber-blue);
+  color: var(--cyber-blue);
 }
 
-.tabs button.active {
+.action-bar .sync-button:hover:not(:disabled) {
+  background: var(--cyber-blue);
+  color: var(--cyber-darker);
+}
+
+.action-bar .sync-button:disabled,
+.action-bar .sync-button.syncing {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-bar .jackin-button {
+  border: 1px solid var(--cyber-green);
+  color: var(--cyber-green);
+}
+
+.action-bar .jackin-button:hover:not(:disabled) {
+  background: var(--cyber-green);
+  color: var(--cyber-darker);
+}
+
+.action-bar .jackin-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.action-bar .nxm-input-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.action-bar .nxm-input-row {
+  flex: 1;
+}
+
+.action-bar .nxm-input-row input {
+  flex: 1;
+  background: var(--cyber-dark);
+  border: 1px solid var(--cyber-green);
+  color: var(--cyber-text);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  outline: none;
+}
+
+.action-bar .nxm-input-row input::placeholder {
+  color: var(--cyber-text-dim);
+  opacity: 0.5;
+  font-size: 0.72rem;
+}
+
+.action-bar .nxm-input-row input:focus {
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+}
+
+.action-bar .nxm-submit {
+  border: 1px solid var(--cyber-green);
+  color: var(--cyber-green);
+}
+
+.action-bar .nxm-submit:hover:not(:disabled) {
+  background: var(--cyber-green);
+  color: var(--cyber-darker);
+}
+
+.action-bar .nxm-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.action-bar .nxm-cancel {
+  border: 1px solid var(--cyber-text-dim);
+  color: var(--cyber-text-dim);
+  font-size: 0.7rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.action-bar .nxm-cancel:hover {
+  border-color: var(--cyber-red);
+  color: var(--cyber-red);
+}
+
+/* ── Radio pills ── */
+.radio-pills {
+  display: flex;
+  border: 1px solid var(--cyber-border-bright);
+  padding: 2px;
+  gap: 2px;
+}
+
+.radio-pills .pill {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--cyber-text-dim);
+  font-family: 'Play', sans-serif;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.radio-pills .pill:hover {
+  color: var(--cyber-text);
+  background: rgba(255, 0, 64, 0.08);
+  border-radius: 3px;
+}
+
+.radio-pills .pill.active {
+  background: rgba(255, 0, 64, 0.22);
   color: var(--cyber-yellow);
-  border-color: var(--cyber-yellow);
+  border-radius: 3px;
+}
+
+/* ── Search (styled like radio-pills) ── */
+.action-search-wrap {
+  border: 1px solid var(--cyber-border-bright);
+  padding: 2px;
+  display: flex;
+  position: relative;
+}
+
+.action-search {
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--cyber-text);
+  font-family: 'Play', sans-serif;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 0.3rem 0.7rem;
+  width: 220px;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.action-search:focus {
+  background: rgba(255, 0, 64, 0.12);
+}
+
+/* Animated placeholder overlay */
+.action-search-placeholder {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  font-family: 'Play', sans-serif;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--cyber-text-dim);
+  opacity: 0.45;
+  pointer-events: none;
+  border-radius: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.type-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 11px;
+  background: var(--cyber-red);
+  box-shadow: 0 0 6px rgba(255, 0, 64, 0.5);
+  animation: blink-cursor 0.8s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+/* ── NXM modal ── */
+.nxm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 700;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nxm-modal {
+  background: var(--cyber-darker);
+  border: 1px solid var(--cyber-red);
+  box-shadow:
+    0 0 0 1px rgba(255, 0, 64, 0.12),
+    0 0 60px rgba(255, 0, 64, 0.1);
+  width: 600px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  animation: nxm-modal-in 0.2s ease;
+}
+
+@keyframes nxm-modal-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.nxm-modal-header {
+  padding: 0.7rem 1.25rem;
+  border-bottom: 1px solid var(--cyber-border-bright);
+  background: rgba(255, 0, 64, 0.04);
+  font-family: 'Play', sans-serif;
+  font-size: 0.8rem;
+  color: var(--cyber-yellow);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+}
+
+.nxm-modal-desc {
+  margin: 0;
+  padding: 1rem 1.25rem 0;
+  font-size: 0.78rem;
+  color: var(--cyber-text-dim);
+}
+
+.nxm-modal-input {
+  width: 100%;
+  margin: 0.8rem 1.25rem 0;
+  width: calc(100% - 2.5rem);
+  background: var(--cyber-dark);
+  border: 1px solid var(--cyber-border-bright);
+  color: var(--cyber-text);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.7rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.nxm-modal-input::placeholder {
+  color: var(--cyber-text-dim);
+  opacity: 0.4;
+}
+
+.nxm-modal-input:focus {
+  border-color: var(--cyber-green);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+}
+
+.nxm-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+}
+
+.nxm-modal-btn {
+  flex: 1;
+  padding: 0.45rem 1rem;
+  background: transparent;
+  font-family: 'Play', sans-serif;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.nxm-modal-btn.confirm {
+  border: 1px solid var(--cyber-green);
+  color: var(--cyber-green);
+}
+
+.nxm-modal-btn.confirm:hover:not(:disabled) {
+  background: var(--cyber-green);
+  color: var(--cyber-darker);
+}
+
+.nxm-modal-btn.confirm:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.nxm-modal-btn.cancel {
+  border: 1px solid var(--cyber-red);
+  color: var(--cyber-red);
+}
+
+.nxm-modal-btn.cancel:hover {
+  background: var(--cyber-red);
+  color: var(--cyber-darker);
 }
 
 .app-content {
   flex: 1;
   overflow: hidden;
   background: var(--cyber-dark);
-  min-height: 0; /* Important for flex children to scroll */
+  min-height: 0;
 }
 
 .mod-manager {
-  display: grid;
-  grid-template-columns: 350px 1fr;
+  display: flex;
   height: 100%;
-  gap: 1px;
+  overflow: hidden;
+}
+
+.mod-list-pane {
+  flex: 0 0 30%;
+  min-width: 260px;
+  max-width: 450px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mod-details-pane {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  background: var(--cyber-border-bright);
+  cursor: col-resize;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
   background: var(--cyber-red);
-  overflow: hidden; /* Ensure grid children respect boundaries */
+  box-shadow: 0 0 8px rgba(255, 0, 64, 0.6);
 }
 
 .loading-overlay {

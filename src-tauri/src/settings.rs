@@ -10,6 +10,12 @@ pub struct Settings {
     pub first_run: bool,
     #[serde(default)]
     pub nexusmods_api_key: String,
+    #[serde(default = "default_true")]
+    pub show_splash: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_first_run() -> bool {
@@ -31,6 +37,7 @@ impl Default for Settings {
             mod_storage_path: default_mod_path,
             first_run: true,
             nexusmods_api_key: String::new(),
+            show_splash: true,
         }
     }
 }

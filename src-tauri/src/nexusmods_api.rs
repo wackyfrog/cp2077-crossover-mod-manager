@@ -202,6 +202,226 @@ pub async fn get_mod_info(
     Ok((mod_info.name, mod_info.version, mod_info.author))
 }
 
+pub struct ModDetails {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub summary: Option<String>,
+    pub picture_url: Option<String>,
+    pub nexus_updated_at: Option<String>,
+}
+
+/// Fetch full mod details (name, version, author, summary, picture) from Nexus API
+pub async fn get_mod_details(
+    game_domain: &str,
+    mod_id: &str,
+    api_key: &str,
+) -> Result<ModDetails, String> {
+    if api_key.is_empty() {
+        return Err("API key not configured".to_string());
+    }
+
+    let url = format!(
+        "https://api.nexusmods.com/v1/games/{}/mods/{}.json",
+        game_domain, mod_id
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("apikey", api_key)
+        .header("User-Agent", "CrossoverModManager/2.0")
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Invalid API key".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!("Nexus API error: HTTP {}", response.status()));
+    }
+
+    #[derive(Deserialize)]
+    struct NexusModResponse {
+        name: String,
+        version: String,
+        author: String,
+        summary: Option<String>,
+        picture_url: Option<String>,
+        updated_timestamp: Option<i64>,
+    }
+
+    let r: NexusModResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse mod details: {}", e))?;
+
+    // Convert Unix timestamp to "DD Mon YYYY" string
+    let nexus_updated_at = r.updated_timestamp.map(|ts| {
+        use std::time::{Duration, UNIX_EPOCH};
+        let d = UNIX_EPOCH + Duration::from_secs(ts as u64);
+        let secs = d.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        // Simple date calculation (no external crate needed)
+        let days = secs / 86400;
+        let (year, month, day) = days_to_ymd(days);
+        let months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        format!("{} {} {}", day, months[(month - 1) as usize], year)
+    });
+
+    Ok(ModDetails {
+        name: r.name,
+        version: r.version,
+        author: r.author,
+        summary: r.summary,
+        picture_url: r.picture_url,
+        nexus_updated_at,
+    })
+}
+
+/// Fetch the latest file version for a mod (MAIN category) from Nexus API
+pub async fn get_latest_file_version(
+    game_domain: &str,
+    mod_id: &str,
+    api_key: &str,
+) -> Result<Option<String>, String> {
+    if api_key.is_empty() {
+        return Ok(None);
+    }
+
+    let url = format!(
+        "https://api.nexusmods.com/v1/games/{}/mods/{}/files.json",
+        game_domain, mod_id
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("apikey", api_key)
+        .header("User-Agent", "CrossoverModManager/2.0")
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    #[derive(Deserialize)]
+    struct NexusFile {
+        version: Option<String>,
+        category_name: Option<String>,
+        file_id: u64,
+        #[allow(dead_code)]
+        name: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct NexusFilesResponse {
+        files: Vec<NexusFile>,
+    }
+
+    let r: NexusFilesResponse = response
+        .json()
+        .await
+        .map_err(|_| "Failed to parse files response".to_string())?;
+
+    // Find the latest MAIN file by highest semantic version, fallback to highest file_id
+    let latest = r.files.iter()
+        .filter(|f| f.category_name.as_deref() == Some("MAIN"))
+        .max_by(|a, b| {
+            let va = parse_version(a.version.as_deref().unwrap_or("0"));
+            let vb = parse_version(b.version.as_deref().unwrap_or("0"));
+            va.cmp(&vb).then(a.file_id.cmp(&b.file_id))
+        });
+
+    Ok(latest.and_then(|f| f.version.clone()))
+}
+
+/// Per-file info returned by get_file_names: (display_name, version, description)
+pub type FileInfo = (String, Option<String>, Option<String>);
+
+/// Fetch file info for all files of a mod. Returns map of file_id -> FileInfo.
+pub async fn get_file_names(
+    game_domain: &str,
+    mod_id: &str,
+    api_key: &str,
+) -> Result<std::collections::HashMap<String, FileInfo>, String> {
+    if api_key.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let url = format!(
+        "https://api.nexusmods.com/v1/games/{}/mods/{}/files.json",
+        game_domain, mod_id
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("apikey", api_key)
+        .header("User-Agent", "CrossoverModManager/2.0")
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    #[derive(Deserialize)]
+    struct NexusFile {
+        file_id: u64,
+        name: Option<String>,
+        version: Option<String>,
+        description: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct NexusFilesResponse {
+        files: Vec<NexusFile>,
+    }
+
+    let r: NexusFilesResponse = response
+        .json()
+        .await
+        .map_err(|_| "Failed to parse files response".to_string())?;
+
+    let mut map = std::collections::HashMap::new();
+    for f in r.files {
+        if let Some(name) = f.name {
+            map.insert(f.file_id.to_string(), (name, f.version, f.description));
+        }
+    }
+    Ok(map)
+}
+
+/// Parse version string into comparable numeric parts
+fn parse_version(s: &str) -> Vec<u64> {
+    s.split(|c: char| c == '.' || c == '-')
+        .filter_map(|p| p.trim_start_matches('v').parse::<u64>().ok())
+        .collect()
+}
+
+/// Convert days-since-epoch to (year, month, day)
+fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+    let mut year = 1970u64;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+        let days_in_year = if leap { 366 } else { 365 };
+        if days < days_in_year { break; }
+        days -= days_in_year;
+        year += 1;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let days_in_month = [31u64, if leap { 29 } else { 28 }, 31,30,31,30,31,31,30,31,30,31];
+    let mut month = 1u64;
+    for &dim in &days_in_month {
+        if days < dim { break; }
+        days -= dim;
+        month += 1;
+    }
+    (year, month, days + 1)
+}
+
 /// Get collection information from NexusMods API
 ///
 /// # Arguments

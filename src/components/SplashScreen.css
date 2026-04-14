@@ -1,0 +1,141 @@
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--cyber-darker);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s ease;
+  overflow: hidden;
+}
+
+.splash::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 0, 64, 0.02) 2px,
+    rgba(255, 0, 64, 0.02) 4px
+  );
+  pointer-events: none;
+}
+
+.splash--out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 640px;
+  padding: 2rem;
+}
+
+/* ── Title ── */
+.splash-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.splash-title-game {
+  font-family: 'Play', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: var(--cyber-yellow);
+  text-shadow: 0 0 20px rgba(255, 255, 0, 0.5), 0 0 40px rgba(255, 255, 0, 0.15);
+  text-transform: uppercase;
+  animation: title-in 0.6s ease both;
+}
+
+.splash-title-app {
+  font-family: 'Play', sans-serif;
+  font-size: 1rem;
+  letter-spacing: 4px;
+  color: var(--cyber-red);
+  text-shadow: var(--cyber-text-glow);
+  text-transform: uppercase;
+  opacity: 0.8;
+  animation: title-in 0.6s ease 0.2s both;
+}
+
+@keyframes title-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Boot log ── */
+.splash-boot {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.5px;
+  line-height: 1.9;
+  width: 100%;
+  min-height: 200px;
+}
+
+.splash-line {
+  animation: line-in 0.12s ease both;
+}
+
+.splash-line--dim    { color: rgba(255, 0, 64, 0.3); }
+.splash-line--normal { color: rgba(240, 210, 210, 0.75); }
+.splash-line--green  { color: var(--cyber-green); text-shadow: 0 0 8px rgba(0, 255, 136, 0.6); }
+.splash-line--yellow { color: var(--cyber-yellow); text-shadow: 0 0 8px rgba(255, 255, 0, 0.5); }
+
+@keyframes line-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Progress bar ── */
+.splash-progress-wrap {
+  width: 100%;
+  position: relative;
+  height: 3px;
+  background: rgba(255, 0, 64, 0.1);
+}
+
+.splash-progress-bar {
+  height: 100%;
+  background: var(--cyber-red);
+  box-shadow: 0 0 10px rgba(255, 0, 64, 0.6);
+  transition: width 0.15s linear;
+}
+
+.splash-progress-label {
+  position: absolute;
+  right: 0;
+  top: 7px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.65rem;
+  color: rgba(255, 0, 64, 0.45);
+  letter-spacing: 1px;
+}
+
+/* ── Ready ── */
+.splash-ready {
+  font-family: 'Play', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--cyber-green);
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.8), 0 0 40px rgba(0, 255, 136, 0.3);
+  animation: ready-pulse 0.4s ease;
+}
+
+@keyframes ready-pulse {
+  0%   { opacity: 0; transform: scale(0.95); }
+  60%  { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}

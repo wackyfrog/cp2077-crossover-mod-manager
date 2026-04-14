@@ -1,0 +1,488 @@
+.jackin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(2, 4, 3, 0.98);
+  display: flex;
+  flex-direction: column;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+/* scanline */
+.jackin-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 136, 0.02) 2px,
+    rgba(0, 255, 136, 0.02) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Chrome bar (top system strip) ── */
+.jackin-chrome-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0.3rem 1.5rem;
+  background: rgba(0, 255, 136, 0.06);
+  border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+  position: relative;
+  z-index: 2;
+}
+
+.jackin-chrome-tag {
+  font-size: 0.6rem;
+  letter-spacing: 3px;
+  color: var(--cyber-green);
+  text-shadow: 0 0 4px rgba(0, 255, 136, 0.4);
+}
+
+.jackin-chrome-divider {
+  width: 1px;
+  height: 10px;
+  background: rgba(0, 255, 136, 0.2);
+  margin: 0 1rem;
+}
+
+.jackin-chrome-sys {
+  font-size: 0.55rem;
+  letter-spacing: 1.5px;
+  color: rgba(0, 255, 136, 0.3);
+}
+
+.jackin-chrome-status {
+  font-size: 0.55rem;
+  letter-spacing: 1.5px;
+  color: rgba(0, 255, 136, 0.5);
+  margin-left: auto;
+  animation: jackin-pulse 2s ease-in-out infinite;
+}
+
+@keyframes jackin-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+/* ── Header ── */
+.jackin-header {
+  flex-shrink: 0;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+  background: rgba(0, 12, 6, 0.9);
+  position: relative;
+  z-index: 2;
+}
+
+.jackin-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.jackin-title {
+  font-size: 1.4rem;
+  letter-spacing: 5px;
+  color: var(--cyber-green);
+  text-transform: uppercase;
+  text-shadow:
+    0 0 10px rgba(0, 255, 136, 1),
+    0 0 30px rgba(0, 255, 136, 0.7),
+    0 0 60px rgba(0, 255, 136, 0.35),
+    0 0 100px rgba(0, 255, 136, 0.15);
+  animation: jackin-flicker 4s infinite;
+}
+
+.jackin-pct {
+  font-size: 1.4rem;
+  letter-spacing: 2px;
+  color: var(--cyber-green);
+  text-shadow:
+    0 0 10px rgba(0, 255, 136, 0.8),
+    0 0 30px rgba(0, 255, 136, 0.4),
+    0 0 60px rgba(0, 255, 136, 0.15);
+  font-weight: bold;
+}
+
+/* ── Input phase ── */
+.jackin-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.jackin-desc {
+  margin: 0;
+  font-size: 0.72rem;
+  color: rgba(0, 255, 136, 0.45);
+  letter-spacing: 0.5px;
+}
+
+.jackin-input-error {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--cyber-red);
+  text-shadow: 0 0 6px rgba(255, 0, 64, 0.4);
+  letter-spacing: 0.5px;
+}
+
+.jackin-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.jackin-input {
+  flex: 1;
+  background: rgba(0, 10, 5, 0.8);
+  border: 1px solid rgba(0, 255, 136, 0.25);
+  color: var(--cyber-green);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+  letter-spacing: 0.5px;
+}
+
+.jackin-input::placeholder {
+  color: rgba(0, 255, 136, 0.15);
+}
+
+.jackin-input:focus {
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
+}
+
+/* ── Progress phase ── */
+.jackin-progress-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.jackin-stage {
+  font-size: 0.78rem;
+  letter-spacing: 2px;
+  color: var(--cyber-green);
+  text-shadow: 0 0 6px rgba(0, 255, 136, 0.5);
+}
+
+.jackin-stage.stage-error {
+  color: var(--cyber-red);
+  text-shadow: 0 0 6px rgba(255, 0, 64, 0.5);
+}
+
+.jackin-stage.stage-done {
+  color: var(--cyber-blue);
+  text-shadow: 0 0 6px rgba(0, 255, 255, 0.5);
+}
+
+.jackin-mod-name {
+  font-size: 0.72rem;
+  color: var(--cyber-yellow);
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(255, 255, 0, 0.3);
+}
+
+.jackin-message {
+  font-size: 0.7rem;
+  color: rgba(0, 255, 136, 0.5);
+  letter-spacing: 0.5px;
+}
+
+/* ── Conflict (already installed) ── */
+.jackin-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(255, 255, 0, 0.2);
+  background: rgba(255, 255, 0, 0.03);
+}
+
+.jackin-conflict-title {
+  font-size: 0.78rem;
+  color: var(--cyber-yellow);
+  letter-spacing: 1.5px;
+  text-shadow: 0 0 6px rgba(255, 255, 0, 0.3);
+  text-transform: uppercase;
+}
+
+.jackin-conflict-hint {
+  font-size: 0.72rem;
+  color: var(--cyber-text);
+  opacity: 0.7;
+  line-height: 1.5;
+}
+
+.jackin-conflict-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+
+.jackin-error-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.jackin-error-title {
+  font-size: 0.78rem;
+  color: var(--cyber-yellow);
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(255, 255, 0, 0.3);
+}
+
+.jackin-error-hint {
+  font-size: 0.72rem;
+  color: var(--cyber-text);
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+.jackin-eta {
+  color: var(--cyber-yellow);
+  opacity: 0.8;
+}
+
+.jackin-speed {
+  color: rgba(0, 255, 136, 0.35);
+  font-size: 0.65rem;
+}
+
+.jackin-progress-wrap {
+  height: 2px;
+  background: rgba(0, 255, 136, 0.08);
+  overflow: hidden;
+  margin-top: 0.4rem;
+}
+
+.jackin-progress-bar {
+  height: 100%;
+  background: var(--cyber-green);
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.6);
+  transition: width 0.4s ease;
+}
+
+.jackin-progress-indeterminate {
+  height: 100%;
+  width: 30%;
+  background: var(--cyber-green);
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.6);
+  animation: jackin-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes jackin-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ── Terminal ── */
+.jackin-terminal {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  z-index: 2;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 136, 0.15) transparent;
+  border-left: 2px solid rgba(0, 255, 136, 0.06);
+  margin-left: 1rem;
+}
+
+.jackin-terminal::-webkit-scrollbar { width: 3px; }
+.jackin-terminal::-webkit-scrollbar-thumb { background: rgba(0, 255, 136, 0.2); }
+
+.jackin-line {
+  font-size: 0.73rem;
+  line-height: 1.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.jackin-line-fake {
+  color: rgba(0, 255, 136, 0.25);
+}
+
+.jackin-line-stage {
+  color: var(--cyber-green);
+  text-shadow: 0 0 4px rgba(0, 255, 136, 0.4);
+  padding-top: 0.15rem;
+  border-left: 2px solid rgba(0, 255, 136, 0.3);
+  padding-left: 0.6rem;
+  margin-left: -0.7rem;
+}
+
+.jackin-line-error {
+  color: var(--cyber-red);
+  text-shadow: 0 0 4px rgba(255, 0, 64, 0.4);
+  border-left: 2px solid rgba(255, 0, 64, 0.4);
+  padding-left: 0.6rem;
+  margin-left: -0.7rem;
+}
+
+.jackin-line-done {
+  color: var(--cyber-blue);
+  text-shadow: 0 0 4px rgba(0, 255, 255, 0.4);
+  border-left: 2px solid rgba(0, 255, 255, 0.4);
+  padding-left: 0.6rem;
+  margin-left: -0.7rem;
+}
+
+.jackin-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  background: rgba(0, 255, 136, 0.4);
+  box-shadow:
+    0 0 8px rgba(0, 255, 136, 0.6),
+    0 0 20px rgba(0, 255, 136, 0.25);
+  animation: jackin-blink 0.8s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes jackin-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+/* ── Footer ── */
+.jackin-footer {
+  flex-shrink: 0;
+  padding: 0.6rem 1.5rem;
+  border-top: 1px solid rgba(0, 255, 136, 0.15);
+  background: rgba(0, 12, 6, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 2;
+}
+
+.jackin-footer-info {
+  flex: 1;
+}
+
+.jackin-footer-readout {
+  font-size: 0.62rem;
+  letter-spacing: 1.5px;
+  color: rgba(0, 255, 136, 0.4);
+}
+
+.jackin-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Buttons ── */
+.jackin-btn {
+  padding: 0.4rem 1.2rem;
+  background: transparent;
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: rgba(0, 255, 136, 0.6);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+}
+
+.jackin-btn:hover:not(:disabled) {
+  color: var(--cyber-green);
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+}
+
+.jackin-btn.primary {
+  border-color: var(--cyber-green);
+  color: var(--cyber-green);
+  text-shadow: 0 0 4px rgba(0, 255, 136, 0.3);
+}
+
+.jackin-btn.primary:hover:not(:disabled) {
+  background: rgba(0, 255, 136, 0.1);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.4);
+}
+
+.jackin-btn.primary:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.jackin-btn.danger {
+  border: 2px solid var(--cyber-red);
+  color: var(--cyber-red);
+  padding: 0.5rem 2rem;
+  font-size: 0.8rem;
+  letter-spacing: 3px;
+  text-shadow: 0 0 6px rgba(255, 0, 64, 0.5);
+  box-shadow: 0 0 8px rgba(255, 0, 64, 0.15);
+}
+
+.jackin-btn.danger:hover:not(:disabled) {
+  background: rgba(255, 0, 64, 0.15);
+  box-shadow:
+    0 0 12px rgba(255, 0, 64, 0.4),
+    0 0 30px rgba(255, 0, 64, 0.15);
+  text-shadow: 0 0 8px rgba(255, 0, 64, 0.7);
+}
+
+.jackin-btn.danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@keyframes jackin-flicker {
+  0%, 93%, 100% { opacity: 1; }
+  94%           { opacity: 0.6; }
+  95%           { opacity: 1; }
+  96%           { opacity: 0.3; }
+  97%           { opacity: 1; }
+}
+
+/* ── Random glitch on lines ── */
+.jackin-line.glitch {
+  animation: line-glitch 0.7s ease both;
+}
+
+@keyframes line-glitch {
+  0%   { transform: translateX(0); filter: none; opacity: 1; }
+  8%   { transform: translateX(-3px); filter: hue-rotate(60deg); opacity: 0.8; }
+  16%  { transform: translateX(2px); filter: hue-rotate(-40deg); }
+  24%  { transform: translateX(0); clip-path: inset(0 0 40% 0); opacity: 0.6; }
+  32%  { transform: translateX(-1px); clip-path: inset(30% 0 0 0); filter: none; }
+  45%  { transform: translateX(3px); clip-path: none; opacity: 0.85; filter: hue-rotate(120deg); }
+  60%  { transform: translateX(-1px); filter: hue-rotate(-30deg); opacity: 0.9; }
+  75%  { transform: translateX(1px); filter: none; opacity: 0.95; }
+  100% { transform: translateX(0); filter: none; clip-path: none; opacity: 1; }
+}
+
+/* ── Block glitch (whole terminal flicker) ── */
+.jackin-terminal.block-glitch {
+  animation: block-glitch 0.5s ease both;
+}
+
+@keyframes block-glitch {
+  0%   { transform: none; filter: none; opacity: 1; }
+  15%  { transform: skewX(-0.4deg) translateY(-1px); filter: hue-rotate(30deg); opacity: 0.9; }
+  30%  { transform: skewX(0.2deg) translateX(2px); opacity: 0.8; }
+  50%  { transform: skewX(-0.3deg) translateY(1px); filter: hue-rotate(-20deg); opacity: 0.85; }
+  70%  { transform: skewX(0.1deg); filter: none; opacity: 0.95; }
+  100% { transform: none; filter: none; opacity: 1; }
+}

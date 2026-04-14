@@ -346,12 +346,17 @@
 }
 
 .settings-actions {
+  position: sticky;
+  bottom: 0;
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding-top: 2rem;
+  padding: 0.8rem 2rem;
   border-top: 1px solid var(--cyber-border);
   justify-content: center;
+  background: var(--cyber-dark);
+  z-index: 10;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.6);
 }
 
 .save-button {
@@ -409,6 +414,48 @@
 .save-success::before {
   content: '[SAVED] ';
   color: var(--cyber-red-bright);
+}
+
+.setting-toggle-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.setting-toggle-row label::after {
+  display: none;
+}
+
+.setting-toggle-row input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--cyber-border-bright);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.setting-toggle-row input[type="checkbox"]:checked {
+  border-color: var(--cyber-blue);
+  background: rgba(0, 200, 255, 0.15);
+}
+
+.setting-toggle-row input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--cyber-blue);
+}
+
+.setting-toggle-row span {
+  color: var(--cyber-text);
+  font-family: 'Play', sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.3px;
 }
 
 .version-info {

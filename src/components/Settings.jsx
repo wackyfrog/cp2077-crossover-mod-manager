@@ -7,6 +7,7 @@ function Settings() {
   const [gamePath, setGamePath] = useState("");
   const [modStoragePath, setModStoragePath] = useState("");
   const [nexusmodsApiKey, setNexusmodsApiKey] = useState("");
+  const [showSplash, setShowSplash] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
@@ -25,6 +26,7 @@ function Settings() {
       setGamePath(settings.game_path || "");
       setModStoragePath(settings.mod_storage_path || "");
       setNexusmodsApiKey(settings.nexusmods_api_key || "");
+      setShowSplash(settings.show_splash !== false);
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -97,6 +99,7 @@ function Settings() {
           game_path: gamePath,
           mod_storage_path: modStoragePath,
           nexusmods_api_key: nexusmodsApiKey,
+          show_splash: showSplash,
         },
       });
       setSaved(true);
@@ -281,6 +284,20 @@ function Settings() {
         </div>
 
         <div className="setting-section">
+          <h3>Interface</h3>
+          <div className="setting-row setting-toggle-row">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={showSplash}
+                onChange={(e) => setShowSplash(e.target.checked)}
+              />
+              <span>Show splash screen on startup</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="setting-section">
           <h3>System Maintenance</h3>
           <p>Cleanup and maintenance tools</p>
           <div className="setting-row">
@@ -384,19 +401,6 @@ function Settings() {
               <br />
               3. Navigate to your Applications folder and select "Crossover Mod
               Manager"
-            </p>
-          </div>
-        </div>
-
-        <div className="setting-section">
-          <h3>About</h3>
-          <div className="setting-row">
-            <p className="version-info">
-              <strong>Crossover Mod Manager</strong> v1.1.0
-            </p>
-            <p className="help-text">
-              Features: Auto-detection, NXM protocol support, comprehensive
-              logging, window management, mod download & storage
             </p>
           </div>
         </div>

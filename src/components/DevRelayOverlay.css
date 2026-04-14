@@ -1,0 +1,146 @@
+.dro-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dro {
+  background: var(--cyber-darker);
+  border: 1px solid var(--cyber-blue);
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 255, 0.08),
+    0 0 40px rgba(0, 255, 255, 0.08);
+  min-width: 500px;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dro-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 255, 255, 0.15);
+  background: rgba(0, 255, 255, 0.04);
+}
+
+.dro-prefix { color: var(--cyber-blue); }
+
+.dro-title {
+  font-family: 'Play', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 3px;
+  color: var(--cyber-blue);
+  text-transform: uppercase;
+}
+
+.dro-body {
+  padding: 1.75rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.dro-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.dro-spinner {
+  font-size: 1.1rem;
+  color: var(--cyber-blue);
+  animation: dro-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dro-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.dro-icon-done { font-size: 1rem; color: var(--cyber-green); }
+.dro-icon-error { font-size: 1rem; color: var(--cyber-red); }
+
+.dro-message {
+  font-size: 0.88rem;
+  color: var(--cyber-text);
+  letter-spacing: 0.3px;
+}
+
+.dro-stage--done  .dro-message { color: var(--cyber-green); }
+.dro-stage--error .dro-message { color: var(--cyber-red-dim); }
+
+.dro-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.dro-btn {
+  padding: 0.45rem 1rem;
+  font-family: 'Play', sans-serif;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border: 1px solid;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.dro-btn-process {
+  color: var(--cyber-blue);
+  border-color: var(--cyber-blue);
+}
+.dro-btn-process:hover {
+  color: var(--cyber-yellow);
+  border-color: var(--cyber-yellow);
+}
+
+.dro-btn-exit {
+  color: var(--cyber-red-dim);
+  border-color: var(--cyber-red-dim);
+}
+.dro-btn-exit:hover {
+  color: var(--cyber-red);
+  border-color: var(--cyber-red);
+}
+
+/* ── URL detail ── */
+.dro-url-detail {
+  border: 1px solid var(--cyber-border-bright);
+  padding: 0.6rem 0.8rem;
+  background: rgba(0, 255, 255, 0.02);
+}
+
+.dro-url-label {
+  font-size: 0.6rem;
+  color: var(--cyber-blue);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 0.3rem;
+  opacity: 0.6;
+}
+
+.dro-url-value {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.72rem;
+  color: var(--cyber-text);
+  word-break: break-all;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+
+.dro-btn-dismiss {
+  color: var(--cyber-text-dim);
+  border-color: var(--cyber-border-bright);
+}
+.dro-btn-dismiss:hover {
+  color: var(--cyber-blue);
+  border-color: var(--cyber-blue);
+}

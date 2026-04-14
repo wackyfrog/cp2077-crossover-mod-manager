@@ -1,14 +1,15 @@
 [package]
 name = "crossover-mod-manager"
-version = "0.1.1"
+version = "1.0.0"
 description = "Nexus Mod Manager for CP2077 on Mac via Crossover"
-authors = ["Benjamin Eccles"]
+authors = ["Oleksandr Degtiar"]
 license = "MIT"
 repository = ""
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+chrono = "0.4"
 
 [dependencies]
 tauri = { version = "2.10", features = ["protocol-asset"] }
@@ -17,6 +18,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-http = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.35", features = ["full"] }
@@ -32,6 +34,8 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1.10"
 unidecode = "0.3"
 nix = { version = "0.29", features = ["fs"] }
+libc = "0.2"
+futures-util = "0.3"
 
 [features]
 default = ["custom-protocol"]
