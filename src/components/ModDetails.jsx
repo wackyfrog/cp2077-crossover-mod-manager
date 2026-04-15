@@ -94,7 +94,7 @@ function Thumbnail({ src, alt }) {
   );
 }
 
-function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, loading }) {
+function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, loading, hint = () => ({}) }) {
   const [filesOpen, setFilesOpen] = useState(false);
   const [changelog, setChangelog] = useState(null);
   const [changelogOpen, setChangelogOpen] = useState(false);
@@ -351,6 +351,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
               className="jackin-detail-button"
               onClick={() => onJackIn?.(mod)}
               disabled={loading}
+              {...hint("reinstall this mod from NexusMods")}
             >
               Jack In
             </button>
@@ -359,6 +360,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             className="forget-button"
             onClick={() => onForget(mod.id, mod.name)}
             disabled={loading}
+            {...hint("permanently delete this record from database")}
           >
             Forget
           </button>
@@ -371,7 +373,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
     <div className="mod-details">
       <div className="mod-details-header">
         <h2>{mod.name}</h2>
-        <label className={`cyber-toggle ${loading ? 'cyber-toggle--disabled' : ''}`} title={mod.enabled ? 'Ghost this mod' : 'Slot in this mod'}>
+        <label className={`cyber-toggle ${loading ? 'cyber-toggle--disabled' : ''}`} {...hint(mod.enabled ? 'disable this mod without removing files' : 'enable this mod')}>
           <input
             type="checkbox"
             checked={mod.enabled}
@@ -401,7 +403,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
               <span
                 className={mod.mod_id ? "version-clickable" : ""}
                 onClick={() => mod.mod_id && openChangelog()}
-                title={mod.mod_id ? "Click to view changelog" : ""}
+                {...(mod.mod_id ? hint("click to view version changelog") : {})}
               >
                 {mod.version}
               </span>
@@ -455,6 +457,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
                   e.preventDefault();
                   openUrl(`https://www.nexusmods.com/cyberpunk2077/mods/${mod.mod_id}`);
                 }}
+                {...hint("open mod page on NexusMods in browser")}
               >
                 nexusmods.com
               </a>
@@ -465,7 +468,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
           <div
             className="detail-row files-toggle-row"
             onClick={() => setFilesOpen(v => !v)}
-            title={filesOpen ? 'Collapse file list' : 'Expand file list'}
+            {...hint(filesOpen ? "collapse file list" : "show installed files")}
           >
             <span className="label">Files</span>
             <span className="value files-toggle-value">
@@ -535,6 +538,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             className="jackin-detail-button"
             onClick={() => onJackIn?.(mod)}
             disabled={loading}
+            {...hint(mod.update_available ? "download and install the latest version from NexusMods" : "re-download and reinstall this mod from NexusMods")}
           >
             {mod.update_available ? "Update" : "Reinstall"}
           </button>
@@ -543,6 +547,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
           className="remove-button"
           onClick={() => onRemove(mod.id)}
           disabled={loading}
+          {...hint("remove mod files from game directory")}
         >
           Flatline
         </button>

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import "./Settings.css";
 
-function Settings() {
+function Settings({ hint = () => ({}), onNavigateToMod }) {
   const [gamePath, setGamePath] = useState("");
   const [modStoragePath, setModStoragePath] = useState("");
   const [nexusmodsApiKey, setNexusmodsApiKey] = useState("");
@@ -12,9 +12,6 @@ function Settings() {
   const [saved, setSaved] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [detectionResult, setDetectionResult] = useState("");
-  const [customNxmUrl, setCustomNxmUrl] = useState(
-    "nxm://cyberpunk2077/mods/107/files/123169?key=test&expires=1760073990&user_id=260682775",
-  );
 
   useEffect(() => {
     loadSettings();
@@ -41,10 +38,7 @@ function Settings() {
         title: "Select Game Installation Directory",
         defaultPath: crossoverBottles || undefined,
       });
-
-      if (selected) {
-        setGamePath(selected);
-      }
+      if (selected) setGamePath(selected);
     } catch (error) {
       console.error("Failed to select directory:", error);
     }
@@ -57,10 +51,7 @@ function Settings() {
         multiple: false,
         title: "Select Mod Storage Directory",
       });
-
-      if (selected) {
-        setModStoragePath(selected);
-      }
+      if (selected) setModStoragePath(selected);
     } catch (error) {
       console.error("Failed to select directory:", error);
     }
@@ -73,17 +64,15 @@ function Settings() {
       const detectedPath = await invoke("auto_detect_game_path");
       if (detectedPath) {
         setGamePath(detectedPath);
-        setDetectionResult("✓ Game installation detected automatically!");
+        setDetectionResult("Game installation detected");
         setTimeout(() => setDetectionResult(""), 5000);
       } else {
-        setDetectionResult(
-          "⚠ Could not automatically detect game installation. Please select manually.",
-        );
+        setDetectionResult("Could not detect game installation");
         setTimeout(() => setDetectionResult(""), 5000);
       }
     } catch (error) {
       console.error("Failed to auto-detect game path:", error);
-      setDetectionResult("❌ Auto-detection failed. Please select manually.");
+      setDetectionResult("Auto-detection failed");
       setTimeout(() => setDetectionResult(""), 5000);
     } finally {
       setAutoDetecting(false);
@@ -106,86 +95,97 @@ function Settings() {
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error("Failed to save settings:", error);
-      alert("Failed to save settings: " + error);
     } finally {
       setLoading(false);
     }
   };
 
-  const testNxmUrl = async () => {
-    try {
-      // Test with a sample Cyberpunk 2077 NXM URL
-      const testUrl =
-        "nxm://cyberpunk2077/mods/107/files/123169?key=SIMRrmIOUwWBwlUHBwf-Gzw&expires=1760073185&user_id=260682775";
-      await invoke("handle_nxm_url", { nxm_url: testUrl });
-      alert("NXM URL test completed! Check the Logs tab.");
-    } catch (error) {
-      console.error("Failed to test NXM URL:", error);
-      alert("NXM URL test failed: " + error);
-    }
-  };
-
-  const testCustomNxmUrl = async () => {
-    try {
-      await invoke("handle_nxm_url", { nxm_url: customNxmUrl });
-      alert("Custom NXM URL processed! Check the Logs tab.");
-    } catch (error) {
-      console.error("Failed to process custom NXM URL:", error);
-      alert("Custom NXM URL processing failed: " + error);
-    }
-  };
-
-  const testBasicLogging = async () => {
-    try {
-      await invoke("test_logging");
-      alert("Test log entry added! Check the Logs tab to see it.");
-    } catch (error) {
-      console.error("Failed to test logging:", error);
-      alert("Logging test failed: " + error);
-    }
-  };
-
-  const testModDownload = async () => {
-    try {
-      // Test downloading a small sample file
-      const testUrl = "https://httpbin.org/base64/aGVsbG8gd29ybGQ="; // Returns "hello world" as base64
-      const filePath = await invoke("download_and_save_mod", {
-        mod_name: "Test_Mod",
-        download_url: testUrl,
-      });
-      alert(
-        `Test download completed! File saved to: ${filePath}\nCheck the Logs tab.`,
-      );
-    } catch (error) {
-      console.error("Failed to test download:", error);
-      alert("Download test failed: " + error);
-    }
-  };
-
-  const testNxmEvent = async () => {
-    try {
-      const testUrl = "nxm://cyberpunk2077/mods/999/files/888";
-      await invoke("test_nxm_event", { test_url: testUrl });
-      alert("NXM event test sent! Check the Logs tab for processing.");
-    } catch (error) {
-      console.error("Failed to test NXM event:", error);
-      alert("NXM event test failed: " + error);
-    }
-  };
-
   const [cleaningTemp, setCleaningTemp] = useState(false);
   const [cleanupResult, setCleanupResult] = useState("");
+  const [dedupResult, setDedupResult] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState(null);
+  const [backups, setBackups] = useState([]);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [confirmAction, setConfirmAction] = useState(null); // { type, name, label }
+
+  const loadBackups = async () => {
+    try {
+      const list = await invoke("list_backups");
+      setBackups(list);
+    } catch {}
+  };
+
+  useEffect(() => { loadBackups(); }, []);
+
+  const formatBackupDate = (name) => {
+    // Parse from filename: mods_YYYYMMDD_HHMMSS.json
+    const m = name?.match(/mods_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.json/);
+    if (!m) return name || "";
+    return `${m[3]}.${m[2]}.${m[1]}, ${m[4]}:${m[5]}:${m[6]}`;
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const doBackup = async () => {
+    try {
+      const name = await invoke("backup_database");
+      setBackupMsg(`Backup created: ${name}`);
+      setTimeout(() => setBackupMsg(""), 5000);
+      loadBackups();
+    } catch (e) {
+      setBackupMsg(`Failed: ${e}`);
+      setTimeout(() => setBackupMsg(""), 5000);
+    }
+  };
+
+  const doRestore = async (name) => {
+    try {
+      await invoke("restore_backup", { name });
+      setBackupMsg("Restored — reloading mods...");
+      setTimeout(() => setBackupMsg(""), 5000);
+      // Trigger full reload by dispatching event
+      window.dispatchEvent(new Event("focus"));
+    } catch (e) {
+      setBackupMsg(`Restore failed: ${e}`);
+      setTimeout(() => setBackupMsg(""), 5000);
+    }
+  };
+
+  const doDeleteBackup = async (name) => {
+    try {
+      await invoke("delete_backup", { name });
+      setBackupMsg("Backup deleted");
+      setTimeout(() => setBackupMsg(""), 3000);
+      loadBackups();
+    } catch (e) {
+      setBackupMsg(`Delete failed: ${e}`);
+      setTimeout(() => setBackupMsg(""), 5000);
+    }
+  };
+
+  const executeConfirm = () => {
+    if (!confirmAction) return;
+    const { type, name } = confirmAction;
+    setConfirmAction(null);
+    if (type === "backup") doBackup();
+    else if (type === "restore") doRestore(name);
+    else if (type === "delete") doDeleteBackup(name);
+  };
 
   const cleanTempFiles = async () => {
     setCleaningTemp(true);
     setCleanupResult("");
     try {
       const result = await invoke("clean_temp_files");
-      setCleanupResult(`✓ ${result}`);
+      setCleanupResult(result);
       setTimeout(() => setCleanupResult(""), 5000);
     } catch (error) {
-      console.error("Failed to clean temp files:", error);
-      setCleanupResult(`❌ Cleanup failed: ${error}`);
+      setCleanupResult(`Failed: ${error}`);
       setTimeout(() => setCleanupResult(""), 5000);
     } finally {
       setCleaningTemp(false);
@@ -195,91 +195,48 @@ function Settings() {
   return (
     <div className="settings">
       <div className="settings-content">
-        <h2>Settings</h2>
 
         <div className="setting-section">
-          <h3>Game Configuration</h3>
+          <h3>Game</h3>
 
           <div className="setting-row">
-            <label>Game Installation Path:</label>
+            <label>Game path</label>
             <div className="path-selector">
               <input
                 type="text"
                 value={gamePath}
                 onChange={(e) => setGamePath(e.target.value)}
-                placeholder="Select your game installation directory..."
+                placeholder="Select your Cyberpunk 2077 installation..."
+                {...hint("path to Cyberpunk 2077 in CrossOver bottle")}
               />
               <div className="path-buttons">
                 <button
                   onClick={autoDetectGamePath}
                   disabled={autoDetecting}
                   className="auto-detect-button"
+                  {...hint("scan CrossOver bottles for Cyberpunk 2077")}
                 >
                   {autoDetecting ? "Detecting..." : "Auto-Detect"}
                 </button>
-                <button onClick={selectGamePath}>Browse</button>
+                <button onClick={selectGamePath} {...hint("pick game folder manually")}>Browse</button>
               </div>
             </div>
             {detectionResult && (
-              <p
-                className={`detection-result ${
-                  detectionResult.includes("✓")
-                    ? "success"
-                    : detectionResult.includes("⚠")
-                      ? "warning"
-                      : "error"
-                }`}
-              >
-                {detectionResult}
-              </p>
+              <p className="detection-result">{detectionResult}</p>
             )}
-            <p className="help-text">
-              This should be the path to your Cyberpunk 2077 installation in
-              Crossover (e.g., /Users/username/Library/Application
-              Support/CrossOver/Bottles/...)
-            </p>
           </div>
 
           <div className="setting-row">
-            <label>Mod Storage Directory:</label>
-            <div className="path-selector">
-              <input
-                type="text"
-                value={modStoragePath}
-                onChange={(e) => setModStoragePath(e.target.value)}
-                placeholder="Select where downloaded mods will be stored..."
-              />
-              <div className="path-buttons">
-                <button onClick={selectModStoragePath}>Browse</button>
-              </div>
-            </div>
-            <p className="help-text">
-              Downloaded mods will be saved to this directory. Default:
-              ~/Downloads/CrossoverModManager/Mods
-            </p>
-          </div>
-
-          <div className="setting-row">
-            <label>NexusMods API Key:</label>
+            <label>NexusMods API key</label>
             <div className="path-selector">
               <input
                 type="password"
                 value={nexusmodsApiKey}
                 onChange={(e) => setNexusmodsApiKey(e.target.value)}
                 placeholder="Enter your NexusMods API key..."
+                {...hint("required for sync and downloading mods via NXM links")}
               />
             </div>
-            <p className="help-text">
-              Get your API key from{" "}
-              <a
-                href="https://www.nexusmods.com/users/myaccount?tab=api"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                NexusMods API settings
-              </a>
-              . Required for downloading mods via NXM links.
-            </p>
           </div>
         </div>
 
@@ -292,132 +249,178 @@ function Settings() {
                 checked={showSplash}
                 onChange={(e) => setShowSplash(e.target.checked)}
               />
-              <span>Show splash screen on startup</span>
+              <span {...hint("show boot sequence animation on app launch")}>Show splash screen on startup</span>
             </label>
           </div>
         </div>
 
         <div className="setting-section">
-          <h3>System Maintenance</h3>
-          <p>Cleanup and maintenance tools</p>
+          <h3>Maintenance</h3>
           <div className="setting-row">
             <button
               onClick={cleanTempFiles}
-              className="test-nxm-button"
+              className="maintenance-button"
               disabled={cleaningTemp}
+              {...hint("remove leftover archives and extraction dirs from /tmp")}
             >
-              {cleaningTemp ? "🧹 Cleaning..." : "🧹 Clean Temporary Files"}
+              {cleaningTemp ? "Cleaning..." : "Clean temporary files"}
             </button>
             {cleanupResult && (
-              <p
-                className={`cleanup-result ${
-                  cleanupResult.includes("✓") ? "success" : "error"
-                }`}
-              >
-                {cleanupResult}
-              </p>
+              <p className="detection-result">{cleanupResult}</p>
             )}
-            <p className="help-text">
-              Removes orphaned mod archives and extraction directories from
-              failed installations. The app automatically cleans up on startup,
-              but you can manually trigger cleanup here.
-            </p>
+          </div>
+          <div className="setting-row">
+            <button
+              onClick={async () => {
+                setDedupResult("");
+                try {
+                  const removed = await invoke("deduplicate_mods");
+                  setDedupResult(removed.length > 0 ? `Removed ${removed.length} duplicate(s)` : "No duplicates found");
+                  setTimeout(() => setDedupResult(""), 5000);
+                } catch (e) {
+                  setDedupResult(`Failed: ${e}`);
+                  setTimeout(() => setDedupResult(""), 5000);
+                }
+              }}
+              className="maintenance-button"
+              {...hint("find and remove duplicate mod entries from the database")}
+            >
+              Remove duplicate records
+            </button>
+            {dedupResult && (
+              <p className="detection-result">{dedupResult}</p>
+            )}
+          </div>
+          <div className="setting-row">
+            <button
+              onClick={async () => {
+                setValidating(true);
+                setValidationResult(null);
+                try {
+                  const r = await invoke("validate_mod_files");
+                  setValidationResult(r);
+                } catch (e) {
+                  setValidationResult({ error: String(e) });
+                } finally {
+                  setValidating(false);
+                }
+              }}
+              className="maintenance-button"
+              disabled={validating}
+              {...hint("check that all mod files exist on disk")}
+            >
+              {validating ? "Validating..." : "Validate mod files"}
+            </button>
           </div>
         </div>
 
         <div className="setting-section">
-          <h3>System Testing</h3>
-          <p>Test basic functionality (for debugging)</p>
+          <h3>Database Backup</h3>
           <div className="setting-row">
-            <button onClick={testBasicLogging} className="test-nxm-button">
-              📝 Test Basic Logging
+            <button
+              onClick={() => setConfirmAction({ type: "backup", label: "Create a backup of the mod database? Only the database record is saved, mod files are not copied." })}
+              className="maintenance-button"
+              {...hint("create a backup of the mod database (mod files are not copied)")}
+            >
+              Create backup
             </button>
-            <p className="help-text">
-              This will add a test log entry. Check the Logs tab to verify
-              logging is working.
-            </p>
+            {backupMsg && <p className="detection-result">{backupMsg}</p>}
           </div>
-          <div className="setting-row">
-            <button onClick={testModDownload} className="test-nxm-button">
-              💾 Test Mod Download
-            </button>
-            <p className="help-text">
-              This will test downloading and saving a small test file. Check the
-              Logs tab and your mod storage directory.
-            </p>
-          </div>
-          <div className="setting-row">
-            <button onClick={testNxmEvent} className="test-nxm-button">
-              📡 Test NXM Event System
-            </button>
-            <p className="help-text">
-              This tests the event system that handles NXM URLs from external
-              sources.
-            </p>
-          </div>
-        </div>
-
-        <div className="setting-section">
-          <h3>NXM Protocol Testing</h3>
-          <p>Test NXM URL handling (for development and troubleshooting)</p>
-          <div className="setting-row">
-            <button onClick={() => testNxmUrl()} className="test-nxm-button">
-              🔗 Test Sample NXM URL
-            </button>
-            <p className="help-text">
-              This will test processing of a sample NXM URL from NexusMods.
-              Check the Logs tab to see the processing steps.
-            </p>
-          </div>
-          <div className="setting-row">
-            <label>Custom NXM URL:</label>
-            <div className="path-selector">
-              <input
-                type="text"
-                value={customNxmUrl}
-                onChange={(e) => setCustomNxmUrl(e.target.value)}
-                placeholder="Paste an NXM URL from NexusMods here..."
-              />
-              <button onClick={testCustomNxmUrl} className="test-nxm-button">
-                🧪 Test Custom URL
-              </button>
+          {backups.length > 0 && (
+            <div className="backup-list">
+              {backups.map((b) => (
+                <div key={b.name} className="backup-item">
+                  <div className="backup-info">
+                    <span className="backup-date">{formatBackupDate(b.name)}</span>
+                    <span className="backup-size">{formatSize(b.size)}</span>
+                  </div>
+                  <div className="backup-actions">
+                    <button
+                      className="backup-action-btn backup-restore"
+                      onClick={() => setConfirmAction({ type: "restore", name: b.name, label: `Restore backup from ${formatBackupDate(b.name)}? This will replace the current database. Mod files on disk are not affected.` })}
+                      {...hint("replace current database with this backup")}
+                    >
+                      Restore
+                    </button>
+                    <button
+                      className="backup-action-btn backup-delete"
+                      onClick={() => setConfirmAction({ type: "delete", name: b.name, label: `Delete backup from ${formatBackupDate(b.name)}? This only removes the backup file, not the current database or mod files.` })}
+                      {...hint("permanently delete this backup file")}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <p className="help-text">
-              Copy an NXM URL from NexusMods (right-click "Download with Mod
-              Manager" → Copy Link) and paste it here to test processing without
-              going through the protocol registration.
-            </p>
-          </div>
-          <div className="setting-row">
-            <p className="help-text">
-              <strong>Manual Protocol Association:</strong>
-              <br />
-              If NXM links don't open automatically, you can manually associate
-              them:
-              <br />
-              1. Right-click on any NXM link on NexusMods
-              <br />
-              2. Select "Choose Application..."
-              <br />
-              3. Navigate to your Applications folder and select "Crossover Mod
-              Manager"
-            </p>
-          </div>
+          )}
         </div>
+
+        {confirmAction && (
+          <div className="backup-confirm-backdrop" onClick={() => setConfirmAction(null)}>
+            <div className="backup-confirm" onClick={(e) => e.stopPropagation()}>
+              <p className="backup-confirm-text">{confirmAction.label}</p>
+              <div className="backup-confirm-actions">
+                <button className="backup-confirm-no" onClick={() => setConfirmAction(null)}>Cancel</button>
+                <button className="backup-confirm-yes" onClick={executeConfirm}>Confirm</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="settings-actions">
           <button
             className="save-button"
             onClick={saveSettings}
-            disabled={loading || !gamePath || !modStoragePath}
+            disabled={loading || !gamePath}
+            {...hint("save all settings to disk")}
           >
-            {loading ? "Saving..." : "Save Settings"}
+            {loading ? "Saving..." : "Save"}
           </button>
           {saved && (
-            <span className="save-success">✓ Settings saved successfully</span>
+            <span className="save-success">Saved</span>
           )}
         </div>
       </div>
+
+      {validationResult && (
+        <div className="validation-backdrop" onClick={() => setValidationResult(null)}>
+          <div className="validation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="validation-header">
+              <span className="validation-title">File Validation</span>
+              <button className="validation-close" onClick={() => setValidationResult(null)}>✕</button>
+            </div>
+            <div className="validation-body">
+              {validationResult.error ? (
+                <p className="validation-error">Failed: {validationResult.error}</p>
+              ) : validationResult.missing_files === 0 ? (
+                <p className="validation-ok">
+                  All files OK — {validationResult.total_files} files across {validationResult.total_mods} mods
+                </p>
+              ) : (
+                <>
+                  <p className="validation-summary">
+                    {validationResult.missing_files} missing file{validationResult.missing_files > 1 ? "s" : ""} in {validationResult.affected_mods.length} mod{validationResult.affected_mods.length > 1 ? "s" : ""} (out of {validationResult.total_files} total)
+                  </p>
+                  {validationResult.affected_mods.map((m, i) => (
+                    <div key={i} className="validation-mod">
+                      <div
+                        className="validation-mod-name"
+                        onClick={() => { setValidationResult(null); onNavigateToMod?.(m.id); }}
+                      >
+                        {m.name} ({m.missing.length}/{m.total} missing)
+                      </div>
+                      {m.missing.map((f, j) => (
+                        <div key={j} className="validation-file">{f}</div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

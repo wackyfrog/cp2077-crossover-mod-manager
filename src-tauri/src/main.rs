@@ -275,6 +275,152 @@ fn forget_mod(
 }
 
 #[tauri::command]
+fn backup_database() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let app_dir = home.join(".crossover-mod-manager");
+    let db_path = app_dir.join("mods.json");
+    let backup_dir = app_dir.join("backups");
+
+    if !db_path.exists() {
+        return Err("Database file not found".to_string());
+    }
+
+    std::fs::create_dir_all(&backup_dir)
+        .map_err(|e| format!("Failed to create backup directory: {}", e))?;
+
+    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let backup_name = format!("mods_{}.json", ts);
+    let backup_path = backup_dir.join(&backup_name);
+
+    std::fs::copy(&db_path, &backup_path)
+        .map_err(|e| format!("Failed to create backup: {}", e))?;
+
+    Ok(backup_name)
+}
+
+#[tauri::command]
+fn list_backups() -> Result<Vec<serde_json::Value>, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let backup_dir = home.join(".crossover-mod-manager").join("backups");
+
+    if !backup_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut backups: Vec<serde_json::Value> = Vec::new();
+    for entry in std::fs::read_dir(&backup_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("mods_") && name.ends_with(".json") {
+            let meta = entry.metadata().map_err(|e| e.to_string())?;
+            let size = meta.len();
+            let modified = meta.modified().ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+            backups.push(serde_json::json!({
+                "name": name,
+                "size": size,
+                "timestamp": modified,
+            }));
+        }
+    }
+
+    backups.sort_by(|a, b| b["timestamp"].as_u64().cmp(&a["timestamp"].as_u64()));
+    Ok(backups)
+}
+
+#[tauri::command]
+fn restore_backup(name: String, state: State<AppState>) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let app_dir = home.join(".crossover-mod-manager");
+    let backup_path = app_dir.join("backups").join(&name);
+    let db_path = app_dir.join("mods.json");
+
+    if !backup_path.exists() {
+        return Err("Backup file not found".to_string());
+    }
+
+    // Validate that it's valid JSON with mods array
+    let content = std::fs::read_to_string(&backup_path)
+        .map_err(|e| format!("Failed to read backup: {}", e))?;
+    let _: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|_| "Invalid backup file format".to_string())?;
+
+    std::fs::copy(&backup_path, &db_path)
+        .map_err(|e| format!("Failed to restore backup: {}", e))?;
+
+    // Reload mod manager from disk
+    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    manager.reload_if_changed();
+
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_backup(name: String) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let backup_path = home.join(".crossover-mod-manager").join("backups").join(&name);
+
+    if !backup_path.exists() {
+        return Err("Backup not found".to_string());
+    }
+
+    // Safety: only delete files in backups dir that match pattern
+    if !name.starts_with("mods_") || !name.ends_with(".json") {
+        return Err("Invalid backup name".to_string());
+    }
+
+    std::fs::remove_file(&backup_path)
+        .map_err(|e| format!("Failed to delete backup: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn validate_mod_files(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    let mods = manager.get_installed_mods();
+
+    let mut total_mods = 0u32;
+    let mut total_files = 0u32;
+    let mut missing_count = 0u32;
+    let mut affected: Vec<serde_json::Value> = Vec::new();
+
+    for m in &mods {
+        if m.removed || m.files.is_empty() { continue; }
+        total_mods += 1;
+        let mut missing: Vec<String> = Vec::new();
+        for f in &m.files {
+            total_files += 1;
+            if !std::path::Path::new(f).exists() {
+                // Show relative path after "Cyberpunk 2077/"
+                let short = f.find("Cyberpunk 2077/")
+                    .map(|i| &f[i + 15..])
+                    .unwrap_or(f);
+                missing.push(short.to_string());
+                missing_count += 1;
+            }
+        }
+        if !missing.is_empty() {
+            let label = m.file_name.as_deref().unwrap_or(&m.name);
+            affected.push(serde_json::json!({
+                "id": m.id,
+                "name": label,
+                "missing": missing,
+                "total": m.files.len(),
+            }));
+        }
+    }
+
+    Ok(serde_json::json!({
+        "total_mods": total_mods,
+        "total_files": total_files,
+        "missing_files": missing_count,
+        "affected_mods": affected,
+    }))
+}
+
+#[tauri::command]
 fn deduplicate_mods(
     state: State<AppState>,
 ) -> Result<Vec<String>, String> {
@@ -1254,90 +1400,23 @@ async fn test_nxm_event(app: tauri::AppHandle, test_url: String) -> Result<(), S
     }
 }
 
-/// Emit a relay-status event to the main window.
-fn emit_relay_status(app: &tauri::AppHandle, stage: &str, message: &str, show_actions: bool, nxm_url: Option<&str>, cold_start: bool) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.emit("relay-status", serde_json::json!({
-            "stage": stage,
-            "message": message,
-            "show_actions": show_actions,
-            "nxm_url": nxm_url,
-            "cold_start": cold_start,
-        }));
-    }
-}
-
-#[tauri::command]
-async fn handle_relay_action(
-    action: String,   // "process" | "exit"
-    nxm_url: Option<String>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    match action.as_str() {
-        "process" => {
-            if let Some(url) = nxm_url {
-                handle_nxm_url_internal(url, app).await?;
-            }
-        }
-        _ => {
-            app.exit(0);
-        }
-    }
-    Ok(())
-}
-
 /// Returns the NXM URL that launched this app (if any), then clears it.
 #[tauri::command]
 fn get_startup_nxm_url(state: State<AppState>) -> Option<String> {
     state.startup_nxm_url.lock().ok()?.take()
 }
 
-/// Core relay-or-process logic shared by startup and event-based deep link handling.
-/// `cold_start` = true when app was launched by the NXM link (not already running).
-async fn handle_nxm_deep_link(url: String, app: tauri::AppHandle, cold_start: bool) {
+/// Process an incoming NXM deep link URL.
+async fn handle_nxm_deep_link(url: String, app: tauri::AppHandle, _cold_start: bool) {
     if let Some(window) = app.get_webview_window("main") {
         window.show().ok();
         window.set_focus().ok();
     }
 
-    // Try to relay via Unix socket
-    match try_relay_to_dev(&url) {
-        Ok(true) => {
-            println!("🔥 DEEP LINK: relayed to dev instance via socket");
-            emit_relay_status(&app, "relaying", "Forwarding to dev instance…", false, Some(&url), cold_start);
-
-            // Brief pause then show done
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-            if cold_start {
-                for i in (1..=5).rev() {
-                    emit_relay_status(
-                        &app, "done",
-                        &format!("Forwarded to dev instance. Closing in {}s...", i),
-                        false, Some(&url), true,
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-                app.exit(0);
-            } else {
-                emit_relay_status(&app, "done", "Forwarded to dev instance", false, Some(&url), false);
-            }
-        }
-        Ok(false) => {
-            println!("🔥 DEEP LINK: no dev instance, processing directly");
-            match handle_nxm_url_internal(url, app).await {
-                Ok(_) => println!("🔥 DEEP LINK: processed successfully"),
-                Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
-            }
-        }
-        Err(e) => {
-            println!("🔥 DEEP LINK: relay failed ({}), processing directly", e);
-            emit_relay_status(&app, "error", &format!("Relay failed: {}", e), true, Some(&url), cold_start);
-            match handle_nxm_url_internal(url, app).await {
-                Ok(_) => println!("🔥 DEEP LINK: processed successfully (fallback)"),
-                Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
-            }
-        }
+    println!("🔥 DEEP LINK: processing {}", url);
+    match handle_nxm_url_internal(url, app).await {
+        Ok(_) => println!("🔥 DEEP LINK: processed successfully"),
+        Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
     }
 }
 
@@ -1473,96 +1552,6 @@ fn is_newer_version(latest: &str, installed: &str) -> bool {
         if l < r { return false; }
     }
     false // equal
-}
-
-fn socket_path() -> std::path::PathBuf {
-    // Use /tmp (not $TMPDIR) so both dev and bundled app share the same path.
-    std::path::PathBuf::from("/tmp/crossover-mod-manager-dev-relay.sock")
-}
-
-/// Try to relay an NXM URL to a dev instance via Unix socket.
-/// Returns Ok(true) if relayed, Ok(false) if no dev instance, Err on failure.
-fn try_relay_to_dev(url: &str) -> Result<bool, String> {
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
-
-    let sock = socket_path();
-    let mut stream = match UnixStream::connect(&sock) {
-        Ok(s) => s,
-        Err(_) => return Ok(false), // No socket = no dev instance
-    };
-    stream.set_write_timeout(Some(std::time::Duration::from_secs(5))).ok();
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).ok();
-
-    stream.write_all(url.as_bytes()).map_err(|e| e.to_string())?;
-    stream.shutdown(std::net::Shutdown::Write).map_err(|e| e.to_string())?;
-
-    let mut response = String::new();
-    stream.read_to_string(&mut response).map_err(|e| e.to_string())?;
-
-    Ok(response.trim() == "OK")
-}
-
-/// Start listening for relay URLs on Unix socket (dev instance only).
-fn start_socket_listener(app: tauri::AppHandle) {
-    use std::os::unix::net::UnixListener;
-
-    let sock = socket_path();
-    // Remove stale socket
-    std::fs::remove_file(&sock).ok();
-
-    let listener = match UnixListener::bind(&sock) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("📡 Failed to bind relay socket: {}", e);
-            return;
-        }
-    };
-    println!("📡 DEV: listening on {}", sock.display());
-
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            match stream {
-                Ok(mut stream) => {
-                    use std::io::{Read, Write};
-                    let mut url = String::new();
-                    if stream.read_to_string(&mut url).is_ok() && !url.is_empty() {
-                        let url = url.trim().to_string();
-                        println!("📡 DEV: received relay URL: {}", url);
-                        let app_clone = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            match handle_nxm_url_internal(url, app_clone).await {
-                                Ok(_) => println!("📡 DEV: relay URL processed successfully"),
-                                Err(e) => println!("📡 DEV: relay URL failed: {}", e),
-                            }
-                        });
-                        stream.write_all(b"OK").ok();
-                    }
-                }
-                Err(e) => eprintln!("📡 Socket accept error: {}", e),
-            }
-        }
-    });
-}
-
-/// Try to relay URL to dev instance. Returns true if relayed, false if should process locally.
-#[tauri::command]
-fn try_relay(nxm_url: String) -> bool {
-    match try_relay_to_dev(&nxm_url) {
-        Ok(true) => {
-            println!("📡 try_relay: forwarded to dev");
-            true
-        }
-        _ => {
-            println!("📡 try_relay: no dev instance, process locally");
-            false
-        }
-    }
-}
-
-/// Cleanup socket on shutdown
-fn cleanup_socket() {
-    std::fs::remove_file(socket_path()).ok();
 }
 
 fn is_valid_cyberpunk_installation(path: &std::path::Path) -> bool {
@@ -4353,12 +4342,6 @@ fn main() {
     let app_settings = AppSettings::new();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // Focus existing window when second instance is launched
-            if let Some(window) = app.get_webview_window("main") {
-                window.set_focus().ok();
-            }
-        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
@@ -4387,6 +4370,11 @@ fn main() {
             remove_mod,
             forget_mod,
             deduplicate_mods,
+            validate_mod_files,
+            backup_database,
+            list_backups,
+            restore_backup,
+            delete_backup,
             toggle_mod,
             get_settings,
             save_settings,
@@ -4401,8 +4389,6 @@ fn main() {
             download_and_save_mod,
             list_downloaded_mods,
             test_nxm_event,
-            handle_relay_action,
-            try_relay,
             get_startup_nxm_url,
             is_dev_build,
             get_build_timestamp,
@@ -4477,16 +4463,6 @@ fn main() {
                 });
 
                 println!("🔥 SETUP: Deep link handler registered for nxm:// scheme");
-            }
-
-            // Start Unix socket listener for NXM relay (dev instance only).
-            // Release bundles process URLs directly; dev instance receives relayed URLs.
-            let is_dev = tauri::is_dev() || cfg!(debug_assertions);
-            let is_bundled = std::env::current_exe()
-                .map(|p| p.to_string_lossy().contains(".app/Contents/MacOS"))
-                .unwrap_or(false);
-            if is_dev && !is_bundled {
-                start_socket_listener(app.handle().clone());
             }
 
             // Log startup message

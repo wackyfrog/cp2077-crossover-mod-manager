@@ -10,7 +10,6 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import SplashScreen from "./components/SplashScreen";
 import Manifest from "./components/Manifest";
 import AppFooter from "./components/AppFooter";
-import DevRelayOverlay from "./components/DevRelayOverlay";
 import JackInOverlay from "./components/JackInOverlay";
 import "./App.css";
 
@@ -25,7 +24,6 @@ function App() {
   const [syncSummary, setSyncSummary] = useState(null); // { synced, total, updated, errors, cancelled }
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
   const [forgetConfirm, setForgetConfirm] = useState(null); // { modId, modName }
-  const [relayStatus, setRelayStatus]     = useState(null); // { stage, message, show_actions, nxmUrl }
   const [installProgress, setInstallProgress] = useState(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const [nxmInput, setNxmInput] = useState(false);
@@ -82,19 +80,10 @@ function App() {
     };
     window.addEventListener("focus", onFocus);
 
-    // Check for startup NXM URL — skip splash, try relay, or process locally
+    // Check for startup NXM URL — skip splash, process directly
     invoke("get_startup_nxm_url").then(async (url) => {
       if (url) {
         setBooting(false);
-        // Try relay to dev instance first
-        try {
-          const relayed = await invoke("try_relay", { nxmUrl: url });
-          if (relayed) {
-            setStatusMsg("relayed to dev instance");
-            return;
-          }
-        } catch {}
-        // No dev instance — process locally
         setTimeout(() => handleInstallUrl(url), 300);
       }
     }).catch(() => {});
@@ -271,19 +260,6 @@ function App() {
     };
     setupInstallProgressListener();
 
-    // Listen for relay-status events (shown on the /Applications instance when relaying to dev)
-    const setupRelayListener = async () => {
-      try {
-        return await listen("relay-status", (event) => {
-          setRelayStatus(event.payload);
-        });
-      } catch (e) {
-        console.error("Failed to setup relay-status listener:", e);
-      }
-    };
-    setupRelayListener();
-
-    // NXM relay is now handled via Unix socket on the backend — no frontend polling needed.
   }, []);
 
   const loadMods = async () => {
@@ -622,13 +598,17 @@ function App() {
                 onToggle={handleToggleMod}
                 onJackIn={handleJackInMod}
                 loading={loading}
+                hint={hint}
               />
             </div>
           </div>
         ) : activeTab === "manifest" ? (
-          <Manifest version="1.0.0" />
+          <Manifest version="1.1.0" />
         ) : (
-          <Settings />
+          <Settings hint={hint} onNavigateToMod={(modId) => {
+            const mod = mods.find(m => m.id === modId);
+            if (mod) { setSelectedMod(mod); setActiveTab("mods"); }
+          }} />
         )}
       </main>
 
@@ -716,7 +696,7 @@ function App() {
       />
 
       <JackInOverlay
-        open={(nxmInput || !!installProgress) && !relayStatus}
+        open={nxmInput || !!installProgress}
         progress={installProgress}
         onSubmit={handleInstallUrl}
         onRetry={() => setInstallProgress(null)}
@@ -756,18 +736,8 @@ function App() {
         }}
       />
 
-      <AppFooter version="1.0.0" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
+      <AppFooter version="1.1.0" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
 
-
-      {relayStatus && (
-        <DevRelayOverlay
-          stage={relayStatus.stage}
-          message={relayStatus.message}
-          nxmUrl={relayStatus.nxm_url ?? null}
-          coldStart={relayStatus.cold_start ?? false}
-          onDismiss={() => setRelayStatus(null)}
-        />
-      )}
     </div>
   );
 }

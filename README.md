@@ -2,9 +2,7 @@
 
 Mod manager for Cyberpunk 2077 running via CrossOver on macOS.
 
-Crafted with love for the game and Night City.
-
-> *"I'm not gonna be a memory. I'm gonna be a legend."*
+Enjoy Night City, choom!
 
 ![Splash screen](docs/screenshots/welcome.png)
 
@@ -13,6 +11,12 @@ Crafted with love for the game and Night City.
 ![Jack In — mod installation terminal](docs/screenshots/jack-in.png)
 
 ![Netrun — sync with NexusMods](docs/screenshots/netrun.png)
+
+## What's New in 1.1
+
+- **Database backup/restore** — create, restore, and delete backups of mod database from Config page
+- **Mod file validation** — scan all mods, verify files exist on disk
+- **CONFIG page** — cleaned up, removed test buttons, removed unused settings
 
 ## What's New in 1.0
 
@@ -61,10 +65,6 @@ npm run tauri:build  # production
 Requires: Node.js 18+, Rust 1.70+, Xcode Command Line Tools.
 
 Optional (faster extraction): `brew install p7zip unrar`
-
-### NXM Relay (dev mode)
-
-When running `tauri:dev`, the dev instance listens on a Unix socket at `/tmp/crossover-mod-manager-dev-relay.sock`. If the production app is also installed, it will forward incoming NXM URLs to the dev instance automatically — so you can click "Download with Mod Manager" on NexusMods and the download goes straight to your dev build. No manual URL copying needed.
 
 ## Tech Stack
 

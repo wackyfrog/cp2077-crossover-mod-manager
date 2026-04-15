@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-04-15
+
+### New
+
+- **Database backup/restore** — create, restore, and delete backups of mod database from Config page
+- **Mod file validation** — scan all mods, verify files exist on disk
+- **CONFIG page** — cleaned up, removed test buttons, removed unused Mod Storage setting
+
+### Fixed
+
+- Misc bugfixes
+
 ## [1.0.0] - 2026-04-14
 
 Complete rewrite of the UI and major backend improvements. Fork of [crossover-mod-manager](https://github.com/beneccles/crossover-mod-manager) by Benjamin Eccles.

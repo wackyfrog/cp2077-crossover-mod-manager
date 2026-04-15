@@ -492,7 +492,7 @@ export default function JackInOverlay({ open, progress, onSubmit, onRetry, onRei
       <div className="jackin-chrome-bar">
         <span className="jackin-chrome-tag">NEXUS UPLINK</span>
         <span className="jackin-chrome-divider" />
-        <span className="jackin-chrome-sys">CROSSOVER MOD MANAGER v1.0.0</span>
+        <span className="jackin-chrome-sys">CROSSOVER MOD MANAGER v1.1.0</span>
         <span className="jackin-chrome-divider" />
         <span className="jackin-chrome-status">
           {phase === "input" ? "AWAITING INPUT" : phase === "working" ? "TRANSFER IN PROGRESS" : phase === "done" ? "COMPLETE" : "FAULT DETECTED"}

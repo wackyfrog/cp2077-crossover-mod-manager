@@ -49,10 +49,7 @@ export default function Manifest({ version }) {
         </div>
 
         <p className="manifest-tagline">
-          Made with ♥ in Night City
-        </p>
-        <p className="manifest-quote">
-          "I'm not gonna be a memory. I'm gonna be a legend."
+          Enjoy Night City, choom!
         </p>
       </div>
     </div>
