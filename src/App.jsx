@@ -603,7 +603,7 @@ function App() {
             </div>
           </div>
         ) : activeTab === "manifest" ? (
-          <Manifest version="1.1.0" />
+          <Manifest version="1.1.1" />
         ) : (
           <Settings hint={hint} onNavigateToMod={(modId) => {
             const mod = mods.find(m => m.id === modId);
@@ -718,8 +718,8 @@ function App() {
           }
           loadMods().then(() => {
             if (wasSuccess && modName) {
-              // Select the newly installed mod and switch to Active filter
-              setModFilter("all");
+              // Select the newly installed mod; only switch filter if needed
+              setModFilter((cur) => cur === "removed" ? "all" : cur);
               setMods((cur) => {
                 const installed = cur.find(m => m.name === modName && !m.removed);
                 if (installed) setSelectedMod(installed);
@@ -736,7 +736,7 @@ function App() {
         }}
       />
 
-      <AppFooter version="1.1.0" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
+      <AppFooter version="1.1.1" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
 
     </div>
   );

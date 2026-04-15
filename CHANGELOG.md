@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-04-15
+
+### Fixed
+
+- Filter resets to ALL after updating a mod — now stays on current filter (e.g. UPDATES)
+
 ## [1.1.0] - 2026-04-15
 
 ### New
