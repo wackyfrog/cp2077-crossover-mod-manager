@@ -153,7 +153,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
     return (
       <div className="mod-details">
         <div className="mod-details-header">
-          <h2>{mod.name}</h2>
+          <h2>{mod.update_available && <span className="details-upd-badge">UPD</span>}{mod.name}</h2>
           <span className="group-badge">{parts.length} parts</span>
         </div>
 
@@ -372,7 +372,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
   return (
     <div className="mod-details">
       <div className="mod-details-header">
-        <h2>{mod.name}</h2>
+        <h2>{mod.update_available && <span className="details-upd-badge">UPD</span>}{mod.name}</h2>
         <label className={`cyber-toggle ${loading ? 'cyber-toggle--disabled' : ''}`} {...hint(mod.enabled ? 'disable this mod without removing files' : 'enable this mod')}>
           <input
             type="checkbox"

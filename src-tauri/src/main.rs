@@ -1400,23 +1400,149 @@ async fn test_nxm_event(app: tauri::AppHandle, test_url: String) -> Result<(), S
     }
 }
 
+/// Emit a relay-status event to the main window.
+fn emit_relay_status(app: &tauri::AppHandle, stage: &str, message: &str, show_actions: bool, nxm_url: Option<&str>, cold_start: bool) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("relay-status", serde_json::json!({
+            "stage": stage,
+            "message": message,
+            "show_actions": show_actions,
+            "nxm_url": nxm_url,
+            "cold_start": cold_start,
+        }));
+    }
+}
+
+#[tauri::command]
+async fn handle_relay_action(
+    action: String,
+    nxm_url: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    match action.as_str() {
+        "process" => {
+            if let Some(url) = nxm_url {
+                handle_nxm_url_internal(url, app).await?;
+            }
+        }
+        _ => { app.exit(0); }
+    }
+    Ok(())
+}
+
 /// Returns the NXM URL that launched this app (if any), then clears it.
 #[tauri::command]
 fn get_startup_nxm_url(state: State<AppState>) -> Option<String> {
     state.startup_nxm_url.lock().ok()?.take()
 }
 
-/// Process an incoming NXM deep link URL.
-async fn handle_nxm_deep_link(url: String, app: tauri::AppHandle, _cold_start: bool) {
+/// Core relay-or-process logic for deep link handling.
+async fn handle_nxm_deep_link(url: String, app: tauri::AppHandle, cold_start: bool) {
     if let Some(window) = app.get_webview_window("main") {
         window.show().ok();
         window.set_focus().ok();
     }
 
-    println!("🔥 DEEP LINK: processing {}", url);
-    match handle_nxm_url_internal(url, app).await {
-        Ok(_) => println!("🔥 DEEP LINK: processed successfully"),
-        Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
+    match try_relay_to_dev(&url) {
+        Ok(true) => {
+            println!("🔥 DEEP LINK: relayed to dev instance via socket");
+            emit_relay_status(&app, "relaying", "Forwarding to dev instance…", false, Some(&url), cold_start);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            if cold_start {
+                for i in (1..=5).rev() {
+                    emit_relay_status(&app, "done", &format!("Forwarded to dev instance. Closing in {}s...", i), false, Some(&url), true);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                app.exit(0);
+            } else {
+                emit_relay_status(&app, "done", "Forwarded to dev instance", false, Some(&url), false);
+            }
+        }
+        Ok(false) => {
+            println!("🔥 DEEP LINK: no dev instance, processing directly");
+            match handle_nxm_url_internal(url, app).await {
+                Ok(_) => println!("🔥 DEEP LINK: processed successfully"),
+                Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
+            }
+        }
+        Err(e) => {
+            println!("🔥 DEEP LINK: relay failed ({}), processing directly", e);
+            emit_relay_status(&app, "error", &format!("Relay failed: {}", e), true, Some(&url), cold_start);
+            match handle_nxm_url_internal(url, app).await {
+                Ok(_) => println!("🔥 DEEP LINK: processed successfully (fallback)"),
+                Err(e) => println!("🔥 DEEP LINK ERROR: {}", e),
+            }
+        }
+    }
+}
+
+fn socket_path() -> std::path::PathBuf {
+    std::path::PathBuf::from("/tmp/crossover-mod-manager-dev-relay.sock")
+}
+
+fn try_relay_to_dev(url: &str) -> Result<bool, String> {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+
+    let sock = socket_path();
+    let mut stream = match UnixStream::connect(&sock) {
+        Ok(s) => s,
+        Err(_) => return Ok(false),
+    };
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(5))).ok();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).ok();
+    stream.write_all(url.as_bytes()).map_err(|e| e.to_string())?;
+    stream.shutdown(std::net::Shutdown::Write).map_err(|e| e.to_string())?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).map_err(|e| e.to_string())?;
+    Ok(response.trim() == "OK")
+}
+
+fn start_socket_listener(app: tauri::AppHandle) {
+    use std::os::unix::net::UnixListener;
+    let sock = socket_path();
+    std::fs::remove_file(&sock).ok();
+    let listener = match UnixListener::bind(&sock) {
+        Ok(l) => l,
+        Err(e) => { eprintln!("📡 Failed to bind relay socket: {}", e); return; }
+    };
+    println!("📡 DEV: listening on {}", sock.display());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(mut stream) => {
+                    use std::io::{Read, Write};
+                    let mut url = String::new();
+                    if stream.read_to_string(&mut url).is_ok() && !url.is_empty() {
+                        let url = url.trim().to_string();
+                        println!("📡 DEV: received relay URL: {}", url);
+                        // Focus dev window
+                        if let Some(window) = app.get_webview_window("main") {
+                            window.show().ok();
+                            window.set_focus().ok();
+                        }
+                        let app_clone = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            match handle_nxm_url_internal(url, app_clone).await {
+                                Ok(_) => println!("📡 DEV: relay URL processed successfully"),
+                                Err(e) => println!("📡 DEV: relay URL failed: {}", e),
+                            }
+                        });
+                        stream.write_all(b"OK").ok();
+                    }
+                }
+                Err(e) => eprintln!("📡 Socket accept error: {}", e),
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn try_relay(nxm_url: String) -> bool {
+    match try_relay_to_dev(&nxm_url) {
+        Ok(true) => { println!("📡 try_relay: forwarded to dev"); true }
+        _ => { println!("📡 try_relay: no dev instance, process locally"); false }
     }
 }
 
@@ -1643,6 +1769,7 @@ async fn install_mod_from_nxm_inner(
     use walkdir::WalkDir;
 
     // Variables for cleanup (used throughout the function for error handling)
+    #[allow(unused_assignments)]
     let mut archive_path: Option<std::path::PathBuf> = None;
     let mut _extract_dir: Option<std::path::PathBuf> = None;
 
@@ -1663,33 +1790,23 @@ async fn install_mod_from_nxm_inner(
 
         // Check if exact same mod and file is already installed
         if let Some(existing_mod) = manager.find_existing_mod(&mod_id, &file_id) {
-            if state.force_reinstall.load(std::sync::atomic::Ordering::Relaxed) {
+            let version_changed = existing_mod.version != mod_version;
+            let force = state.force_reinstall.load(std::sync::atomic::Ordering::Relaxed);
+
+            if force || version_changed {
+                // Reinstall (force) or update (same file_id but different mod version)
                 state.force_reinstall.store(false, std::sync::atomic::Ordering::Relaxed);
                 let existing_id = existing_mod.id.clone();
                 let existing_name = existing_mod.name.clone();
 
-                // Phase 1: prepare
                 add_log(
-                    format!("🔄 Reinstall: preparing '{}'", existing_name),
+                    format!("🔄 {}: '{}'", if version_changed { "Updating" } else { "Reinstalling" }, existing_name),
                     "info".to_string(),
                     "installation".to_string(),
                     state.clone(),
                 )?;
                 drop(manager);
 
-                {
-                    let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
-                    mgr.set_reinstall_status(&existing_id, Some("prepare"))?;
-                }
-
-                // Phase 2: removing old files
-                {
-                    let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
-                    mgr.set_reinstall_status(&existing_id, Some("removing"))?;
-                    mgr.remove_mod_files(&existing_id)?;
-                }
-
-                // Phase 3: set installing status
                 {
                     let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
                     mgr.set_reinstall_status(&existing_id, Some("installing"))?;
@@ -1702,7 +1819,7 @@ async fn install_mod_from_nxm_inner(
 
                 manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
             } else {
-                let err_msg = format!("Mod '{}' with the same file version is already installed. Please uninstall the existing version first if you want to reinstall.", existing_mod.name);
+                let err_msg = format!("Mod '{}' with the same version is already installed.", existing_mod.name);
                 add_log(
                     format!(
                         "⚠️ Mod '{}' (File ID: {}) is already installed!",
@@ -3023,6 +3140,7 @@ async fn install_mod_from_nxm_inner(
 
     // Check if this is a reinstall (existing record to update)
     let reinstall_id = state.reinstall_mod_id.lock().map_err(|e| e.to_string())?.take();
+    let mut installed_mod_id: Option<String> = reinstall_id.clone();
 
     if let Some(ref existing_id) = reinstall_id {
         // Reinstall/update: clean up stale files from old version, then update record
@@ -3102,6 +3220,7 @@ async fn install_mod_from_nxm_inner(
             reinstall_status: None,
         };
 
+        installed_mod_id = Some(mod_info.id.clone());
         let mut manager = state.mod_manager.lock().map_err(|e| {
             e.to_string()
         })?;
@@ -3152,7 +3271,42 @@ async fn install_mod_from_nxm_inner(
         ..Default::default()
     });
 
-    // Step 7: Notify frontend to refresh mod list
+    // Step 7: Quick sync metadata for installed mod (picture, summary, file descriptions)
+    {
+        let api_key = {
+            let settings = state.settings.lock().map_err(|e| e.to_string())?;
+            settings.get_settings().nexusmods_api_key.clone()
+        };
+        if !api_key.is_empty() {
+            match nexusmods_api::get_mod_details("cyberpunk2077", &mod_id, &api_key).await {
+            Ok(details) => {
+                println!("📡 Mini-sync: got details for mod {}, picture: {:?}", mod_id, details.picture_url.is_some());
+                let file_names = nexusmods_api::get_file_names("cyberpunk2077", &mod_id, &api_key)
+                    .await.unwrap_or_default();
+
+                if let Some(ref mid) = installed_mod_id {
+                    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                    manager.update_mod_sync_data(
+                        mid,
+                        details.summary,
+                        details.picture_url,
+                        false,
+                        Some(details.version),
+                        details.nexus_updated_at,
+                    )?;
+                    if !file_names.is_empty() {
+                        manager.update_file_info(&mod_id, &file_names)?;
+                    }
+                }
+            }
+            Err(e) => {
+                println!("📡 Mini-sync failed: {}", e);
+            }
+            }
+        }
+    }
+
+    // Step 8: Notify frontend to refresh mod list
     if let Some(window) = app.get_webview_window("main") {
         add_log(
             "📢 Emitting mod-installed event to frontend".to_string(),
@@ -3161,6 +3315,7 @@ async fn install_mod_from_nxm_inner(
             state.clone(),
         )?;
         window.emit("mod-installed", serde_json::json!({
+            "id": installed_mod_id,
             "name": mod_name,
             "version": mod_version,
             "reinstall": reinstall_id.is_some(),
@@ -4389,6 +4544,8 @@ fn main() {
             download_and_save_mod,
             list_downloaded_mods,
             test_nxm_event,
+            handle_relay_action,
+            try_relay,
             get_startup_nxm_url,
             is_dev_build,
             get_build_timestamp,
@@ -4463,6 +4620,15 @@ fn main() {
                 });
 
                 println!("🔥 SETUP: Deep link handler registered for nxm:// scheme");
+            }
+
+            // Start Unix socket listener for NXM relay (dev instance only)
+            let is_dev = tauri::is_dev() || cfg!(debug_assertions);
+            let is_bundled = std::env::current_exe()
+                .map(|p| p.to_string_lossy().contains(".app/Contents/MacOS"))
+                .unwrap_or(false);
+            if is_dev && !is_bundled {
+                start_socket_listener(app.handle().clone());
             }
 
             // Log startup message

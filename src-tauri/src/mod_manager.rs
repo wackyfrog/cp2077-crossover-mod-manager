@@ -174,6 +174,7 @@ impl ModManager {
             .find(|mod_info| mod_info.name == name && mod_info.version == version)
     }
 
+    #[allow(dead_code)]
     /// Check if any version of a mod is already installed (by mod_id only)
     pub fn find_existing_mod_by_id(&self, mod_id: &str) -> Option<&ModInfo> {
         self.mods.iter().find(|mod_info| {
@@ -438,6 +439,7 @@ impl ModManager {
     }
 
     /// Remove mod files from disk but keep the record with reinstall_status
+    #[allow(dead_code)]
     pub fn remove_mod_files(&mut self, mod_id: &str) -> Result<(String, Vec<String>, Vec<String>), String> {
         let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
         let mod_name = mod_info.name.clone();

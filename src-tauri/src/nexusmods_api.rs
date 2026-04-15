@@ -202,6 +202,7 @@ pub async fn get_mod_info(
     Ok((mod_info.name, mod_info.version, mod_info.author))
 }
 
+#[allow(dead_code)]
 pub struct ModDetails {
     pub name: String,
     pub version: String,
@@ -279,6 +280,7 @@ pub async fn get_mod_details(
     })
 }
 
+#[allow(dead_code)]
 /// Fetch the latest file version for a mod (MAIN category) from Nexus API
 pub async fn get_latest_file_version(
     game_domain: &str,
@@ -394,6 +396,7 @@ pub async fn get_file_names(
     Ok(map)
 }
 
+#[allow(dead_code)]
 /// Parse version string into comparable numeric parts
 fn parse_version(s: &str) -> Vec<u64> {
     s.split(|c: char| c == '.' || c == '-')

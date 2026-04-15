@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-04-15
+
+### New
+
+- **Auto-sync metadata after install** — picture, summary, and file descriptions fetched from Nexus API immediately after install/update, no manual Netrun needed
+- **NXM relay restored** — main app forwards NXM URLs to dev instance via Unix socket for development
+
+### Fixed
+
+- Mod details not refreshing after update (stale selectedMod)
+- Wrong sub-mod selected after install/update (searched by name instead of id)
+- Same file_id but different mod version now treated as update, not "already installed" error
+- Dev window not focused after relay install
+- Compiler warnings cleaned up
+
 ## [1.1.1] - 2026-04-15
 
 ### Fixed

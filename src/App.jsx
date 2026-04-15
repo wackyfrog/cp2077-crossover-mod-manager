@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import ModList from "./components/ModList";
 import ModDetails from "./components/ModDetails";
+import DevRelayOverlay from "./components/DevRelayOverlay";
 import Settings from "./components/Settings";
 import SyncOverlay from "./components/SyncOverlay";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -25,6 +26,7 @@ function App() {
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
   const [forgetConfirm, setForgetConfirm] = useState(null); // { modId, modName }
   const [installProgress, setInstallProgress] = useState(null);
+  const [relayStatus, setRelayStatus] = useState(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const [nxmInput, setNxmInput] = useState(false);
   const [nxmUrl, setNxmUrl] = useState("");
@@ -80,10 +82,14 @@ function App() {
     };
     window.addEventListener("focus", onFocus);
 
-    // Check for startup NXM URL — skip splash, process directly
+    // Check for startup NXM URL — skip splash, try relay, or process locally
     invoke("get_startup_nxm_url").then(async (url) => {
       if (url) {
         setBooting(false);
+        try {
+          const relayed = await invoke("try_relay", { nxmUrl: url });
+          if (relayed) { setStatusMsg("relayed to dev instance"); return; }
+        } catch {}
         setTimeout(() => handleInstallUrl(url), 300);
       }
     }).catch(() => {});
@@ -187,12 +193,12 @@ function App() {
           modInstalledTimer = setTimeout(async () => {
             console.log("🎉 Mod installed event received:", event.payload);
             const modList = await loadMods();
-            setActiveTab("mods");
-            // Refresh selectedMod with updated data
-            setSelectedMod((cur) => {
-              if (!cur) return cur;
-              return modList?.find(m => m.id === cur.id) || cur;
-            });
+            // Select the mod that was just installed/updated
+            const installedId = event.payload?.id;
+            if (installedId && modList) {
+              const mod = modList.find(m => m.id === installedId);
+              if (mod) setSelectedMod(mod);
+            }
           }, 300);
         });
 
@@ -260,6 +266,14 @@ function App() {
     };
     setupInstallProgressListener();
 
+    const setupRelayListener = async () => {
+      try {
+        return await listen("relay-status", (event) => {
+          setRelayStatus(event.payload);
+        });
+      } catch {}
+    };
+    setupRelayListener();
   }, []);
 
   const loadMods = async () => {
@@ -273,6 +287,12 @@ function App() {
       const modList = await invoke("get_installed_mods");
       console.log("Loaded mods:", modList.length, "mods");
       setMods(modList);
+      // Refresh selectedMod with updated data from new list
+      setSelectedMod((cur) => {
+        if (!cur) return null;
+        const updated = modList.find(m => m.id === cur.id);
+        return updated ? { ...updated, _siblings: cur._siblings } : cur;
+      });
       const slotted = modList.filter(m => m.enabled && !m.removed).length;
       const ghosted = modList.filter(m => !m.enabled && !m.removed).length;
       const updates = modList.filter(m => m.update_available).length;
@@ -603,7 +623,7 @@ function App() {
             </div>
           </div>
         ) : activeTab === "manifest" ? (
-          <Manifest version="1.1.1" />
+          <Manifest version="1.1.2" />
         ) : (
           <Settings hint={hint} onNavigateToMod={(modId) => {
             const mod = mods.find(m => m.id === modId);
@@ -696,7 +716,7 @@ function App() {
       />
 
       <JackInOverlay
-        open={nxmInput || !!installProgress}
+        open={(nxmInput || !!installProgress) && !relayStatus}
         progress={installProgress}
         onSubmit={handleInstallUrl}
         onRetry={() => setInstallProgress(null)}
@@ -716,15 +736,18 @@ function App() {
           } else {
             refreshStatus();
           }
+          const prevSelectedId = selectedMod?.id;
           loadMods().then(() => {
-            if (wasSuccess && modName) {
-              // Select the newly installed mod; only switch filter if needed
+            if (wasSuccess) {
               setModFilter((cur) => cur === "removed" ? "all" : cur);
-              setMods((cur) => {
-                const installed = cur.find(m => m.name === modName && !m.removed);
-                if (installed) setSelectedMod(installed);
-                return cur;
-              });
+              // loadMods already refreshes selectedMod by id — only select by name if nothing was selected
+              if (!prevSelectedId && modName) {
+                setMods((cur) => {
+                  const installed = cur.find(m => m.name === modName && !m.removed);
+                  if (installed) setSelectedMod(installed);
+                  return cur;
+                });
+              }
             } else {
               // Clear selection if it was a flatlined mod that got reinstalled
               setSelectedMod((cur) => {
@@ -736,7 +759,17 @@ function App() {
         }}
       />
 
-      <AppFooter version="1.1.1" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
+      {relayStatus && (
+        <DevRelayOverlay
+          stage={relayStatus.stage}
+          message={relayStatus.message}
+          nxmUrl={relayStatus.nxm_url ?? null}
+          coldStart={relayStatus.cold_start ?? false}
+          onDismiss={() => setRelayStatus(null)}
+        />
+      )}
+
+      <AppFooter version="1.1.2" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
 
     </div>
   );

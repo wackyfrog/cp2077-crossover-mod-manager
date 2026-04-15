@@ -669,6 +669,19 @@
   background: rgba(60, 30, 30, 0.4);
 }
 
+.details-upd-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  margin-right: 0.6rem;
+  vertical-align: middle;
+  letter-spacing: 1.5px;
+  color: var(--cyber-yellow);
+  border: 1px solid rgba(255, 200, 0, 0.35);
+  background: rgba(255, 200, 0, 0.08);
+  font-family: 'Play', sans-serif;
+}
+
 .group-badge {
   flex-shrink: 0;
   font-family: 'Play', sans-serif;
