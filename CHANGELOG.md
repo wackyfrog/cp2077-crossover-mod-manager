@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-05-25
+
+### Fixed
+
+- **Update no longer re-slots a ghosted mod** — updating/reinstalling a mod that was unslotted (disabled) used to force it back to slotted; the prior slot state is now preserved (reinstalling a flatlined mod still re-slots it)
+- Ghosted mods stay ghosted on disk after an update — freshly installed files are re-disabled to match the preserved state
+- Stale-file cleanup during update now also removes orphaned `.disabled` files from the previous version
+
 ## [1.1.2] - 2026-04-15
 
 ### New

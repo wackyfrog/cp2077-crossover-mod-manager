@@ -466,7 +466,9 @@ impl ModManager {
         Ok((mod_name, removed_files, failed_files))
     }
 
-    /// Update mod record after successful reinstall (new files, version, file_id, etc)
+    /// Update mod record after successful reinstall (new files, version, file_id, etc).
+    /// Returns the final `enabled` state so the caller can sync the on-disk files
+    /// (a mod that stays ghosted must have its freshly installed files re-disabled).
     pub fn complete_reinstall(
         &mut self,
         mod_id: &str,
@@ -476,8 +478,12 @@ impl ModManager {
         new_file_name: Option<String>,
         new_file_version: Option<String>,
         new_file_description: Option<String>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
+        // Preserve the user's slot state across an update: an active mod keeps
+        // its prior enabled/ghosted state, while reinstalling a flatlined
+        // (removed) mod re-slots it.
+        let target_enabled = if mod_info.removed { true } else { mod_info.enabled };
         mod_info.files = new_files;
         mod_info.version = new_version.to_string();
         if let Some(fid) = new_file_id {
@@ -493,13 +499,13 @@ impl ModManager {
             mod_info.file_description = new_file_description;
         }
         mod_info.reinstall_status = None;
-        mod_info.enabled = true;
+        mod_info.enabled = target_enabled;
         mod_info.removed = false;
         mod_info.removed_at = None;
         mod_info.update_available = Some(false);
         mod_info.installed_at = Some(chrono::Utc::now().to_rfc3339());
         self.save_database()?;
-        Ok(())
+        Ok(target_enabled)
     }
 
     /// Abort reinstall — restore mod to normal state (files may be gone)

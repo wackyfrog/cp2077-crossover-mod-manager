@@ -3157,8 +3157,18 @@ async fn install_mod_from_nxm_inner(
                             eprintln!("⛔ Skipping unsafe stale path: {}", old_file);
                             continue;
                         }
-                        if let Err(e) = std::fs::remove_file(old_file) {
-                            eprintln!("Failed to remove stale file {}: {}", old_file, e);
+                        // A ghosted mod's files live on disk with a .disabled
+                        // suffix, so clean up both the active and disabled variant.
+                        if std::path::Path::new(old_file).exists() {
+                            if let Err(e) = std::fs::remove_file(old_file) {
+                                eprintln!("Failed to remove stale file {}: {}", old_file, e);
+                            }
+                        }
+                        let old_disabled = format!("{}.disabled", old_file);
+                        if std::path::Path::new(&old_disabled).exists() {
+                            if let Err(e) = std::fs::remove_file(&old_disabled) {
+                                eprintln!("Failed to remove stale file {}: {}", old_disabled, e);
+                            }
                         }
                     }
                 }
@@ -3169,16 +3179,33 @@ async fn install_mod_from_nxm_inner(
         let new_file_version = state.pending_file_version.lock().ok().and_then(|mut s| s.take());
         let new_file_description = state.pending_file_description.lock().ok().and_then(|mut s| s.take());
 
-        let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
-        manager.complete_reinstall(
-            existing_id,
-            installed_files.clone(),
-            &mod_version,
-            Some(&file_id),
-            new_file_name,
-            new_file_version,
-            new_file_description,
-        )?;
+        let now_enabled = {
+            let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            manager.complete_reinstall(
+                existing_id,
+                installed_files.clone(),
+                &mod_version,
+                Some(&file_id),
+                new_file_name,
+                new_file_version,
+                new_file_description,
+            )?
+        };
+
+        // If the mod was ghosted before the update, keep it ghosted: the freshly
+        // installed files use their real names, so re-disable them on disk to
+        // match the preserved enabled=false state.
+        if !now_enabled {
+            for f in &installed_files {
+                if std::path::Path::new(f).exists() {
+                    let disabled = format!("{}.disabled", f);
+                    if let Err(e) = std::fs::rename(f, &disabled) {
+                        eprintln!("Failed to re-disable file after update {}: {}", f, e);
+                    }
+                }
+            }
+        }
+
         add_log(
             format!("🔄 Update complete: '{}' → v{}", mod_name, mod_version),
             "info".to_string(),
