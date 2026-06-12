@@ -14,9 +14,12 @@ Enjoy Night City, choom!
 
 ## What's New in 1.1
 
+- **Auto-sync after install** — picture, summary, and file descriptions fetched from Nexus API immediately after install/update, no manual Netrun needed
 - **Database backup/restore** — create, restore, and delete backups of mod database from Config page
 - **Mod file validation** — scan all mods, verify files exist on disk
 - **CONFIG page** — cleaned up, removed test buttons, removed unused settings
+- **Smarter updates** — ghosted (disabled) mods stay ghosted after an update; same file with a different version is treated as an update, not an error
+- **Fixes** — filter no longer resets after updating a mod, mod details refresh correctly, correct sub-mod selected after install/update
 
 ## What's New in 1.0
 
