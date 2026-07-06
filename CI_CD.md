@@ -249,7 +249,7 @@ Consider adding:
 Add to README.md:
 
 ```markdown
-[![Build Status](https://github.com/beneccles/crossover-mod-manager/workflows/Build%20and%20Test/badge.svg)](https://github.com/beneccles/crossover-mod-manager/actions)
+[![Build Status](https://github.com/wackyfrog/crossover-mod-manager/workflows/Build%20and%20Test/badge.svg)](https://github.com/wackyfrog/crossover-mod-manager/actions)
 ```
 
 ### Release Notifications

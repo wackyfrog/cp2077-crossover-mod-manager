@@ -94,10 +94,10 @@ After making the repository public:
 
 Once public, configure these settings:
 
-1. **Branch Protection**: `https://github.com/beneccles/crossover-mod-manager/settings/branches`
-2. **Tag Protection**: `https://github.com/beneccles/crossover-mod-manager/settings/tag_protection`
-3. **Security & Analysis**: `https://github.com/beneccles/crossover-mod-manager/settings/security_analysis`
-4. **Manage Access**: `https://github.com/beneccles/crossover-mod-manager/settings/access`
+1. **Branch Protection**: `https://github.com/wackyfrog/crossover-mod-manager/settings/branches`
+2. **Tag Protection**: `https://github.com/wackyfrog/crossover-mod-manager/settings/tag_protection`
+3. **Security & Analysis**: `https://github.com/wackyfrog/crossover-mod-manager/settings/security_analysis`
+4. **Manage Access**: `https://github.com/wackyfrog/crossover-mod-manager/settings/access`
 
 ## 🚨 Red Flags to Check Before Public
 

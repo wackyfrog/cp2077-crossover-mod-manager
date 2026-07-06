@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*-beta*" # Trigger on beta version tags like v1.6.0-beta1, v1.6.0-beta2, etc.
+      - "v*" # Version tags: final (v1.2.0) or beta (v1.2.0-beta1)
   workflow_dispatch: # Allow manual trigger
 
 permissions:
@@ -40,18 +40,31 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Determine release channel
+        id: channel
+        run: |
+          if [[ "${{ github.ref_name }}" == *-beta* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "title_prefix=🧪 BETA " >> "$GITHUB_OUTPUT"
+            echo "beta_warning=> ⚠️ **This is a BETA release** — use at your own risk and please report issues." >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "title_prefix=" >> "$GITHUB_OUTPUT"
+            echo "beta_warning=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name || format('v{0}-beta', steps.get_version.outputs.version) }}
-          release_name: 🧪 BETA Release v${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          release_name: ${{ steps.channel.outputs.title_prefix }}Crossover Mod Manager v${{ steps.get_version.outputs.version }}
           body: |
-            # 🧪 Crossover Mod Manager v${{ steps.get_version.outputs.version }} BETA
+            # ${{ steps.channel.outputs.title_prefix }}Crossover Mod Manager v${{ steps.get_version.outputs.version }}
 
-            > ⚠️ **This is a BETA release** - Use at your own risk. Please report any issues you encounter!
+            ${{ steps.channel.outputs.beta_warning }}
 
             ## 📦 Downloads
 
@@ -79,7 +92,7 @@ jobs:
 
             **Full Changelog**: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md
           draft: false
-          prerelease: true
+          prerelease: ${{ steps.channel.outputs.prerelease }}
 
   build-macos-apple-silicon:
     name: Build macOS Apple Silicon

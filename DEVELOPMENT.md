@@ -48,7 +48,7 @@ This guide provides information for developers working on the Crossover Mod Mana
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/beneccles/crossover-mod-manager.git
+   git clone https://github.com/wackyfrog/crossover-mod-manager.git
    cd crossover-mod-manager
    ```
 

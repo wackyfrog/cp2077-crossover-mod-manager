@@ -42,17 +42,17 @@ npm run tauri build
 
 ### Trigger Manual Release
 
-1. Go to: https://github.com/beneccles/crossover-mod-manager/actions
+1. Go to: https://github.com/wackyfrog/crossover-mod-manager/actions
 2. Select "Release" workflow
 3. Click "Run workflow"
 4. Select branch and click "Run workflow"
 
 ## GitHub Actions URLs
 
-- **All Workflows**: https://github.com/beneccles/crossover-mod-manager/actions
-- **Build Workflow**: https://github.com/beneccles/crossover-mod-manager/actions/workflows/build.yml
-- **Release Workflow**: https://github.com/beneccles/crossover-mod-manager/actions/workflows/release.yml
-- **Releases Page**: https://github.com/beneccles/crossover-mod-manager/releases
+- **All Workflows**: https://github.com/wackyfrog/crossover-mod-manager/actions
+- **Build Workflow**: https://github.com/wackyfrog/crossover-mod-manager/actions/workflows/build.yml
+- **Release Workflow**: https://github.com/wackyfrog/crossover-mod-manager/actions/workflows/release.yml
+- **Releases Page**: https://github.com/wackyfrog/crossover-mod-manager/releases
 
 ## Version Numbering
 
@@ -157,4 +157,4 @@ git push origin v0.1.0-beta1
 
 - Full documentation: [CI_CD.md](CI_CD.md)
 - Development guide: [DEVELOPMENT.md](DEVELOPMENT.md)
-- Open an issue: https://github.com/beneccles/crossover-mod-manager/issues/new
+- Open an issue: https://github.com/wackyfrog/crossover-mod-manager/issues/new

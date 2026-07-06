@@ -186,5 +186,5 @@ else
     print_success "Release process complete! 🎉"
 fi
 print_info "GitHub Actions will now build and publish the release."
-print_info "Monitor progress at: https://github.com/beneccles/crossover-mod-manager/actions"
-print_info "Release will be available at: https://github.com/beneccles/crossover-mod-manager/releases/tag/$TAG"
+print_info "Monitor progress at: https://github.com/wackyfrog/crossover-mod-manager/actions"
+print_info "Release will be available at: https://github.com/wackyfrog/crossover-mod-manager/releases/tag/$TAG"
