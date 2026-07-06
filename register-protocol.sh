@@ -19,13 +19,13 @@ fi
 # Register the protocol using duti (if available)
 if command -v duti &> /dev/null; then
     echo "Using duti to register protocol..."
-    duti -s com.beneccles.crossover-mod-manager $PROTOCOL all
+    duti -s com.wackyfrog.crossover-mod-manager $PROTOCOL all
     echo "Protocol registered successfully!"
 else
     echo "duti not found. Installing via Homebrew..."
     if command -v brew &> /dev/null; then
         brew install duti
-        duti -s com.beneccles.crossover-mod-manager $PROTOCOL all
+        duti -s com.wackyfrog.crossover-mod-manager $PROTOCOL all
         echo "Protocol registered successfully!"
     else
         echo "Homebrew not found. Manual registration required:"

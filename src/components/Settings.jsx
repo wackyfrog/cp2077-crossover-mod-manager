@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import "./Settings.css";
 
-function Settings({ hint = () => ({}), onNavigateToMod }) {
+function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   const [gamePath, setGamePath] = useState("");
   const [initialGamePath, setInitialGamePath] = useState("");
   const [modStoragePath, setModStoragePath] = useState("");
@@ -110,6 +110,9 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
       setInitialGamePath(pathToSave);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // Re-run the startup self-check so the health banner reflects the new
+      // settings immediately (e.g. a just-fixed game path clears the banner).
+      onSaved?.();
     } catch (error) {
       console.error("Failed to save settings:", error);
     } finally {

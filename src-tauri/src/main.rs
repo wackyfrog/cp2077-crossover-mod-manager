@@ -477,8 +477,13 @@ fn get_settings(state: State<AppState>) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-fn save_settings(settings: Settings, state: State<AppState>) -> Result<(), String> {
+fn save_settings(mut settings: Settings, state: State<AppState>) -> Result<(), String> {
     let mut app_settings = state.settings.lock().map_err(|e| e.to_string())?;
+    // `first_run` is server-owned state. The frontend never sends it, so serde
+    // would default it to `true` on every save — which then re-triggers
+    // auto-detection on the next launch and silently overwrites the game path.
+    // Preserve the persisted value instead.
+    settings.first_run = app_settings.get_settings().first_run;
     app_settings.save_settings(settings)
 }
 
@@ -4554,6 +4559,85 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// The running app's actual CFBundleIdentifier (read from the live bundle, not
+/// from tauri.conf — the custom Info.plist can differ).
+#[cfg(target_os = "macos")]
+fn current_bundle_id() -> Option<String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::{CFString, CFStringRef};
+    use std::os::raw::c_void;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFBundleGetMainBundle() -> *mut c_void;
+        fn CFBundleGetIdentifier(bundle: *mut c_void) -> CFStringRef;
+    }
+
+    unsafe {
+        let bundle = CFBundleGetMainBundle();
+        if bundle.is_null() {
+            return None;
+        }
+        let id = CFBundleGetIdentifier(bundle); // "Get" rule — not owned
+        if id.is_null() {
+            return None;
+        }
+        Some(CFString::wrap_under_get_rule(id).to_string())
+    }
+}
+
+/// Bundle id of the app macOS currently routes `nxm://` links to (None if none).
+#[cfg(target_os = "macos")]
+fn nxm_default_handler_id() -> Option<String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::{CFString, CFStringRef};
+
+    #[link(name = "CoreServices", kind = "framework")]
+    extern "C" {
+        fn LSCopyDefaultHandlerForURLScheme(scheme: CFStringRef) -> CFStringRef;
+    }
+
+    let scheme = CFString::new("nxm");
+    unsafe {
+        let handler = LSCopyDefaultHandlerForURLScheme(scheme.as_concrete_TypeRef()); // "Copy" — owned
+        if handler.is_null() {
+            return None;
+        }
+        Some(CFString::wrap_under_create_rule(handler).to_string())
+    }
+}
+
+/// Make this app the default `nxm://` handler via LaunchServices (no external
+/// tools needed). macOS resolves the bundle id to the registered app copy.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn register_nxm_handler() -> Result<(), String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::{CFString, CFStringRef};
+
+    #[link(name = "CoreServices", kind = "framework")]
+    extern "C" {
+        fn LSSetDefaultHandlerForURLScheme(scheme: CFStringRef, bundle_id: CFStringRef) -> i32;
+    }
+
+    let bundle_id = current_bundle_id().ok_or("Could not determine app bundle identifier")?;
+    let scheme = CFString::new("nxm");
+    let id = CFString::new(&bundle_id);
+    let status =
+        unsafe { LSSetDefaultHandlerForURLScheme(scheme.as_concrete_TypeRef(), id.as_concrete_TypeRef()) };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(format!("Failed to register nxm handler (OSStatus {})", status))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn register_nxm_handler() -> Result<(), String> {
+    Err("NXM handler registration is only supported on macOS".to_string())
+}
+
 #[tauri::command]
 fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let mut issues: Vec<serde_json::Value> = Vec::new();
@@ -4618,29 +4702,32 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
         }));
     }
 
-    // 3. Check NXM URL handler (macOS: check if nxm:// scheme is registered)
+    // 3. Check NXM URL handler via LaunchServices (reliable, no PyObjC needed).
     #[cfg(target_os = "macos")]
     {
-        use std::process::Command;
-        // Use `open -Ra` to check if any app handles nxm:// URLs is not straightforward.
-        // Instead check if our app bundle is registered via lsregister.
-        let output = Command::new("python3")
-            .args(["-c", "from Foundation import NSWorkspace; ws = NSWorkspace.sharedWorkspace(); url = __import__('Foundation').NSURL.URLWithString_('nxm://test'); app = ws.URLForApplicationToOpenURL_(url); print(app.path() if app else 'none')"])
-            .output();
-
-        match output {
-            Ok(out) => {
-                let result = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if result == "none" || result.is_empty() {
-                    issues.push(serde_json::json!({
-                        "type": "warning",
-                        "code": "nxm_handler_missing",
-                        "message": "NXM URL handler not registered — 'Download with Mod Manager' button on NexusMods won't work"
-                    }));
-                }
+        let ours = current_bundle_id();
+        match nxm_default_handler_id() {
+            // Registered to us — all good.
+            Some(id)
+                if ours
+                    .as_deref()
+                    .map(|o| o.eq_ignore_ascii_case(&id))
+                    .unwrap_or(false) => {}
+            // Registered, but to a different app.
+            Some(id) => {
+                issues.push(serde_json::json!({
+                    "type": "warning",
+                    "code": "nxm_handler_other",
+                    "message": format!("nxm:// links open another app ({}) — click Register so 'Download with Mod Manager' opens this one", id)
+                }));
             }
-            Err(_) => {
-                // Can't check — not critical
+            // No handler at all.
+            None => {
+                issues.push(serde_json::json!({
+                    "type": "warning",
+                    "code": "nxm_handler_missing",
+                    "message": "NXM URL handler not registered — click Register so 'Download with Mod Manager' opens this app"
+                }));
             }
         }
     }
@@ -4682,16 +4769,18 @@ fn check_and_run_first_setup(state: State<'_, AppState>) -> Result<String, Strin
         let mut settings = settings_guard.get_settings();
         settings.first_run = false;
 
-        // If auto-detection found any installs, seed settings with the first one
-        // (the user can switch to another in Config, which now offers a picker).
-        if let Some(detected_path) = detection_result.first() {
-            settings.game_path = detected_path.clone();
-            add_log(
-                format!("Auto-detected game path: {}", detected_path),
-                "success".to_string(),
-                "FIRST_RUN".to_string(),
-                state.clone(),
-            )?;
+        // Seed the game path from auto-detection ONLY if none is set yet, so a
+        // first run never clobbers a path the user already configured.
+        if settings.game_path.is_empty() {
+            if let Some(detected_path) = detection_result.first() {
+                settings.game_path = detected_path.clone();
+                add_log(
+                    format!("Auto-detected game path: {}", detected_path),
+                    "success".to_string(),
+                    "FIRST_RUN".to_string(),
+                    state.clone(),
+                )?;
+            }
         }
 
         if let Err(e) = settings_guard.save_settings(settings) {
@@ -4772,6 +4861,7 @@ fn main() {
             auto_detect_game_path,
             validate_game_path,
             relocate_mods,
+            register_nxm_handler,
             add_log,
             add_log_entry,
             get_logs,

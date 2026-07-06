@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>Crossover Mod Manager</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.beneccles.crossover-mod-manager</string>
+	<string>com.wackyfrog.crossover-mod-manager</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleSignature</key>

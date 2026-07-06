@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - **Smarter game-path detection** — Auto-Detect now scans every CrossOver bottle (Steam, GOG, Epic, and custom bottle names) instead of a fixed list of paths, including a bounded fallback search for non-standard layouts. When more than one installation is found, you pick the one you actually launch
 - **Mod relocation on path change** — changing the game path in Config now offers to move (or copy) already-installed mod files to the new location, so switching to the correct bottle no longer leaves mods behind or orphaned. Ghosted (unslotted) files are relocated too, and you get a summary report
-- **Persistent self-check banner** — startup self-check (game path validity, write access, API key, NXM handler) now shows as a dismissible banner with a jump to Config, instead of a transient footer status that was easy to miss. Re-runs on focus, so fixing the path clears it without a restart
+- **Persistent self-check banner** — startup self-check (game path validity, write access, API key, NXM handler) now shows as a dismissible banner with a jump to Config, instead of a transient footer status that was easy to miss. Re-runs on window focus **and right after saving settings**, so fixing the path clears the banner immediately (no restart needed)
 - **Setup & Troubleshooting guide** — new [document](SETUP_AND_TROUBLESHOOTING.md) (linked from the README) covering setup, install verification, and fixing a wrong game path
 - **On-disk log file** — all activity is now mirrored to `~/.crossover-mod-manager/logs/app.log` (survives restarts, with a `session start` marker per launch; rotated at startup to `app.log.1`…`app.log.5` if it exceeds ~10 MB, never mid-session), with **Copy** and **Show in Finder** buttons in the log panel, so logs are easy to share for bug reports
 - **More diagnostic logging** — Auto-Detect logs how many installations it found and where; relocation logs its move/copy summary
@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
 - **Game-path validation on save** — Config warns (with override) if the entered path doesn't look like a Cyberpunk 2077 installation
 - **Install log** now shows the absolute target game directory, making misconfigured paths easy to spot
 - **Startup health check** flags a configured path that isn't a valid Cyberpunk 2077 install
+- **NXM handler self-check fixed** — the check now uses LaunchServices directly (was a PyObjC script that isn't installed on most Macs and always false-positived "not registered"); a **Register NXM handler** button in the banner registers the app in one click, no `duti` needed
+- **Game path no longer silently overwritten** — saving settings used to reset the internal `first_run` flag (the frontend never sends it, so it defaulted back to `true`), which re-ran auto-detection on the next launch and quietly replaced the configured game path. `first_run` is now preserved server-side, and first-run auto-detect only seeds an *empty* path
+- **App bundle identifier** changed to `com.wackyfrog.crossover-mod-manager` (was the upstream `com.beneccles…`), matching the fork. After updating, use the **Register NXM handler** button once to re-associate `nxm://` links
 - **App version in the UI** (header, Jack In screen, footer, About) now reflects the actual build version instead of a hardcoded string
 - **Jack In screen** now explains the automatic "Download with Mod Manager" install path, not just manual NXM paste
 

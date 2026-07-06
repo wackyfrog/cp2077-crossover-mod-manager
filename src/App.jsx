@@ -548,6 +548,25 @@ function App() {
     }
   };
 
+  // Re-run the self-check on demand (after saving settings or registering the
+  // NXM handler) so the banner reflects the new state without a restart.
+  const recheckHealth = () => {
+    invoke("check_startup_health")
+      .then((h) => setHealthIssues(!h.healthy && h.issues?.length > 0 ? h.issues : []))
+      .catch(() => {});
+  };
+
+  const handleRegisterNxm = async () => {
+    try {
+      await invoke("register_nxm_handler");
+    } catch (e) {
+      console.error("register_nxm_handler failed:", e);
+    }
+    recheckHealth();
+  };
+
+  const hasNxmIssue = healthIssues.some((i) => i.code?.startsWith("nxm"));
+
   return (
     <div className="app">
       {booting && <SplashScreen onDone={() => setBooting(false)} />}
@@ -577,6 +596,9 @@ function App() {
             </div>
           </div>
           <div className="health-banner-actions">
+            {hasNxmIssue && (
+              <button onClick={handleRegisterNxm}>Register NXM handler</button>
+            )}
             <button onClick={() => setActiveTab("settings")}>Open Config</button>
             <button className="health-banner-dismiss" onClick={() => setHealthIssues([])}>Dismiss</button>
           </div>
@@ -654,7 +676,7 @@ function App() {
         ) : activeTab === "manifest" ? (
           <Manifest version={__APP_VERSION__} />
         ) : (
-          <Settings hint={hint} onNavigateToMod={(modId) => {
+          <Settings hint={hint} onSaved={recheckHealth} onNavigateToMod={(modId) => {
             const mod = mods.find(m => m.id === modId);
             if (mod) { setSelectedMod(mod); setActiveTab("mods"); }
           }} />

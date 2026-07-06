@@ -37,6 +37,9 @@ nix = { version = "0.29", features = ["fs"] }
 libc = "0.2"
 futures-util = "0.3"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
