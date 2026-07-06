@@ -21,6 +21,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [healthIssues, setHealthIssues] = useState([]); // persistent startup/self-check warnings
   const [syncProgress, setSyncProgress] = useState(null); // { current, total, modName }
   const [syncSummary, setSyncSummary] = useState(null); // { synced, total, updated, errors, cancelled }
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
@@ -69,7 +70,21 @@ function App() {
   useEffect(() => {
     loadMods();
 
-    // Reload mods when window gains focus — debounced, skips during install/sync
+    // Self-check: verify game path is a valid, writable Cyberpunk 2077 install,
+    // API key is set, and the NXM handler is registered. Surfaced as a persistent
+    // banner (not a transient footer status) so it can't be missed or overwritten.
+    const runHealthCheck = () =>
+      invoke("check_startup_health")
+        .then((health) => {
+          const issues = !health.healthy && health.issues?.length > 0 ? health.issues : [];
+          setHealthIssues(issues);
+          if (issues.length > 0) console.warn("Self-check issues:", issues);
+        })
+        .catch(() => {});
+
+    // Reload mods and re-run the self-check when the window gains focus —
+    // debounced, skips during install/sync. Re-checking on focus means fixing
+    // the game path in Config clears the banner without a restart.
     let focusTimer = null;
     let busy = false;
     const onFocus = () => {
@@ -78,6 +93,7 @@ function App() {
       focusTimer = setTimeout(() => {
         busy = true;
         loadMods().finally(() => { busy = false; });
+        runHealthCheck();
       }, 500);
     };
     window.addEventListener("focus", onFocus);
@@ -111,14 +127,8 @@ function App() {
 
     runFirstSetup();
 
-    // Health check — verify game path, permissions, URL handler
-    invoke("check_startup_health").then((health) => {
-      if (!health.healthy && health.issues?.length > 0) {
-        const msgs = health.issues.map(i => i.message);
-        setStatusMsg(`⚠ ${msgs.join(" · ")}`);
-        console.warn("Startup health issues:", health.issues);
-      }
-    }).catch(() => {});
+    // Run the self-check once on startup.
+    runHealthCheck();
 
     // Listen for NXM URL events from the protocol handler
     const setupNxmListener = async () => {
@@ -554,6 +564,25 @@ function App() {
         </nav>
       </header>
 
+      {healthIssues.length > 0 && (
+        <div className="health-banner">
+          <div className="health-banner-body">
+            <span className="health-banner-icon">⚠</span>
+            <div className="health-banner-msgs">
+              {healthIssues.map((issue, i) => (
+                <div key={i} className={`health-banner-line health-${issue.type || "warning"}`}>
+                  {issue.message}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="health-banner-actions">
+            <button onClick={() => setActiveTab("settings")}>Open Config</button>
+            <button className="health-banner-dismiss" onClick={() => setHealthIssues([])}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
       {activeTab === "mods" && (
         <div className="action-bar">
           <div className="action-search-wrap">
@@ -623,7 +652,7 @@ function App() {
             </div>
           </div>
         ) : activeTab === "manifest" ? (
-          <Manifest version="1.1.2" />
+          <Manifest version={__APP_VERSION__} />
         ) : (
           <Settings hint={hint} onNavigateToMod={(modId) => {
             const mod = mods.find(m => m.id === modId);
@@ -769,7 +798,7 @@ function App() {
         />
       )}
 
-      <AppFooter version="1.1.2" build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
+      <AppFooter version={__APP_VERSION__} build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
 
     </div>
   );

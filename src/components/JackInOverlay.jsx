@@ -492,7 +492,7 @@ export default function JackInOverlay({ open, progress, onSubmit, onRetry, onRei
       <div className="jackin-chrome-bar">
         <span className="jackin-chrome-tag">NEXUS UPLINK</span>
         <span className="jackin-chrome-divider" />
-        <span className="jackin-chrome-sys">CROSSOVER MOD MANAGER v1.1.2</span>
+        <span className="jackin-chrome-sys">CROSSOVER MOD MANAGER v{__APP_VERSION__}</span>
         <span className="jackin-chrome-divider" />
         <span className="jackin-chrome-status">
           {phase === "input" ? "AWAITING INPUT" : phase === "working" ? "TRANSFER IN PROGRESS" : phase === "done" ? "COMPLETE" : "FAULT DETECTED"}
@@ -508,6 +508,12 @@ export default function JackInOverlay({ open, progress, onSubmit, onRetry, onRei
         {phase === "input" ? (
           <div className="jackin-input-area">
             <p className="jackin-desc">Paste an NXM link to download and install</p>
+            <p className="jackin-desc-alt">
+              Or, on the mod's page at{" "}
+              <span className="jackin-desc-em">nexusmods.com</span>, click{" "}
+              <span className="jackin-desc-em">"Download with Mod Manager"</span> — the app catches
+              the link and installs the mod automatically, no manual paste needed.
+            </p>
             {inputError && <p className="jackin-input-error">{inputError}</p>}
             <div className="jackin-input-row">
               <input

@@ -12,6 +12,15 @@ Enjoy Night City, choom!
 
 ![Netrun — sync with NexusMods](docs/screenshots/netrun.png)
 
+## What's New in 1.2
+
+- **Reliable game-path detection** — Auto-Detect scans every CrossOver bottle (Steam / GOG / Epic / custom) and lets you pick the right one when several are found
+- **Mod relocation** — changing the game path offers to move (or copy) already-installed mods to the new location, so nothing is left behind
+- **Install safety** — refuses to install into a path that isn't a real Cyberpunk 2077 folder, and fails loudly instead of reporting a phantom install with no files
+- **Persistent self-check** — a dismissible banner surfaces game-path / permission / API-key / NXM-handler issues at startup
+- **Shareable logs** — activity is mirrored to `~/.crossover-mod-manager/logs/app.log` with **Copy** and **Show in Finder** buttons for easy bug reports
+- **Docs** — new [Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md) guide
+
 ## What's New in 1.1
 
 - **Auto-sync after install** — picture, summary, and file descriptions fetched from Nexus API immediately after install/update, no manual Netrun needed
@@ -54,6 +63,11 @@ Download the latest release from the [Releases](https://github.com/wackyfrog/cp2
 3. Add your NexusMods API key (get one at [nexusmods.com/users/myaccount?tab=api+access](https://www.nexusmods.com/users/myaccount?tab=api+access))
 4. Visit NexusMods → click "Download with Mod Manager" on any CP2077 mod
 5. The app handles everything: download, extract, install, track
+
+> **Mods not showing up in the game?** See
+> **[Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md)** — step-by-step
+> setup, how to verify installs, and how to fix a wrong game path (the usual
+> cause of "installed but nothing in the game").
 
 ## Building from Source
 

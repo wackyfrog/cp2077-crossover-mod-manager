@@ -369,6 +369,49 @@
   border-color: var(--cyber-text);
 }
 
+/* ── Game path: candidate picker & relocation ── */
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 1.2rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.candidate-item {
+  padding: 0.5rem 0.7rem;
+  background: transparent;
+  border: 1px solid var(--cyber-border-bright);
+  color: var(--cyber-text);
+  font-family: 'Play', sans-serif;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: left;
+  word-break: break-all;
+  transition: all 0.15s;
+}
+
+.candidate-item:hover {
+  color: var(--cyber-yellow);
+  border-color: var(--cyber-yellow);
+}
+
+.relocate-path {
+  margin: 0 0 1rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--cyber-dark, rgba(0, 0, 0, 0.4));
+  border-left: 2px solid var(--cyber-yellow);
+  font-family: 'Play', sans-serif;
+  font-size: 0.78rem;
+  color: var(--cyber-text-dim);
+  word-break: break-all;
+}
+
+.relocate-actions {
+  flex-wrap: wrap;
+}
+
 /* ── Validation overlay ── */
 .validation-backdrop {
   position: fixed;

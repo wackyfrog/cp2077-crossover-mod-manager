@@ -5,6 +5,7 @@ import "./Settings.css";
 
 function Settings({ hint = () => ({}), onNavigateToMod }) {
   const [gamePath, setGamePath] = useState("");
+  const [initialGamePath, setInitialGamePath] = useState("");
   const [modStoragePath, setModStoragePath] = useState("");
   const [nexusmodsApiKey, setNexusmodsApiKey] = useState("");
   const [showSplash, setShowSplash] = useState(true);
@@ -12,6 +13,9 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
   const [saved, setSaved] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [detectionResult, setDetectionResult] = useState("");
+  const [candidates, setCandidates] = useState(null); // string[] when picker is open
+  const [relocatePrompt, setRelocatePrompt] = useState(null); // { oldPath, newPath, count }
+  const [relocateResult, setRelocateResult] = useState(null); // report | { error }
 
   useEffect(() => {
     loadSettings();
@@ -21,6 +25,7 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
     try {
       const settings = await invoke("get_settings");
       setGamePath(settings.game_path || "");
+      setInitialGamePath(settings.game_path || "");
       setModStoragePath(settings.mod_storage_path || "");
       setNexusmodsApiKey(settings.nexusmods_api_key || "");
       setShowSplash(settings.show_splash !== false);
@@ -57,40 +62,52 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
     }
   };
 
+  const flashDetection = (msg) => {
+    setDetectionResult(msg);
+    setTimeout(() => setDetectionResult(""), 5000);
+  };
+
   const autoDetectGamePath = async () => {
     setAutoDetecting(true);
     setDetectionResult("");
     try {
-      const detectedPath = await invoke("auto_detect_game_path");
-      if (detectedPath) {
-        setGamePath(detectedPath);
-        setDetectionResult("Game installation detected");
-        setTimeout(() => setDetectionResult(""), 5000);
+      const detected = await invoke("auto_detect_game_path"); // string[]
+      invoke("add_log_entry", {
+        message: `Auto-detect: found ${detected?.length || 0} installation(s)${detected?.length ? " → " + detected.join(" | ") : ""}`,
+        level: detected?.length ? "info" : "warning",
+        category: "system",
+      }).catch(() => {});
+      if (!detected || detected.length === 0) {
+        flashDetection("Could not detect game installation");
+      } else if (detected.length === 1) {
+        setGamePath(detected[0]);
+        flashDetection("Game installation detected");
       } else {
-        setDetectionResult("Could not detect game installation");
-        setTimeout(() => setDetectionResult(""), 5000);
+        // Multiple bottles/stores — let the user choose the right one.
+        setCandidates(detected);
       }
     } catch (error) {
       console.error("Failed to auto-detect game path:", error);
-      setDetectionResult("Auto-detection failed");
-      setTimeout(() => setDetectionResult(""), 5000);
+      flashDetection("Auto-detection failed");
     } finally {
       setAutoDetecting(false);
     }
   };
 
-  const saveSettings = async () => {
+  // Actually write settings to disk and sync the "initial" baseline.
+  const persistSettings = async (pathToSave) => {
     setLoading(true);
     setSaved(false);
     try {
       await invoke("save_settings", {
         settings: {
-          game_path: gamePath,
+          game_path: pathToSave,
           mod_storage_path: modStoragePath,
           nexusmods_api_key: nexusmodsApiKey,
           show_splash: showSplash,
         },
       });
+      setInitialGamePath(pathToSave);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
@@ -98,6 +115,77 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // If the game root changed, offer to relocate already-installed mods first;
+  // otherwise persist directly.
+  const proceedSave = async (newPath) => {
+    const pathChanged = initialGamePath && newPath !== initialGamePath;
+    if (pathChanged) {
+      let count = 0;
+      try {
+        const mods = await invoke("get_installed_mods");
+        count = mods.filter((m) => !m.removed && m.files && m.files.length > 0).length;
+      } catch {
+        // If we can't read the DB, skip relocation and just save.
+      }
+      if (count > 0) {
+        setRelocatePrompt({ oldPath: initialGamePath, newPath, count });
+        return;
+      }
+    }
+    await persistSettings(newPath);
+  };
+
+  const saveSettings = async () => {
+    const newPath = gamePath;
+    // Validate the target before committing — warn (but allow override) if it
+    // doesn't look like a Cyberpunk 2077 install.
+    let valid = true;
+    try {
+      valid = await invoke("validate_game_path", { path: newPath });
+    } catch {
+      valid = true; // don't block saving on a validation hiccup
+    }
+    if (!valid) {
+      setConfirmAction({
+        type: "save_invalid",
+        label:
+          "This path doesn't look like a Cyberpunk 2077 installation (no bin/x64/Cyberpunk2077.exe). Mods installed here won't reach the game. Save anyway?",
+      });
+      return;
+    }
+    await proceedSave(newPath);
+  };
+
+  const doRelocate = async (mode) => {
+    // mode: 'move' | 'copy' | 'skip'
+    const prompt = relocatePrompt;
+    setRelocatePrompt(null);
+    if (!prompt) return;
+    if (mode !== "skip") {
+      try {
+        const report = await invoke("relocate_mods", {
+          oldPath: prompt.oldPath,
+          newPath: prompt.newPath,
+          deleteSource: mode === "move",
+        });
+        setRelocateResult(report);
+        invoke("add_log_entry", {
+          message: `Relocate (${mode}) ${prompt.oldPath} → ${prompt.newPath}: moved ${report.moved}, not found ${report.not_found}, failed ${report.failed?.length || 0}, mods ${report.mods_affected}`,
+          level: report.failed?.length ? "warning" : "info",
+          category: "system",
+        }).catch(() => {});
+      } catch (e) {
+        setRelocateResult({ error: String(e) });
+        invoke("add_log_entry", {
+          message: `Relocate (${mode}) failed: ${e}`,
+          level: "error",
+          category: "system",
+        }).catch(() => {});
+      }
+    }
+    await persistSettings(prompt.newPath);
   };
 
   const [cleaningTemp, setCleaningTemp] = useState(false);
@@ -175,6 +263,7 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
     if (type === "backup") doBackup();
     else if (type === "restore") doRestore(name);
     else if (type === "delete") doDeleteBackup(name);
+    else if (type === "save_invalid") proceedSave(gamePath);
   };
 
   const cleanTempFiles = async () => {
@@ -363,6 +452,83 @@ function Settings({ hint = () => ({}), onNavigateToMod }) {
               <div className="backup-confirm-actions">
                 <button className="backup-confirm-no" onClick={() => setConfirmAction(null)}>Cancel</button>
                 <button className="backup-confirm-yes" onClick={executeConfirm}>Confirm</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {candidates && (
+          <div className="backup-confirm-backdrop" onClick={() => setCandidates(null)}>
+            <div className="backup-confirm" onClick={(e) => e.stopPropagation()}>
+              <p className="backup-confirm-text">
+                Multiple Cyberpunk 2077 installations found. Pick the one you actually launch:
+              </p>
+              <div className="candidate-list">
+                {candidates.map((c, i) => (
+                  <button
+                    key={i}
+                    className="candidate-item"
+                    onClick={() => {
+                      setGamePath(c);
+                      setCandidates(null);
+                      flashDetection("Game installation selected");
+                    }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="backup-confirm-actions">
+                <button className="backup-confirm-no" onClick={() => setCandidates(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {relocatePrompt && (
+          <div className="backup-confirm-backdrop" onClick={() => doRelocate("skip")}>
+            <div className="backup-confirm" onClick={(e) => e.stopPropagation()}>
+              <p className="backup-confirm-text">
+                Game path changed. {relocatePrompt.count} installed mod{relocatePrompt.count > 1 ? "s" : ""} still
+                {" "}point to the old location:
+              </p>
+              <p className="relocate-path">{relocatePrompt.oldPath}</p>
+              <p className="backup-confirm-text">Move their files to the new location?</p>
+              <p className="relocate-path">{relocatePrompt.newPath}</p>
+              <div className="backup-confirm-actions relocate-actions">
+                <button className="backup-confirm-yes" onClick={() => doRelocate("move")}>
+                  Move (delete old)
+                </button>
+                <button className="backup-confirm-yes" onClick={() => doRelocate("copy")}>
+                  Copy (keep old)
+                </button>
+                <button className="backup-confirm-no" onClick={() => doRelocate("skip")}>
+                  Just change path
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {relocateResult && (
+          <div className="backup-confirm-backdrop" onClick={() => setRelocateResult(null)}>
+            <div className="backup-confirm" onClick={(e) => e.stopPropagation()}>
+              {relocateResult.error ? (
+                <p className="backup-confirm-text">Relocation failed: {relocateResult.error}</p>
+              ) : (
+                <p className="backup-confirm-text">
+                  Moved {relocateResult.moved} file{relocateResult.moved !== 1 ? "s" : ""} across
+                  {" "}{relocateResult.mods_affected} mod{relocateResult.mods_affected !== 1 ? "s" : ""}.
+                  {relocateResult.not_found > 0 && (
+                    <> {relocateResult.not_found} file{relocateResult.not_found !== 1 ? "s" : ""} not found on disk — those mods may need reinstalling.</>
+                  )}
+                  {relocateResult.failed && relocateResult.failed.length > 0 && (
+                    <> {relocateResult.failed.length} file{relocateResult.failed.length !== 1 ? "s" : ""} failed to copy.</>
+                  )}
+                </p>
+              )}
+              <div className="backup-confirm-actions">
+                <button className="backup-confirm-yes" onClick={() => setRelocateResult(null)}>OK</button>
               </div>
             </div>
           </div>

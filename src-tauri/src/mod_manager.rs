@@ -80,6 +80,19 @@ struct ModDatabase {
     mods: Vec<ModInfo>,
 }
 
+/// Result of relocating tracked mod files from one game root to another.
+#[derive(Debug, Serialize)]
+pub struct RelocateReport {
+    /// Files physically moved/copied to the new root.
+    pub moved: usize,
+    /// Tracked files that no longer exist on disk (neither enabled nor ghosted).
+    pub not_found: usize,
+    /// Files that failed to copy, with a reason each.
+    pub failed: Vec<String>,
+    /// Number of mods that had at least one file relocated.
+    pub mods_affected: usize,
+}
+
 pub struct ModManager {
     database_path: PathBuf,
     mods: Vec<ModInfo>,
@@ -148,6 +161,119 @@ impl ModManager {
 
     pub fn get_installed_mods(&self) -> Vec<ModInfo> {
         self.mods.clone()
+    }
+
+    /// Move (or copy) all tracked mod files from `old_root` to `new_root` and
+    /// rewrite the database paths accordingly.
+    ///
+    /// Handles ghosted mods: `ModInfo.files` stores the logical (enabled) path,
+    /// while a disabled file lives on disk with a `.disabled` suffix (see
+    /// `toggle_mod`). We relocate whichever variant actually exists and keep the
+    /// record pointing at the logical path under the new root.
+    ///
+    /// With `delete_source == true` the original file is removed after a
+    /// successful copy (a "move"); otherwise the old files are left in place.
+    pub fn relocate_mods(
+        &mut self,
+        old_root: &str,
+        new_root: &str,
+        delete_source: bool,
+    ) -> Result<RelocateReport, String> {
+        let old = Path::new(old_root);
+        let new = Path::new(new_root);
+
+        // Nothing to do (and copying a file onto itself would truncate it).
+        if old == new {
+            return Ok(RelocateReport {
+                moved: 0,
+                not_found: 0,
+                failed: Vec::new(),
+                mods_affected: 0,
+            });
+        }
+
+        let mut moved = 0usize;
+        let mut not_found = 0usize;
+        let mut failed: Vec<String> = Vec::new();
+        let mut mods_affected = 0usize;
+
+        for mod_info in &mut self.mods {
+            if mod_info.removed || mod_info.files.is_empty() {
+                continue;
+            }
+
+            let mut new_files: Vec<String> = Vec::with_capacity(mod_info.files.len());
+            let mut touched = false;
+
+            for f in &mod_info.files {
+                let fp = Path::new(f);
+
+                // Only relocate paths that actually live under the old root.
+                let rel = match fp.strip_prefix(old) {
+                    Ok(r) => r,
+                    Err(_) => {
+                        new_files.push(f.clone());
+                        continue;
+                    }
+                };
+
+                let dest = new.join(rel);
+                let dest_str = dest.to_string_lossy().to_string();
+
+                // Which on-disk variant exists: enabled or ghosted (.disabled)?
+                let src_enabled = fp.to_path_buf();
+                let src_disabled = PathBuf::from(format!("{}.disabled", f));
+
+                let (src, dst) = if src_enabled.exists() {
+                    (src_enabled, dest.clone())
+                } else if src_disabled.exists() {
+                    (src_disabled, PathBuf::from(format!("{}.disabled", dest_str)))
+                } else {
+                    // File missing on disk — record the new logical path but flag it.
+                    not_found += 1;
+                    touched = true;
+                    new_files.push(dest_str);
+                    continue;
+                };
+
+                if let Some(parent) = dst.parent() {
+                    if let Err(e) = fs::create_dir_all(parent) {
+                        failed.push(format!("{}: {}", dst.display(), e));
+                        new_files.push(f.clone()); // keep old path on failure
+                        continue;
+                    }
+                }
+
+                match fs::copy(&src, &dst) {
+                    Ok(_) => {
+                        if delete_source {
+                            fs::remove_file(&src).ok();
+                        }
+                        moved += 1;
+                        touched = true;
+                        new_files.push(dest_str);
+                    }
+                    Err(e) => {
+                        failed.push(format!("{}: {}", dst.display(), e));
+                        new_files.push(f.clone()); // keep old path on failure
+                    }
+                }
+            }
+
+            if touched {
+                mods_affected += 1;
+            }
+            mod_info.files = new_files;
+        }
+
+        self.save_database()?;
+
+        Ok(RelocateReport {
+            moved,
+            not_found,
+            failed,
+            mods_affected,
+        })
     }
 
     pub fn add_mod(&mut self, mod_info: ModInfo) {

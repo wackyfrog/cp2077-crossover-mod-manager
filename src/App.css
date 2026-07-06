@@ -573,3 +573,86 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+
+/* ── Self-check / health banner ── */
+.health-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1.2rem;
+  background: var(--cyber-darker);
+  border-top: 1px solid var(--cyber-yellow);
+  border-bottom: 1px solid var(--cyber-yellow);
+}
+
+.health-banner-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.health-banner-icon {
+  color: var(--cyber-yellow);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.health-banner-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.health-banner-line {
+  font-family: 'Play', sans-serif;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--cyber-text);
+  word-break: break-word;
+}
+
+.health-banner-line.health-error {
+  color: var(--cyber-red);
+}
+
+.health-banner-line.health-warning {
+  color: var(--cyber-yellow);
+}
+
+.health-banner-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.health-banner-actions button {
+  padding: 0.35rem 0.9rem;
+  background: transparent;
+  border: 1px solid var(--cyber-yellow);
+  color: var(--cyber-yellow);
+  font-family: 'Play', sans-serif;
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+
+.health-banner-actions button:hover {
+  color: var(--cyber-darker);
+  background: var(--cyber-yellow);
+}
+
+.health-banner-dismiss {
+  border-color: var(--cyber-border-bright) !important;
+  color: var(--cyber-text-dim) !important;
+}
+
+.health-banner-dismiss:hover {
+  color: var(--cyber-text) !important;
+  background: transparent !important;
+  border-color: var(--cyber-text) !important;
+}

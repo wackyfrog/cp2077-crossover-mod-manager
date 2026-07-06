@@ -7,6 +7,7 @@ const Logs = forwardRef(function Logs({ onLastLog }, ref) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [filterLevel, setFilterLevel] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [copied, setCopied] = useState(false);
   const bottomRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -74,6 +75,21 @@ const Logs = forwardRef(function Logs({ onLastLog }, ref) {
     }
   };
 
+  const copyLogs = async () => {
+    const text = filteredLogs
+      .map((l) => `${l.timestamp} [${levelPrefix(l.level)}] ${l.category}: ${l.message}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  const revealLogs = async () => {
+    try { await invoke("reveal_logs_in_finder"); } catch {}
+  };
+
   return (
     <div className="logs">
       <div className="logs-toolbar">
@@ -91,6 +107,12 @@ const Logs = forwardRef(function Logs({ onLastLog }, ref) {
             <option value="system">SYSTEM</option>
             <option value="nxm_protocol">NXM</option>
           </select>
+        </div>
+        <div className="logs-tools">
+          <button className="logs-tool-btn" onClick={copyLogs} disabled={filteredLogs.length === 0}>
+            {copied ? "Copied" : "Copy"}
+          </button>
+          <button className="logs-tool-btn" onClick={revealLogs}>Show in Finder</button>
         </div>
       </div>
 

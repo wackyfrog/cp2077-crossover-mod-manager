@@ -493,69 +493,194 @@ fn get_crossover_bottles_path() -> Option<String> {
     }
 }
 
+/// Auto-detect Cyberpunk 2077 installations by scanning the user's CrossOver
+/// bottles. Returns every distinct valid game root found (not just the first),
+/// so the UI can let the user pick when several bottles/stores are present.
 #[tauri::command]
-fn auto_detect_game_path() -> Result<Option<String>, String> {
-    // Common paths where Cyberpunk 2077 might be installed via CrossOver
-    let potential_paths = vec![
-        // Steam installation paths
-        "/Library/Application Support/CrossOver/Bottles/Steam/drive_c/Program Files (x86)/Steam/steamapps/common/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/Steam/drive_c/Program Files (x86)/Steam/steamapps/common/Cyberpunk 2077",
+fn auto_detect_game_path() -> Result<Vec<String>, String> {
+    let mut found: Vec<String> = Vec::new();
 
-        // GOG installation paths (most common)
-        "/Library/Application Support/CrossOver/Bottles/GOG/drive_c/GOG Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/GOG/drive_c/GOG Games/Cyberpunk 2077",
-        "/Library/Application Support/CrossOver/Bottles/GOG Galaxy/drive_c/GOG Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/GOG Galaxy/drive_c/GOG Games/Cyberpunk 2077",
-
-        // GOG Galaxy with Program Files paths
-        "/Library/Application Support/CrossOver/Bottles/GOG/drive_c/Program Files (x86)/GOG Galaxy/Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/GOG/drive_c/Program Files (x86)/GOG Galaxy/Games/Cyberpunk 2077",
-        "/Library/Application Support/CrossOver/Bottles/GOG Galaxy/drive_c/Program Files (x86)/GOG Galaxy/Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/GOG Galaxy/drive_c/Program Files (x86)/GOG Galaxy/Games/Cyberpunk 2077",
-
-        // Custom bottle names for Cyberpunk 2077
-        "/Library/Application Support/CrossOver/Bottles/Cyberpunk2077/drive_c/GOG Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/Cyberpunk2077/drive_c/GOG Games/Cyberpunk 2077",
-        "/Library/Application Support/CrossOver/Bottles/Cyberpunk 2077/drive_c/GOG Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/Cyberpunk 2077/drive_c/GOG Games/Cyberpunk 2077",
-
-        // Epic Games installation paths
-        "/Library/Application Support/CrossOver/Bottles/Epic/drive_c/Program Files/Epic Games/Cyberpunk2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/Epic/drive_c/Program Files/Epic Games/Cyberpunk2077",
-
-        // Generic Windows game installation paths (with wildcards for any bottle name)
-        "/Library/Application Support/CrossOver/Bottles/*/drive_c/GOG Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/*/drive_c/GOG Games/Cyberpunk 2077",
-        "/Library/Application Support/CrossOver/Bottles/*/drive_c/Program Files*/GOG Galaxy/Games/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/*/drive_c/Program Files*/GOG Galaxy/Games/Cyberpunk 2077",
-        "/Library/Application Support/CrossOver/Bottles/*/drive_c/Program Files*/*/Cyberpunk 2077",
-        "/Users/{username}/Library/Application Support/CrossOver/Bottles/*/drive_c/Program Files*/*/Cyberpunk 2077",
-    ];
-
-    // Get the current user's username
-    let username = std::env::var("USER").unwrap_or_else(|_| "username".to_string());
-
-    for path_template in potential_paths {
-        let path = path_template.replace("{username}", &username);
-
-        // Handle glob patterns
-        if path.contains('*') {
-            if let Ok(entries) = glob::glob(&path) {
-                for entry in entries.flatten() {
-                    if is_valid_cyberpunk_installation(&entry) {
-                        return Ok(Some(entry.to_string_lossy().to_string()));
-                    }
-                }
-            }
-        } else {
-            let path_buf = std::path::PathBuf::from(&path);
-            if is_valid_cyberpunk_installation(&path_buf) {
-                return Ok(Some(path));
+    // Primary source: the user's CrossOver bottles directory (resolved from the
+    // home dir, not the USER env var, which is unreliable in a bundled .app).
+    if let Some(bottles) = dirs::home_dir()
+        .map(|h| h.join("Library/Application Support/CrossOver/Bottles"))
+        .filter(|p| p.exists())
+    {
+        for installation in scan_bottles_for_cyberpunk(&bottles) {
+            let s = installation.to_string_lossy().to_string();
+            if !found.contains(&s) {
+                found.push(s);
             }
         }
     }
 
-    Ok(None)
+    Ok(found)
+}
+
+/// Scan every bottle under `bottles_dir` for valid Cyberpunk 2077 installations.
+fn scan_bottles_for_cyberpunk(bottles_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut results: Vec<std::path::PathBuf> = Vec::new();
+
+    let entries = match std::fs::read_dir(bottles_dir) {
+        Ok(e) => e,
+        Err(_) => return results,
+    };
+
+    for bottle in entries.flatten() {
+        let drive_c = bottle.path().join("drive_c");
+        if !drive_c.is_dir() {
+            continue;
+        }
+        for found in find_cyberpunk_in_drive(&drive_c) {
+            if !results.contains(&found) {
+                results.push(found);
+            }
+        }
+    }
+
+    results
+}
+
+/// Locate Cyberpunk 2077 install roots inside a bottle's `drive_c`.
+///
+/// Checks the common store layouts first (cheap, covers Steam/GOG/Epic), then
+/// falls back to a bounded-depth directory walk so non-standard bottle or store
+/// setups are still found. Depth 5 reaches Steam's
+/// `Program Files (x86)/Steam/steamapps/common/Cyberpunk 2077`.
+fn find_cyberpunk_in_drive(drive_c: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found: Vec<std::path::PathBuf> = Vec::new();
+
+    let known_roots = [
+        "GOG Games/Cyberpunk 2077",
+        "Program Files (x86)/Steam/steamapps/common/Cyberpunk 2077",
+        "Program Files/Steam/steamapps/common/Cyberpunk 2077",
+        "Program Files (x86)/GOG Galaxy/Games/Cyberpunk 2077",
+        "Program Files/GOG Galaxy/Games/Cyberpunk 2077",
+        "Program Files/Epic Games/Cyberpunk2077",
+        "Program Files (x86)/Epic Games/Cyberpunk2077",
+        "Games/Cyberpunk 2077",
+    ];
+    for rel in known_roots {
+        let candidate = drive_c.join(rel);
+        if is_valid_cyberpunk_installation(&candidate) && !found.contains(&candidate) {
+            found.push(candidate);
+        }
+    }
+
+    if !found.is_empty() {
+        return found;
+    }
+
+    // Fallback: bounded walk for a directory named like the game.
+    for entry in walkdir::WalkDir::new(drive_c)
+        .max_depth(5)
+        .into_iter()
+        .filter_entry(|e| !is_noise_dir(e.file_name()))
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if name == "cyberpunk 2077" || name == "cyberpunk2077" {
+            let path = entry.path().to_path_buf();
+            if is_valid_cyberpunk_installation(&path) && !found.contains(&path) {
+                found.push(path);
+            }
+        }
+    }
+
+    found
+}
+
+/// Directories that never contain the game and are expensive to descend into.
+fn is_noise_dir(name: &std::ffi::OsStr) -> bool {
+    let n = name.to_string_lossy().to_lowercase();
+    matches!(
+        n.as_str(),
+        "windows" | "programdata" | "users" | "$recycle.bin" | "windows.old"
+    )
+}
+
+/// Validate that `path` looks like a real Cyberpunk 2077 installation.
+/// Exposed to the frontend so it can warn before saving a bogus game path.
+#[tauri::command]
+fn validate_game_path(path: String) -> bool {
+    if path.trim().is_empty() {
+        return false;
+    }
+    is_valid_cyberpunk_installation(std::path::Path::new(&path))
+}
+
+/// Move or copy all tracked mod files from `old_path` to `new_path` and rewrite
+/// the database. Used when the user changes the game root in Config.
+#[tauri::command]
+fn relocate_mods(
+    old_path: String,
+    new_path: String,
+    delete_source: bool,
+    state: State<'_, AppState>,
+) -> Result<mod_manager::RelocateReport, String> {
+    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    manager.relocate_mods(&old_path, &new_path, delete_source)
+}
+
+/// How big app.log may grow before it's rotated (checked once, at startup).
+const MAX_LOG_BYTES: u64 = 10_000_000; // ~10 MB — plenty of sessions of plain text
+/// How many rotated files to keep: app.log.1 .. app.log.N.
+const MAX_LOG_BACKUPS: usize = 5;
+
+/// Path to the on-disk log file, in a dedicated `logs/` subdirectory next to
+/// settings.json / mods.json (keeps the rotated files grouped together).
+fn log_file_path() -> Option<std::path::PathBuf> {
+    dirs::home_dir()
+        .map(|h| h.join(".crossover-mod-manager").join("logs").join("app.log"))
+}
+
+/// Path to the Nth rotated log (`app.log.N`).
+fn numbered_log_path(base: &std::path::Path, n: usize) -> std::path::PathBuf {
+    base.with_file_name(format!("app.log.{}", n))
+}
+
+/// Rotate the log **once, at startup**, only if it has grown past the cap — so a
+/// long session is never torn mid-write. Shifts app.log.(N-1) → app.log.N,
+/// drops the oldest, then app.log → app.log.1 and starts a fresh app.log.
+fn rotate_logs_on_startup() {
+    let Some(path) = log_file_path() else {
+        return;
+    };
+    let too_big = std::fs::metadata(&path)
+        .map(|m| m.len() > MAX_LOG_BYTES)
+        .unwrap_or(false);
+    if !too_big {
+        return;
+    }
+
+    // Drop the oldest, then shift the rest up by one.
+    std::fs::remove_file(numbered_log_path(&path, MAX_LOG_BACKUPS)).ok();
+    for n in (1..MAX_LOG_BACKUPS).rev() {
+        let from = numbered_log_path(&path, n);
+        if from.exists() {
+            std::fs::rename(&from, numbered_log_path(&path, n + 1)).ok();
+        }
+    }
+    std::fs::rename(&path, numbered_log_path(&path, 1)).ok();
+}
+
+/// Append one line to the on-disk log. Best-effort: never fails the caller.
+/// No rotation here — the file is only rotated at startup (see
+/// `rotate_logs_on_startup`) so an active session is never split.
+fn append_log_line(timestamp: &str, level: &str, category: &str, message: &str) {
+    let Some(path) = log_file_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "[{}] [{}] [{}] {}", timestamp, level.to_uppercase(), category, message);
+    }
 }
 
 #[tauri::command]
@@ -575,6 +700,9 @@ fn add_log(
         message,
         category,
     };
+
+    // Mirror to the on-disk log so it survives quitting the app.
+    append_log_line(&log_entry.timestamp, &log_entry.level, &log_entry.category, &log_entry.message);
 
     logs.push_back(log_entry);
 
@@ -607,6 +735,37 @@ fn get_logs(state: State<AppState>) -> Result<Vec<LogEntry>, String> {
 fn clear_logs(state: State<AppState>) -> Result<(), String> {
     let mut logs = state.logs.lock().map_err(|e| e.to_string())?;
     logs.clear();
+    // Also truncate the on-disk log so "clear → reproduce → share" gives a clean
+    // file (the previous rotation in app.log.1 is left intact).
+    if let Some(path) = log_file_path() {
+        std::fs::write(&path, b"").ok();
+    }
+    Ok(())
+}
+
+/// Absolute path of the on-disk log file (for display / sharing).
+#[tauri::command]
+fn get_log_file_path() -> String {
+    log_file_path()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// Reveal the on-disk log file in Finder, creating it first if needed so
+/// `open -R` has something to select.
+#[tauri::command]
+fn reveal_logs_in_finder() -> Result<(), String> {
+    let path = log_file_path().ok_or("Could not resolve log file path")?;
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&path, b"").ok();
+    }
+    std::process::Command::new("open")
+        .args(["-R", &path.to_string_lossy()])
+        .spawn()
+        .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
     Ok(())
 }
 
@@ -2118,6 +2277,17 @@ async fn install_mod_from_nxm_inner(
         state.clone(),
     )?;
 
+    // Guard: a "successful" extraction that yielded zero files means the archive
+    // was empty, encrypted, or in an unexpected layout. Fail loudly instead of
+    // reporting a phantom install with nothing on disk.
+    if file_count == 0 {
+        return Err(
+            "Extraction produced no files — the archive may be empty, password-protected, \
+             or in an unsupported format. Nothing was installed."
+                .to_string(),
+        );
+    }
+
     // Show installation hints for system tools if not available
     let hints = archive_extractor::ArchiveExtractor::get_installation_hints();
     if !hints.is_empty()
@@ -2158,8 +2328,27 @@ async fn install_mod_from_nxm_inner(
     let game_dir = Path::new(&game_path);
     if !game_dir.exists() {
         // Guards will auto-cleanup temp files
-        return Err("Game directory does not exist".to_string());
+        return Err(format!("Game directory does not exist: {}", game_path));
     }
+
+    // Preflight: make sure we are about to write into a real Cyberpunk 2077
+    // install, not some unrelated (but existing) folder. Without this a wrong
+    // game path silently copies files nowhere useful and the install "succeeds".
+    if !is_valid_cyberpunk_installation(game_dir) {
+        return Err(format!(
+            "Path exists but does not look like a Cyberpunk 2077 installation \
+             (missing bin/x64/Cyberpunk2077.exe): {}. Fix the game path in Config.",
+            game_path
+        ));
+    }
+
+    // Log the absolute target so mod files can be traced if something looks off.
+    add_log(
+        format!("🎯 Target game directory: {}", game_path),
+        "info".to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
 
     // Check path length to prevent macOS PATH_MAX issues
     add_log(
@@ -2558,6 +2747,16 @@ async fn install_mod_from_nxm_inner(
                 )?;
             }
         }
+    }
+
+    // Guard: extraction had files but none were installable (e.g. only symlinks
+    // or filtered-out entries). Don't register a mod with an empty file list.
+    if installed_files.is_empty() {
+        return Err(
+            "No files were installed — the archive contained no installable game files. \
+             The mod may be packaged in an unexpected layout."
+                .to_string(),
+        );
     }
 
     add_log(
@@ -4381,6 +4580,14 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
                 "message": format!("Game directory not found: {}", game_path)
             }));
         } else {
+            // Warn if the path exists but isn't a real Cyberpunk 2077 install.
+            if !is_valid_cyberpunk_installation(gp) {
+                issues.push(serde_json::json!({
+                    "type": "warning",
+                    "code": "game_path_invalid",
+                    "message": format!("Path doesn't look like a Cyberpunk 2077 installation: {}", game_path)
+                }));
+            }
             // Check write access
             let test_file = gp.join(".cmm_write_test");
             match std::fs::write(&test_file, b"test") {
@@ -4475,8 +4682,9 @@ fn check_and_run_first_setup(state: State<'_, AppState>) -> Result<String, Strin
         let mut settings = settings_guard.get_settings();
         settings.first_run = false;
 
-        // If auto-detection found a path, save it to settings
-        if let Some(ref detected_path) = detection_result {
+        // If auto-detection found any installs, seed settings with the first one
+        // (the user can switch to another in Config, which now offers a picker).
+        if let Some(detected_path) = detection_result.first() {
             settings.game_path = detected_path.clone();
             add_log(
                 format!("Auto-detected game path: {}", detected_path),
@@ -4503,7 +4711,7 @@ fn check_and_run_first_setup(state: State<'_, AppState>) -> Result<String, Strin
             state.clone(),
         )?;
 
-        match detection_result {
+        match detection_result.first() {
             Some(path) => Ok(format!("Auto-detected game path: {}", path)),
             None => Ok("No game path found during auto-detection".to_string()),
         }
@@ -4562,10 +4770,14 @@ fn main() {
             save_settings,
             get_crossover_bottles_path,
             auto_detect_game_path,
+            validate_game_path,
+            relocate_mods,
             add_log,
             add_log_entry,
             get_logs,
             clear_logs,
+            get_log_file_path,
+            reveal_logs_in_finder,
             handle_nxm_url,
             test_logging,
             download_and_save_mod,
@@ -4587,6 +4799,16 @@ fn main() {
             is_installing
         ])
         .setup(|app| {
+            // Rotate the on-disk log once at startup (if oversized), then mark a
+            // new session so the shared app.log has clear session boundaries.
+            rotate_logs_on_startup();
+            append_log_line(
+                &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+                "info",
+                "system",
+                &format!("──── session start · v{} ────", env!("CARGO_PKG_VERSION")),
+            );
+
             // Clean up orphaned temporary files from previous sessions
             println!("🧹 Running startup cleanup for orphaned temporary files...");
             let (files_removed, dirs_removed, errors, removed_paths) =

@@ -125,6 +125,19 @@
   letter-spacing: 0.5px;
 }
 
+.jackin-desc-alt {
+  margin: 0.5rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: rgba(0, 255, 136, 0.35);
+  letter-spacing: 0.4px;
+  max-width: 640px;
+}
+
+.jackin-desc-em {
+  color: rgba(0, 255, 136, 0.7);
+}
+
 .jackin-input-error {
   margin: 0;
   font-size: 0.72rem;

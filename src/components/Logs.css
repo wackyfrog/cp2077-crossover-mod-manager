@@ -162,3 +162,32 @@
 .logs-terminal::-webkit-scrollbar-thumb { background: var(--cyber-red-dim); }
 .logs-terminal::-webkit-scrollbar-thumb:hover { background: var(--cyber-red); }
 .logs-terminal { scrollbar-width: thin; scrollbar-color: var(--cyber-red-dim) var(--cyber-darker); }
+
+/* ── Log tools (copy / reveal) ── */
+.logs-tools {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.logs-tool-btn {
+  padding: 0.2rem 0.6rem;
+  background: var(--cyber-dark);
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-text-dim);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.logs-tool-btn:hover:not(:disabled) {
+  border-color: var(--cyber-green);
+  color: var(--cyber-green);
+}
+
+.logs-tool-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
