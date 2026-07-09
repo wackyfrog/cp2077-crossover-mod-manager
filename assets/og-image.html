@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:640px; overflow:hidden; }
+  :root{
+    --yellow:#FCEE0A;
+    --cyan:#00E5FF;
+    --magenta:#FF2A6D;
+    --ink:#05060b;
+  }
+  .card{
+    position:relative;
+    width:1280px; height:640px;
+    background:
+      radial-gradient(120% 130% at 12% 8%, #14182b 0%, #0a0c17 45%, #05060b 100%);
+    overflow:hidden;
+    font-family:"Helvetica Neue","Arial",system-ui,sans-serif;
+    color:#fff;
+  }
+  /* perspective grid at the bottom — synthwave / Night City */
+  .grid{
+    position:absolute; left:-10%; right:-10%; bottom:-40px; height:340px;
+    background-image:
+      repeating-linear-gradient(to right, rgba(0,229,255,.16) 0 1px, transparent 1px 64px),
+      repeating-linear-gradient(to top,   rgba(0,229,255,.16) 0 1px, transparent 1px 44px);
+    transform:perspective(420px) rotateX(62deg);
+    transform-origin:bottom center;
+    mask-image:linear-gradient(to top, #000 0%, rgba(0,0,0,.25) 55%, transparent 100%);
+    -webkit-mask-image:linear-gradient(to top, #000 0%, rgba(0,0,0,.25) 55%, transparent 100%);
+    opacity:.9;
+  }
+  /* soft glow blobs */
+  .glowY{ position:absolute; width:520px; height:520px; right:-120px; top:-160px;
+    background:radial-gradient(circle, rgba(252,238,10,.20), transparent 62%); filter:blur(6px); }
+  .glowM{ position:absolute; width:460px; height:460px; left:-140px; bottom:-160px;
+    background:radial-gradient(circle, rgba(255,42,109,.18), transparent 62%); }
+  /* subtle scanlines */
+  .scan{ position:absolute; inset:0;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,.028) 0 1px, transparent 1px 3px);
+    mix-blend-mode:overlay; }
+
+  .content{ position:absolute; inset:0; padding:74px 80px; display:flex; flex-direction:column; }
+
+  .toprow{ display:flex; align-items:center; gap:18px; }
+  .tag{ font-family:"SF Mono","Menlo",monospace; font-size:19px; letter-spacing:3px;
+    color:var(--cyan); text-transform:uppercase; }
+  .chip{ font-family:"SF Mono","Menlo",monospace; font-size:16px; letter-spacing:1.5px;
+    color:#cfd6e6; border:1px solid rgba(255,255,255,.22); border-radius:999px;
+    padding:6px 14px; text-transform:uppercase; background:rgba(255,255,255,.03); }
+
+  .title{ margin-top:auto; }
+  .kicker{ font-family:"SF Mono","Menlo",monospace; color:var(--yellow); font-size:20px;
+    letter-spacing:6px; margin-bottom:14px; text-transform:uppercase; }
+  h1{
+    font-weight:800; text-transform:uppercase; line-height:.92;
+    letter-spacing:-1.5px; font-size:112px;
+    /* chromatic aberration */
+    text-shadow: -3px 0 rgba(0,229,255,.55), 3px 0 rgba(255,42,109,.55);
+  }
+  h1 .hl{ color:var(--yellow); }
+  .rule{ width:220px; height:8px; background:var(--yellow); margin-top:26px;
+    box-shadow:0 0 22px rgba(252,238,10,.55); }
+
+  .bottom{ margin-top:26px; display:flex; align-items:flex-end; justify-content:space-between; }
+  .slogan{ font-style:italic; font-size:27px; color:var(--yellow); font-weight:600; }
+  .repo{ font-family:"SF Mono","Menlo",monospace; font-size:16px; color:#8b93a7;
+    letter-spacing:.5px; text-align:right; }
+  .repo b{ color:#c9d1e3; font-weight:600; }
+
+  /* HUD corner brackets */
+  .br{ position:absolute; width:34px; height:34px; border:3px solid var(--yellow); opacity:.9; }
+  .tl{ top:30px; left:34px; border-right:0; border-bottom:0; }
+  .tr{ top:30px; right:34px; border-left:0; border-bottom:0; }
+  .bl{ bottom:30px; left:34px; border-right:0; border-top:0; }
+  .brr{ bottom:30px; right:34px; border-left:0; border-top:0; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="glowY"></div>
+    <div class="glowM"></div>
+    <div class="grid"></div>
+    <div class="scan"></div>
+
+    <div class="br tl"></div><div class="br tr"></div>
+    <div class="br bl"></div><div class="br brr"></div>
+
+    <div class="content">
+      <div class="toprow">
+        <span class="tag">// Cyberpunk 2077</span>
+        <span class="chip">macOS · CrossOver</span>
+        <span class="chip">Nexus Mods sync</span>
+      </div>
+
+      <div class="title">
+        <div class="kicker">Install · Sync · Play</div>
+        <h1>Cross<span class="hl">over</span><br>Mod Manager</h1>
+        <div class="rule"></div>
+      </div>
+
+      <div class="bottom">
+        <div class="slogan">Enjoy Night City, choom!</div>
+        <div class="repo"><b>github.com/wackyfrog</b><br>cp2077-crossover-mod-manager</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
