@@ -81,11 +81,11 @@ fi
 print_info "Pulling latest changes from remote..."
 git pull origin main
 
-# Update version in tauri.conf.json
-print_info "Updating version in src-tauri/tauri.conf.json..."
-sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-rm src-tauri/tauri.conf.json.bak
-print_success "Version updated in tauri.conf.json"
+# Update version in package.json (tauri.conf.json reads it via "../package.json")
+print_info "Updating version in package.json..."
+sed -i.bak "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" package.json
+rm package.json.bak
+print_success "Version updated in package.json"
 
 # Check if CHANGELOG.md has entry for this version
 print_info "Checking CHANGELOG.md..."
@@ -128,7 +128,7 @@ fi
 
 # Show changes to be committed
 print_info "The following changes will be committed:"
-git diff src-tauri/tauri.conf.json CHANGELOG.md
+git diff package.json CHANGELOG.md
 
 echo ""
 if [ -n "$BETA_NUM" ]; then
@@ -145,7 +145,7 @@ fi
 
 # Commit version changes
 print_info "Committing version changes..."
-git add src-tauri/tauri.conf.json CHANGELOG.md
+git add package.json CHANGELOG.md
 if [ -n "$BETA_NUM" ]; then
     git commit -m "chore: BETA Release $TAG
 
@@ -186,5 +186,5 @@ else
     print_success "Release process complete! 🎉"
 fi
 print_info "GitHub Actions will now build and publish the release."
-print_info "Monitor progress at: https://github.com/wackyfrog/crossover-mod-manager/actions"
-print_info "Release will be available at: https://github.com/wackyfrog/crossover-mod-manager/releases/tag/$TAG"
+print_info "Monitor progress at: https://github.com/wackyfrog/cp2077-crossover-mod-manager/actions"
+print_info "Release will be available at: https://github.com/wackyfrog/cp2077-crossover-mod-manager/releases/tag/$TAG"

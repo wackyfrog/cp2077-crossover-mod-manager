@@ -4,148 +4,121 @@ This document describes the Continuous Integration and Continuous Deployment (CI
 
 ## Overview
 
-The project uses GitHub Actions for automated building, testing, and releasing. There are two main workflows:
+The project uses GitHub Actions. There are two workflows:
 
-1. **Build and Test** (`build.yml`) - Runs on every push and pull request
-2. **Release** (`release.yml`) - Creates releases and builds distribution packages
+1. **Build and Test** (`build.yml`) — runs on every push and pull request to `main`.
+2. **Release** (`release.yml`) — builds and publishes **BETA** releases automatically when a `v*-beta*` tag is pushed. Stable releases are published manually by the maintainer (see [Creating a Release](#creating-a-release)).
 
 ## Build and Test Workflow
 
-**Trigger**: Every push to `main` branch and all pull requests
+**Trigger**: every push to `main` and every pull request targeting `main`.
 
-**Jobs**:
+The jobs run in this order (`check-rust` and `lint` both depend on `build-frontend`):
 
 ### 1. Build Frontend
 
-- Runs on Ubuntu
-- Installs Node.js dependencies
-- Builds the React frontend with Vite
-- Uploads the `dist/` folder as an artifact
+- Runs on Ubuntu (Node.js 20)
+- `npm ci`, then `npm run build` (Vite)
+- Uploads the `dist/` folder as the `frontend-dist` artifact
 
 ### 2. Check Rust Code
 
-- Runs on Ubuntu
-- Sets up Rust toolchain
-- Installs Linux system dependencies (webkit2gtk, GTK, etc.)
-- Runs `cargo check` to verify code compiles
-- Runs `cargo test` to execute unit tests
-- Uses caching for faster builds:
-  - Cargo registry
-  - Cargo git index
-  - Cargo build artifacts
+- Runs on Ubuntu, downloads the frontend artifact
+- Installs Linux system dependencies (webkit2gtk, GTK, glib, etc.) — needed only to compile the Tauri crate on the Linux CI runner; the shipped app is macOS-only
+- Runs `cargo check` and `cargo test --no-fail-fast` (in `src-tauri/`)
+- Caches the cargo registry, git index, and build target for faster runs
 
 ### 3. Lint
 
-- Runs on Ubuntu
-- Checks Rust code formatting with `cargo fmt --check`
-- Runs Clippy with strict mode (`-D warnings`)
-- Ensures code follows Rust best practices
+- Runs on Ubuntu, downloads the frontend artifact
+- `cargo fmt -- --check` (formatting)
+- `cargo clippy -- -D warnings` (warnings fail the job)
 
 ### 4. Security Audit
 
 - Runs on Ubuntu
-- Uses `cargo-audit` to check for known security vulnerabilities
-- Runs as a warning (doesn't fail the build)
+- Installs and runs `cargo audit`
+- Non-blocking (`continue-on-error`) — reports known vulnerabilities as a warning
 
 ## Release Workflow
 
-**Trigger**:
-
-- Push of BETA version tags (e.g., `v1.6.0-beta1`, `v1.7.0-beta2`)
-- Manual workflow dispatch
-
-**Note**: All releases are currently marked as BETA/pre-release
+**Trigger**: push of a BETA tag matching `v*-beta*` (e.g. `v1.2.0-beta1`). A manual `workflow_dispatch` is also exposed. A stable `vX.Y.Z` tag (no `-beta` suffix) does **not** match this trigger and does not start CI — stable releases are built and published manually.
 
 **Jobs**:
 
 ### 1. Create Release
 
-- Extracts version from tag or `tauri.conf.json`
-- Reads changelog from `CHANGELOG.md`
-- Creates a GitHub Release with:
-  - Release notes from changelog
-  - Download links
-  - Installation instructions
+- Extracts the version from the pushed tag
+- Reads the matching version section from `CHANGELOG.md`
+- Determines the channel: a `-beta` tag is published as a GitHub **pre-release** titled "🧪 BETA …"; any other tag would be a full release
+- Creates the GitHub Release with release notes, a download list, and install instructions
 
 ### 2. Build macOS Apple Silicon
 
 Builds for Apple Silicon (M1/M2/M3/M4) Macs:
 
 - Runs on `macos-14` (native Apple Silicon runner)
-- Targets `aarch64-apple-darwin`
-
-**Steps**:
-
-1. Setup Node.js and Rust
-2. Install npm dependencies
-3. Build frontend
-4. Build Tauri app for Apple Silicon
-5. Rename DMG to standardized format:
-   - `Crossover.Mod.Manager_{version}_aarch64.dmg`
-6. Upload to GitHub Release
-7. Upload as workflow artifact
+- Rust target `aarch64-apple-darwin`
+- `npm ci` → `npm run build` → `npm run tauri build -- --target aarch64-apple-darwin`
+- Renames the DMG to the standardized asset name:
+  - `Crossover.Mod.Manager_{version}_aarch64.dmg`
+- Uploads it to the GitHub Release and as a workflow artifact
 
 ### 3. Post-Release Notifications
 
-- Checks status of the build job
-- Reports success or failure
-- Can be extended to send notifications (Slack, Discord, etc.)
+- Checks the build job result and reports success or failure
+- Placeholder that can be extended to send notifications (Slack, Discord, etc.)
 
 ## Creating a Release
 
-### Automatic Release (Recommended)
+The app version lives in `package.json`; `src-tauri/tauri.conf.json` reads it via `"version": "../package.json"`. **Do not** hand-edit the version in `tauri.conf.json` — that would break the pointer. Bump `package.json` instead (the release helper does this for you).
 
-1. **Update version** in `src-tauri/tauri.conf.json`:
+### BETA release (automated via CI)
 
-   ```json
-   {
-     "version": "0.2.0"
-   }
-   ```
+BETA builds are published automatically by the Release workflow.
 
-2. **Update CHANGELOG.md** with the new version:
-
-   ```markdown
-   ## [0.2.0] - 2025-10-13
-
-   ### Added
-
-   - New feature description
-
-   ### Fixed
-
-   - Bug fix description
-   ```
-
-3. **Commit changes**:
+1. Make sure `main` is clean and up to date, and that `CHANGELOG.md` has a `## [X.Y.Z]` section for the version.
+2. Run the release helper with a version and a beta number:
 
    ```bash
-   git add src-tauri/tauri.conf.json CHANGELOG.md
-   git commit -m "chore: BETA Release v0.2.0-beta1"
-   git push origin main
+   ./scripts/release.sh 1.2.0 1
    ```
 
-4. **Create and push BETA tag**:
+   This bumps the version in `package.json`, commits `package.json` + `CHANGELOG.md`, creates the annotated tag `v1.2.0-beta1`, and pushes both `main` and the tag. For subsequent betas, increment the number: `./scripts/release.sh 1.2.0 2`.
+
+3. Pushing the `v*-beta*` tag triggers `release.yml`, which builds the Apple Silicon DMG and publishes a GitHub **pre-release** titled "🧪 BETA …".
+4. Monitor progress on the **Actions** tab; once complete, the pre-release appears on the **Releases** page.
+
+### Stable release (manual)
+
+Stable versions (`vX.Y.Z`, no `-beta` suffix) are **not** built by CI — the maintainer builds and publishes them locally.
+
+1. Bump the version in `package.json` and add the `## [X.Y.Z]` section to `CHANGELOG.md`; commit both to `main`.
+2. Build the app locally (the frontend is built automatically via `beforeBuildCommand`):
 
    ```bash
-   git tag v0.2.0-beta1
-   git push origin v0.2.0-beta1
+   npm run tauri build
    ```
 
-   For subsequent betas, increment the number: `v0.2.0-beta2`, `v0.2.0-beta3`, etc.5. **Monitor the release**:
+   The DMG lands in `src-tauri/target/release/bundle/dmg/`. It is ad-hoc signed (`signingIdentity: "-"`) and not notarized — that is expected; users open it the first time via right-click → Open.
 
-   - Go to Actions tab on GitHub
-   - Watch the Release workflow progress
-   - Once complete, check the Releases page
+3. Create the annotated tag and push it:
 
-### Manual Release
+   ```bash
+   git tag -a vX.Y.Z -m "vX.Y.Z — <short description>"
+   git push origin vX.Y.Z
+   ```
 
-You can also trigger a release manually from the GitHub Actions tab:
+4. Create the GitHub Release with the local DMG, renamed to the standard asset name so it matches the beta convention:
 
-1. Go to Actions → Release workflow
-2. Click "Run workflow"
-3. Select the branch
-4. Click "Run workflow"
+   ```bash
+   gh release create vX.Y.Z \
+     --title "vX.Y.Z" \
+     --notes "<release notes>" \
+     "<path-to-dmg>#Crossover.Mod.Manager_X.Y.Z_aarch64.dmg"
+   ```
+
+5. Verify the release is not a draft and not a pre-release, and that the `.dmg` asset is attached with the expected size.
 
 ## Release Assets
 
@@ -153,18 +126,18 @@ Each release includes:
 
 ### macOS Apple Silicon
 
-- `Crossover.Mod.Manager_{version}_aarch64.dmg` - Apple Silicon (M1/M2/M3/M4)
+- `Crossover.Mod.Manager_{version}_aarch64.dmg` — Apple Silicon (M1/M2/M3/M4)
 
 ## System Requirements
 
 ### Build Requirements
 
-**macOS Builds**:
+**macOS builds**:
 
-- macOS 14+ (Apple Silicon runner)
+- macOS 14 for the CI runner (local builds work on any recent macOS with Apple Silicon)
 - Xcode Command Line Tools
 - Node.js 20+
-- Rust stable toolchain with aarch64-apple-darwin target
+- Rust stable toolchain with the `aarch64-apple-darwin` target
 
 ### Runtime Requirements
 
@@ -172,21 +145,21 @@ Each release includes:
 
 - macOS 11.0+ (Big Sur or later)
 - Apple Silicon Mac (M1/M2/M3/M4)
-- CrossOver 23+ recommended
+- CrossOver 25+
 
 ## Caching Strategy
 
-The workflows use aggressive caching to speed up builds:
+The workflows cache dependencies to speed up builds:
 
-1. **npm cache**: Caches node_modules based on package-lock.json
-2. **Cargo registry**: Caches downloaded crates
-3. **Cargo git**: Caches git dependencies
-4. **Cargo build**: Caches compiled dependencies
+1. **npm cache**: handled by `actions/setup-node` (keyed on `package-lock.json`)
+2. **Cargo registry**: caches downloaded crates
+3. **Cargo git**: caches git dependencies
+4. **Cargo build**: caches the `src-tauri/target` directory
 
-Typical build times:
+Typical build times (approximate):
 
-- Cold build: 5-8 minutes
-- Cached build: 2-3 minutes
+- Cold build: 5–8 minutes
+- Cached build: 2–3 minutes
 
 ## Troubleshooting
 
@@ -195,33 +168,26 @@ Typical build times:
 **"No space left on device"**:
 
 - GitHub runners have limited disk space
-- Clean up artifacts: `cargo clean` before build
+- Clean up artifacts (`cargo clean`) before building
 - Consider splitting into multiple jobs
-
-**"Could not find libwebkit2gtk-4.1"**:
-
-- Update system dependencies in workflow
-- Ensure using Ubuntu 22.04+
 
 **DMG signing failures on macOS**:
 
-- Currently using ad-hoc signing (`-`)
-- For distribution, set up proper signing:
-  - Add Apple Developer certificates to secrets
-  - Configure signing identity in workflow
+- The app currently uses ad-hoc signing (`signingIdentity: "-"`)
+- For distributable signing, add Apple Developer certificates to secrets and configure a signing identity (requires an Apple Developer account)
 
 ### Failed Releases
 
-If a release job fails:
+If a BETA release job fails:
 
-1. **Check the Actions logs** for specific error
-2. **Re-run failed jobs** from Actions tab
-3. **Delete and recreate tag** if needed:
+1. **Check the Actions logs** for the specific error
+2. **Re-run failed jobs** from the Actions tab
+3. **Delete and recreate the tag** if needed:
    ```bash
-   git tag -d v1.7.0
-   git push origin :refs/tags/v1.7.0
-   git tag v1.7.0
-   git push origin v1.7.0
+   git tag -d vX.Y.Z-beta1
+   git push origin :refs/tags/vX.Y.Z-beta1
+   git tag vX.Y.Z-beta1
+   git push origin vX.Y.Z-beta1
    ```
 
 ## Security Considerations
@@ -230,17 +196,11 @@ If a release job fails:
 
 The workflows use these GitHub secrets:
 
-- `GITHUB_TOKEN` - Automatically provided, used for releases
+- `GITHUB_TOKEN` — automatically provided by GitHub, used to create releases and upload assets
 
-### Future Enhancements
+### Signing & Notarization
 
-Consider adding:
-
-- **Code signing** for macOS (requires Apple Developer account)
-- **Notarization** for macOS (requires Apple Developer account)
-- **Auto-update** mechanism in the app
-- **Delta updates** for smaller downloads
-- **Update server** integration
+The macOS DMG is currently ad-hoc signed and not notarized, so users bypass Gatekeeper on first launch (right-click → Open). Proper code signing and notarization would require an Apple Developer account; this is tracked as future work.
 
 ## Monitoring
 
@@ -249,24 +209,16 @@ Consider adding:
 Add to README.md:
 
 ```markdown
-[![Build Status](https://github.com/wackyfrog/crossover-mod-manager/workflows/Build%20and%20Test/badge.svg)](https://github.com/wackyfrog/crossover-mod-manager/actions)
+[![Build Status](https://github.com/wackyfrog/cp2077-crossover-mod-manager/workflows/Build%20and%20Test/badge.svg)](https://github.com/wackyfrog/cp2077-crossover-mod-manager/actions)
 ```
-
-### Release Notifications
-
-Future improvements:
-
-- Discord webhook for release notifications
-- Automatic changelog generation from commits
-- Version bump automation
 
 ## Best Practices
 
 1. **Always update CHANGELOG.md** before releasing
 2. **Test locally** with `npm run tauri build` before pushing tags
-3. **Use semantic versioning**: MAJOR.MINOR.PATCH
+3. **Use semantic versioning**: `MAJOR.MINOR.PATCH`
 4. **Document breaking changes** in release notes
-5. **Keep dependencies updated** (Dependabot)
+5. **Keep dependencies updated**
 
 ## Local Testing
 
@@ -276,29 +228,17 @@ Test the release build locally before pushing:
 # Build frontend
 npm run build
 
-# Build Tauri app
+# Build the Tauri app
 npm run tauri build
 
-# Test the built app
+# Open the built app
 open "src-tauri/target/release/bundle/macos/Crossover Mod Manager.app"
 ```
-
-## Continuous Improvement
-
-Planned enhancements:
-
-- [ ] Add Windows build support
-- [ ] Implement auto-update functionality
-- [ ] Add performance benchmarks
-- [ ] Set up code coverage reporting
-- [ ] Add integration tests
-- [ ] Implement A/B testing for UI changes
-- [ ] Add telemetry (opt-in) for crash reporting
 
 ## Support
 
 For CI/CD issues:
 
-1. Check [GitHub Actions documentation](https://docs.github.com/en/actions)
-2. Check [Tauri v2 CI/CD guide](https://v2.tauri.app/distribute/ci-cd/)
+1. Check the [GitHub Actions documentation](https://docs.github.com/en/actions)
+2. Check the [Tauri v2 CI/CD guide](https://v2.tauri.app/distribute/ci-cd/)
 3. Open an issue with the `ci/cd` label

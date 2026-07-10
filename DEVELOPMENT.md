@@ -8,8 +8,8 @@ This guide provides information for developers working on the Crossover Mod Mana
 
 1. **Node.js and npm**
 
-   - Node.js 18 or higher
-   - npm 8 or higher
+   - Node.js 20 or higher (CI builds on Node 20)
+   - npm (bundled with Node.js)
    - Check versions: `node --version && npm --version`
 
 2. **Rust**
@@ -48,8 +48,8 @@ This guide provides information for developers working on the Crossover Mod Mana
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/wackyfrog/crossover-mod-manager.git
-   cd crossover-mod-manager
+   git clone https://github.com/wackyfrog/cp2077-crossover-mod-manager.git
+   cd cp2077-crossover-mod-manager
    ```
 
 2. Install dependencies:
@@ -69,7 +69,7 @@ npm run tauri:dev
 
 This will:
 
-- Start Vite dev server on `http://localhost:1420`
+- Start Vite dev server on `http://localhost:1430`
 - Launch the Tauri application
 - Enable hot-reload for frontend changes
 - Rebuild Rust code on changes
@@ -92,43 +92,30 @@ Build the complete application:
 npm run tauri:build
 ```
 
-Build outputs:
+Build outputs (this is a macOS-only app):
 
-- **macOS**: `src-tauri/target/release/bundle/macos/`
-- **Linux**: `src-tauri/target/release/bundle/appimage/`
-- **Windows**: `src-tauri/target/release/bundle/msi/`
+- **App bundle**: `src-tauri/target/release/bundle/macos/Crossover Mod Manager.app`
+- **DMG installer**: `src-tauri/target/release/bundle/dmg/`
 
 ## Project Structure
 
-```
-crossover-mod-manager/
-├── src/                       # React frontend source
-│   ├── components/           # React components
-│   │   ├── ModList.jsx      # Installed mods list
-│   │   ├── ModList.css
-│   │   ├── ModDetails.jsx   # Mod details view
-│   │   ├── ModDetails.css
-│   │   ├── Settings.jsx     # Settings panel
-│   │   └── Settings.css
-│   ├── App.jsx              # Main app component
-│   ├── App.css
-│   ├── main.jsx             # React entry point
-│   └── index.css            # Global styles
-├── src-tauri/               # Rust backend
-│   ├── src/
-│   │   ├── main.rs          # Tauri app entry, command handlers
-│   │   ├── mod_manager.rs   # Mod installation/removal logic
-│   │   └── settings.rs      # Settings persistence
-│   ├── Cargo.toml           # Rust dependencies
-│   ├── tauri.conf.json      # Tauri configuration
-│   └── build.rs             # Build script
-├── dist/                    # Vite build output (generated)
-├── node_modules/            # npm dependencies (generated)
-├── package.json             # npm configuration
-├── vite.config.js           # Vite configuration
-├── index.html               # HTML entry point
-└── README.md                # User documentation
-```
+A high-level map — browse `src/` and `src-tauri/src/` for the current set of files
+rather than relying on a fixed listing here.
+
+- **`src/`** — React frontend (Vite). Entry `main.jsx` → `App.jsx`; UI components
+  live in `src/components/` (mod list, mod details, config/settings, and the themed
+  overlays for install / sync / logs).
+- **`src-tauri/src/`** — Rust backend modules:
+  - `main.rs` — Tauri app entry and `#[tauri::command]` handlers
+  - `mod_manager.rs` — mod install / update / remove logic
+  - `archive_extractor.rs` — archive extraction (zip; optional 7z/rar via p7zip/unrar)
+  - `nexusmods_api.rs` — NexusMods API client
+  - `settings.rs` — settings persistence
+- **`src-tauri/`** also holds `tauri.conf.json` (Tauri config), `Cargo.toml` (Rust
+  deps), and `build.rs` (build script).
+- **`dist/`** — Vite build output (generated); **`node_modules/`** — npm deps (generated).
+- Root: `package.json` (npm scripts and the app version — `tauri.conf.json` reads
+  `"version": "../package.json"`), `vite.config.js`, `index.html`.
 
 ## Key Technologies
 
@@ -141,7 +128,7 @@ crossover-mod-manager/
 
 ### Backend Stack
 
-- **Tauri 1.5**: Desktop app framework
+- **Tauri 2**: Desktop app framework (`tauri` 2.10)
 - **Rust**: Backend language
 - **serde/serde_json**: JSON serialization
 - **reqwest**: HTTP client for downloads
@@ -161,13 +148,13 @@ React UI ──invoke()──> Tauri Commands ──> Rust Backend
 
 ### Tauri Commands
 
-Commands exposed to the frontend (defined in `src-tauri/src/main.rs`):
+The frontend talks to the backend through Tauri commands registered in
+`src-tauri/src/main.rs` via `tauri::generate_handler![...]`. They cover the mod
+lifecycle (install / update / reinstall / enable / disable / remove), NexusMods
+sync, settings, game-path detection, and diagnostics/logs.
 
-- `get_installed_mods()`: Returns list of installed mods
-- `install_mod(mod_data)`: Installs a new mod
-- `remove_mod(mod_id)`: Removes an installed mod
-- `get_settings()`: Retrieves app settings
-- `save_settings(settings)`: Saves app settings
+For the current, authoritative list, read the `generate_handler!` macro in
+`src-tauri/src/main.rs` — each entry is a `#[tauri::command]` function.
 
 ### Data Storage
 
@@ -211,20 +198,17 @@ All data is stored in the user's home directory:
 3. Call from frontend:
 
    ```javascript
-   import { invoke } from "@tauri-apps/api/tauri";
+   import { invoke } from "@tauri-apps/api/core";
 
    const result = await invoke("my_command", { param: "value" });
    ```
 
 ### Modifying Mod Installation Logic
 
-The mod installation logic is in `src-tauri/src/mod_manager.rs`:
-
-- `install_mod()`: Main installation flow
-- `download_mod()`: Downloads from URL
-- `extract_mod()`: Extracts ZIP archive
-- `install_files()`: Copies files to game directory
-- `determine_install_path()`: Determines where files should go
+Mod installation lives in `src-tauri/src/mod_manager.rs` (the install / update /
+remove flow and install-path resolution), with archive extraction split out into
+`src-tauri/src/archive_extractor.rs`. Read those modules for the current function
+set rather than relying on a fixed list here.
 
 ## Testing
 

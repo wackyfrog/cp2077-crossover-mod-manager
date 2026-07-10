@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*" # Version tags: final (v1.2.0) or beta (v1.2.0-beta1)
+      - "v*-beta*" # BETA tags only (e.g. v1.2.0-beta1). Stable releases (vX.Y.Z) are published manually — see release runbook.
   workflow_dispatch: # Allow manual trigger
 
 permissions:
