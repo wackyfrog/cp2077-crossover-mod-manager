@@ -11,6 +11,9 @@ How to configure Crossover Mod Manager and fix the most common problem:
 - [Verify it actually works](#verify)
 - [Troubleshooting: mods don't appear in the game](#not-appearing)
 - [Troubleshooting: files are there, but mods don't load in-game](#not-loading)
+- [Configuring the CrossOver bottle for advanced mods](#bottle-config)
+- [Mod-type compatibility under CrossOver](#compatibility)
+- [Community resources](#help)
 - [Where the manager stores things](#storage)
 - [How the game directory is laid out](#layout)
 - [Collecting logs for a bug report](#logs)
@@ -148,6 +151,78 @@ the mod-loader chain in the bottle, not the manager:
 
 Install the required loaders (RED4ext, Redscript, CET) as mods **first**, then
 your content mods.
+
+---
+
+<a id="bottle-config"></a>
+## Configuring the CrossOver bottle for advanced mods
+
+Some loaders need a one-time Wine configuration inside the bottle before they
+work. Open the bottle's Wine settings once: **CrossOver → right-click your bottle
+→ Wine Configuration** (or *Run Command → `winecfg`*).
+
+### Cyber Engine Tweaks (CET): DLL overrides
+
+CET injects through `version.dll` and `winmm.dll`. Wine must be told to use the
+mod's native DLLs instead of its built-in stubs, otherwise CET fails to load
+silently (the `~` key opens no console):
+
+1. Open **Wine Configuration** for the bottle.
+2. Go to the **Libraries** tab.
+3. Under *New override for library*, add **`version`** → click **Add** → set it
+   to **"Native then Builtin"**.
+4. Add **`winmm`** the same way → **"Native then Builtin"**.
+5. Click **Apply**, then **OK**, and restart the game launcher (GOG/Steam/Epic).
+
+### RED4ext on CrossOver
+
+RED4ext is native code injection, so it needs a bit more setup — but it *can*
+work on CrossOver with the right configuration. The manager prints these same
+steps in the install log when it detects a RED4ext mod:
+
+1. Set the bottle to **Windows 10** — Wine Configuration → **Applications** tab →
+   *Windows Version* → **Windows 10**.
+2. Add a **`version`** library override → **"Native then Builtin"** (Libraries
+   tab, as above).
+3. Install the **Visual C++ 2019/2022 Redistributables** inside the bottle.
+4. Verify **`version.dll`** is in the **game root** (not `bin/x64/`) — the
+   manager places it there automatically.
+
+Click **Apply**, then restart the launcher. If a RED4ext mod still crashes the
+game on startup, the VC++ Redistributable is the usual missing piece. When a
+mod is available as a Redscript or CET-based version, that's easier to set up.
+
+### Wine / Windows version
+
+Most Cyberpunk 2077 mods expect **Windows 10**. The manager logs the bottle's
+detected Windows version during install; if it isn't Windows 10, change it:
+
+Wine Configuration → **Applications** tab → *Windows Version* → **Windows 10** →
+**Apply**, then restart the game launcher.
+
+---
+
+<a id="compatibility"></a>
+## Mod-type compatibility under CrossOver
+
+Not every kind of mod behaves the same through Wine:
+
+| Compatibility | Mod types | Notes |
+| --- | --- | --- |
+| ✅ Excellent | `.archive` mods, Redscript (`.reds`), REDmod, texture/model swaps | Pure assets or scripts, no native runtime code |
+| ⚠️ Good (needs config) | Cyber Engine Tweaks (CET), TweakXL, ArchiveXL | Work well after the bottle configuration above |
+| ❌ Limited | RED4ext, native `.dll` mods, anti-cheat mods | Native/kernel code that Wine often can't translate |
+
+---
+
+<a id="help"></a>
+## Community resources
+
+For CrossOver/Wine-specific problems beyond the manager:
+
+- [WineHQ AppDB](https://appdb.winehq.org/) — Wine compatibility database
+- [CodeWeavers Forums](https://www.codeweavers.com/support/forums) — CrossOver-specific help
+- [r/Crossover](https://reddit.com/r/Crossover) — community support
 
 ---
 

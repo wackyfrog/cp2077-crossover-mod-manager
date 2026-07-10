@@ -3296,7 +3296,7 @@ async fn install_mod_from_nxm_inner(
                 state.clone(),
             )?;
             add_log(
-                "📖 Full setup guide: See FEATURES.md for detailed instructions.".to_string(),
+                "📖 Full setup guide: See SETUP_AND_TROUBLESHOOTING.md (\"mods don't load in-game\").".to_string(),
                 "info".to_string(),
                 "installation".to_string(),
                 state.clone(),
