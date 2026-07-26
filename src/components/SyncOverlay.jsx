@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import SyncTerminal from "./SyncTerminal";
+import useEscape from "../hooks/useEscape";
 import "./SyncOverlay.css";
 
 export default function SyncOverlay({ open, syncProgress, mods, onStart, onCancel, onClose, syncSummary }) {
@@ -8,6 +9,10 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
   const terminalRef = useRef(null); // { addRealLine, reset }
 
   const phase = syncSummary ? "done" : syncProgress ? "syncing" : "info";
+
+  // Escape leaves the screen, but not mid-sync — there the only way out is
+  // Abort, so a stray keypress can't silently orphan a running sync.
+  useEscape(open && phase !== "syncing", onClose);
   const syncable = mods?.filter(m => m.mod_id && !m.removed).length || 0;
   const skipped = mods?.filter(m => !m.mod_id && !m.removed).length || 0;
 
@@ -143,7 +148,9 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
         <div className="sync-footer-actions">
           {phase === "info" && (
             <>
-              <button className="sync-btn cancel" onClick={onClose}>Disconnect</button>
+              <button className="sync-btn exit" onClick={onClose}>
+                Disconnect <span className="sync-key">esc</span>
+              </button>
               <button className="sync-btn primary" onClick={onStart}>Start</button>
             </>
           )}
@@ -151,7 +158,9 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
             <button className="sync-btn danger" onClick={onCancel}>Abort</button>
           )}
           {phase === "done" && (
-            <button className="sync-btn primary" onClick={onClose}>Disconnect</button>
+            <button className="sync-btn primary" onClick={onClose}>
+              Disconnect <span className="sync-key">esc</span>
+            </button>
           )}
         </div>
       </div>

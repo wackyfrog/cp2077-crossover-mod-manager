@@ -8,7 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - **Legibility pass across the whole UI** — text is larger throughout, and contrast is substantially higher. The dim red used for mod versions measured 2.44:1 against the background (well under the 4.5:1 that body text needs) and was the hardest thing in the app to read; it and the other muted colours have been lifted, along with 41 semi-transparent text colours in the overlays that were washing out to under 3.6:1. Borders and glows keep their original values, so the look is unchanged
 - **Menu reorganised** — order is now Chrome / Jack In / Netrun / Config / About. **Netrun** moved up from the mod-list footer into the main menu, and **Sideload** moved from the menu into the **Jack In** screen, next to the NXM link field — both are ways to install a mod, so they now sit together
-- **Escape closes things again** — it only ever worked while a text field had focus, so pressing it after clicking anywhere else did nothing. It now closes whatever is in front, wherever the focus happens to be, and clears the mod search when nothing is open. Mid-install it is ignored, so you can't accidentally hide a running transfer
+- **Escape closes things again** — it only ever worked while a text field had focus, so pressing it after clicking anywhere else did nothing. It now closes whatever is in front, wherever the focus happens to be, including **Netrun**, and clears the mod search when nothing is open. Mid-install and mid-sync it is ignored, so you can't accidentally hide work that's still running
+- **The way out is visible** — the exit button in **Jack In** and **Netrun** looked exactly like every other button on those screens, which made leaving them a guessing game. It now stands apart, and carries an `esc` hint so the shortcut is discoverable
 - **Splash screen** — click anywhere to skip it, and it's a quarter shorter
 
 ## [1.3.0] - 2026-07-26

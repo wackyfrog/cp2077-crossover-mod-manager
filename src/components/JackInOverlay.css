@@ -470,6 +470,36 @@
   cursor: not-allowed;
 }
 
+/* The way out of the screen. Everything else in here is green, so the exit was
+   indistinguishable from the actions — and "how do I leave?" is exactly the
+   question this button has to answer at a glance. */
+.jackin-btn.exit {
+  border-color: var(--cyber-red);
+  color: var(--cyber-red-bright);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.jackin-btn.exit:hover:not(:disabled) {
+  color: var(--cyber-red-bright);
+  border-color: var(--cyber-red-bright);
+  background: rgba(255, 0, 64, 0.1);
+  box-shadow: 0 0 12px rgba(255, 0, 64, 0.35);
+}
+
+/* Keycap hint — the shortcut exists, but nobody discovers it unaided. */
+.jackin-key {
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid rgba(255, 51, 102, 0.5);
+  border-radius: 2px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
 .jackin-btn.danger {
   border: 2px solid var(--cyber-red);
   color: var(--cyber-red);

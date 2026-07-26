@@ -207,15 +207,37 @@
   text-transform: uppercase;
 }
 
-.sync-btn.cancel {
+/* Reads as the way out of the screen — distinct from .danger, which stops
+   work in progress. (Replaced .cancel, which had no markup left.) */
+.sync-btn.exit {
   border: 2px solid var(--cyber-red);
-  color: var(--cyber-red);
-  text-shadow: 0 0 6px rgba(255,0,64,0.5);
-  box-shadow: 0 0 8px rgba(255,0,64,0.15);
+  color: var(--cyber-red-bright);
+  text-shadow: 0 0 6px rgba(255, 0, 64, 0.5);
+  box-shadow: 0 0 8px rgba(255, 0, 64, 0.15);
 }
-.sync-btn.cancel:hover {
-  background: rgba(255,0,64,0.15);
-  box-shadow: 0 0 12px rgba(255,0,64,0.4), 0 0 30px rgba(255,0,64,0.15);
+
+.sync-btn.exit:hover {
+  background: rgba(255, 0, 64, 0.15);
+  box-shadow: 0 0 12px rgba(255, 0, 64, 0.4), 0 0 30px rgba(255, 0, 64, 0.15);
+}
+
+.sync-btn.exit,
+.sync-btn.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Keycap hint, matching the one in Jack In. */
+.sync-key {
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  text-shadow: none;
 }
 
 .sync-btn.primary {

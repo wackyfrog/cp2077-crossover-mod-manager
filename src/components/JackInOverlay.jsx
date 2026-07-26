@@ -539,7 +539,9 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
                 }}
               />
               <button className="jackin-btn primary" disabled={!url.trim()} onClick={handleGo}>Go</button>
-              <button className="jackin-btn" onClick={handleClose}>Abort</button>
+              <button className="jackin-btn exit" onClick={handleClose}>
+                Abort <span className="jackin-key">esc</span>
+              </button>
             </div>
 
             {onSideload && (
@@ -650,7 +652,9 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
           )}
           {phase === "error" && !errorInfo?.type && (
             <>
-              <button className="jackin-btn" onClick={handleClose}>Dismiss</button>
+              <button className="jackin-btn exit" onClick={handleClose}>
+                Dismiss <span className="jackin-key">esc</span>
+              </button>
               <button className="jackin-btn primary" onClick={handleRetry}>Retry</button>
             </>
           )}
