@@ -93,6 +93,91 @@ pub struct RelocateReport {
     pub mods_affected: usize,
 }
 
+/// What became of a mod's tracked files when we tried to delete them.
+pub struct DeleteOutcome {
+    /// Paths actually deleted; may carry the `.disabled` suffix.
+    pub removed: Vec<String>,
+    /// Tracked paths that were already absent — not a failure.
+    pub already_gone: Vec<String>,
+    /// Tracked path + reason, for everything still on disk.
+    pub failed: Vec<(String, String)>,
+}
+
+impl DeleteOutcome {
+    /// Failures rendered for the log and the UI.
+    pub fn failure_reports(&self) -> Vec<String> {
+        self.failed
+            .iter()
+            .map(|(file, why)| format!("{}: {}", file, why))
+            .collect()
+    }
+}
+
+/// Delete a mod's tracked files, matching both the active name and the ghosted
+/// (`.disabled`) one.
+///
+/// A disabled mod keeps every file on disk under the `.disabled` suffix, so
+/// matching only the active name deleted nothing while the record was still
+/// flatlined — the files stayed behind, permanently out of the manager's sight
+/// (see docs/bugs.md B2). Both variants go when both exist, which happens if a
+/// mod was reinstalled on top of an earlier orphan.
+///
+/// A file that is already absent is reported separately from a genuine failure:
+/// only the latter means something survived the removal.
+pub fn delete_tracked_files(files: &[String]) -> DeleteOutcome {
+    let mut outcome = DeleteOutcome {
+        removed: Vec::new(),
+        already_gone: Vec::new(),
+        failed: Vec::new(),
+    };
+
+    for tracked in files {
+        if let Err(reason) = check_safe_to_delete(tracked) {
+            eprintln!("⛔ Skipping {}: {}", tracked, reason);
+            outcome.failed.push((tracked.clone(), reason));
+            continue;
+        }
+
+        let variants: Vec<PathBuf> = [
+            PathBuf::from(tracked),
+            PathBuf::from(format!("{}.disabled", tracked)),
+        ]
+        .into_iter()
+        .filter(|p| p.exists())
+        .collect();
+
+        if variants.is_empty() {
+            outcome.already_gone.push(tracked.clone());
+            continue;
+        }
+
+        for path in variants {
+            match fs::remove_file(&path) {
+                Ok(_) => outcome.removed.push(path.display().to_string()),
+                Err(e) => {
+                    eprintln!("Failed to remove file {}: {}", path.display(), e);
+                    outcome.failed.push((tracked.clone(), e.to_string()));
+                }
+            }
+        }
+    }
+
+    outcome
+}
+
+/// Refuse to delete anything that is not an absolute path inside a Cyberpunk
+/// 2077 install.
+fn check_safe_to_delete(file_path: &str) -> Result<(), String> {
+    let path = Path::new(file_path);
+    if !path.is_absolute() || file_path.contains("..") {
+        return Err("path safety check failed".to_string());
+    }
+    if !file_path.to_lowercase().contains("cyberpunk 2077") {
+        return Err("outside game directory".to_string());
+    }
+    Ok(())
+}
+
 pub struct ModManager {
     database_path: PathBuf,
     mods: Vec<ModInfo>,
@@ -100,6 +185,17 @@ pub struct ModManager {
 }
 
 impl ModManager {
+    /// Build a manager over a throwaway database, so tests never touch the
+    /// user's real `~/.crossover-mod-manager/mods.json`.
+    #[cfg(test)]
+    fn with_database(database_path: PathBuf, mods: Vec<ModInfo>) -> Self {
+        Self {
+            database_path,
+            mods,
+            last_modified: None,
+        }
+    }
+
     pub fn new() -> Self {
         let database_path = Self::get_database_path();
         let mods = Self::load_database(&database_path);
@@ -464,49 +560,35 @@ impl ModManager {
             .position(|m| m.id == mod_id)
             .ok_or("Mod not found")?;
 
-        let mod_info = &mut self.mods[mod_index];
-        let mod_name = mod_info.name.clone();
+        let mod_name = self.mods[mod_index].name.clone();
+        let tracked = self.mods[mod_index].files.clone();
 
-        let mut removed_files = Vec::new();
-        let mut failed_files = Vec::new();
+        let outcome = delete_tracked_files(&tracked);
 
-        // Remove all installed files from disk (with path safety check)
-        for file_path in &mod_info.files {
-            let path = Path::new(file_path);
-            // Safety: only delete absolute paths that don't contain traversal
-            if !path.is_absolute() || file_path.contains("..") {
-                eprintln!("⛔ Skipping unsafe path: {}", file_path);
-                failed_files.push(format!("{}: path safety check failed", file_path));
-                continue;
-            }
-            // Safety: must be within a Cyberpunk 2077 game directory
-            let path_lower = file_path.to_lowercase();
-            if !path_lower.contains("cyberpunk 2077") {
-                eprintln!("⛔ Skipping path outside game directory: {}", file_path);
-                failed_files.push(format!("{}: outside game directory", file_path));
-                continue;
-            }
-            match fs::remove_file(file_path) {
-                Ok(_) => {
-                    removed_files.push(file_path.clone());
-                }
-                Err(e) => {
-                    eprintln!("Failed to remove file {}: {}", file_path, e);
-                    failed_files.push(format!("{}: {}", file_path, e));
-                }
-            }
+        for gone in &outcome.already_gone {
+            eprintln!("· Nothing to delete, already absent: {}", gone);
         }
 
-        // Soft-delete: keep record but clear file list and mark as removed
-        mod_info.files = Vec::new();
-        mod_info.file_conflicts = HashMap::new();
-        mod_info.removed = true;
-        mod_info.removed_at = Some(chrono::Utc::now().to_rfc3339());
-        mod_info.enabled = false;
+        let mod_info = &mut self.mods[mod_index];
+        if outcome.failed.is_empty() {
+            // Soft-delete: keep record but clear file list and mark as removed
+            mod_info.files = Vec::new();
+            mod_info.file_conflicts = HashMap::new();
+            mod_info.removed = true;
+            mod_info.removed_at = Some(chrono::Utc::now().to_rfc3339());
+            mod_info.enabled = false;
+        } else {
+            // Files are still on disk, so the record must not claim otherwise:
+            // narrow the manifest to exactly what is left and keep the mod
+            // listed, which leaves the user a removal to retry. `enabled` stays
+            // as it was — the on-disk state is unchanged for those files.
+            mod_info.files = outcome.failed.iter().map(|(f, _)| f.clone()).collect();
+        }
 
         self.save_database()?;
 
-        Ok((mod_name, removed_files, failed_files))
+        let failure_reports = outcome.failure_reports();
+        Ok((mod_name, outcome.removed, failure_reports))
     }
 
     /// Update file_name, file_version, file_description, and latest_file_id for all mods with given mod_id
@@ -608,27 +690,19 @@ impl ModManager {
     pub fn remove_mod_files(&mut self, mod_id: &str) -> Result<(String, Vec<String>, Vec<String>), String> {
         let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
         let mod_name = mod_info.name.clone();
-        let mut removed_files = Vec::new();
-        let mut failed_files = Vec::new();
+        let tracked = mod_info.files.clone();
 
-        for file_path in &mod_info.files {
-            let path = Path::new(file_path);
-            if !path.is_absolute() || file_path.contains("..") || !file_path.to_lowercase().contains("cyberpunk 2077") {
-                eprintln!("⛔ Skipping unsafe path: {}", file_path);
-                failed_files.push(format!("{}: path safety check failed", file_path));
-                continue;
-            }
-            match fs::remove_file(file_path) {
-                Ok(_) => removed_files.push(file_path.clone()),
-                Err(e) => failed_files.push(format!("{}: {}", file_path, e)),
-            }
-        }
+        // Ghost-aware, same as remove_mod: a disabled mod's files are on disk
+        // under `.disabled` and would otherwise survive the reinstall.
+        let outcome = delete_tracked_files(&tracked);
 
+        let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
         mod_info.files = Vec::new();
         mod_info.file_conflicts = HashMap::new();
         self.save_database()?;
 
-        Ok((mod_name, removed_files, failed_files))
+        let failure_reports = outcome.failure_reports();
+        Ok((mod_name, outcome.removed, failure_reports))
     }
 
     /// Update mod record after successful reinstall (new files, version, file_id, etc).
@@ -1010,4 +1084,161 @@ pub enum LoadOrderWarningType {
     MultipleBasegameArchives,
     MultiplePatchArchives,
     ConflictingMods,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scratch game dir. The name must contain "Cyberpunk 2077" — the delete
+    /// guard refuses anything outside an install.
+    fn game_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("cmm_{}_{}", tag, uuid::Uuid::new_v4()))
+            .join("Cyberpunk 2077");
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn cleanup(game: &Path) {
+        fs::remove_dir_all(game.parent().unwrap()).ok();
+    }
+
+    fn write(path: &Path, body: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
+    }
+
+    fn fixture(id: &str, files: Vec<String>) -> ModInfo {
+        ModInfo {
+            id: id.to_string(),
+            name: format!("Mod {}", id),
+            version: "1.0".to_string(),
+            author: None,
+            description: None,
+            mod_id: None,
+            file_id: None,
+            enabled: false,
+            files,
+            file_conflicts: HashMap::new(),
+            installed_at: None,
+            picture_url: None,
+            update_available: None,
+            latest_version: None,
+            summary: None,
+            nexus_updated_at: None,
+            removed: false,
+            removed_at: None,
+            file_name: None,
+            file_version: None,
+            file_description: None,
+            latest_file_id: None,
+            reinstall_status: None,
+        }
+    }
+
+    #[test]
+    fn deletes_the_ghosted_variant_the_active_name_would_miss() {
+        let game = game_dir("ghost");
+        let tracked = game.join("mods/Ghosted/init.lua");
+        write(&PathBuf::from(format!("{}.disabled", tracked.display())), "-- off");
+
+        let outcome = delete_tracked_files(&[tracked.display().to_string()]);
+
+        assert_eq!(outcome.removed.len(), 1, "the .disabled file must be deleted");
+        assert!(outcome.failed.is_empty());
+        assert!(outcome.already_gone.is_empty());
+        assert!(!PathBuf::from(format!("{}.disabled", tracked.display())).exists());
+        cleanup(&game);
+    }
+
+    #[test]
+    fn deletes_both_variants_when_both_exist() {
+        let game = game_dir("both");
+        let tracked = game.join("mods/Twice/init.lua");
+        write(&tracked, "-- on");
+        write(&PathBuf::from(format!("{}.disabled", tracked.display())), "-- off");
+
+        let outcome = delete_tracked_files(&[tracked.display().to_string()]);
+
+        assert_eq!(outcome.removed.len(), 2);
+        assert!(!tracked.exists());
+        assert!(!PathBuf::from(format!("{}.disabled", tracked.display())).exists());
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_file_already_absent_is_not_a_failure() {
+        let game = game_dir("absent");
+        let tracked = game.join("mods/Vanished/init.lua");
+
+        let outcome = delete_tracked_files(&[tracked.display().to_string()]);
+
+        assert!(outcome.removed.is_empty());
+        assert!(outcome.failed.is_empty(), "ENOENT must not read as a failure");
+        assert_eq!(outcome.already_gone.len(), 1);
+        cleanup(&game);
+    }
+
+    #[test]
+    fn refuses_a_path_outside_the_game_directory() {
+        let outside = std::env::temp_dir().join("cmm_outside_marker.txt");
+        fs::write(&outside, "keep me").unwrap();
+
+        let outcome = delete_tracked_files(&[outside.display().to_string()]);
+
+        assert!(outcome.removed.is_empty());
+        assert_eq!(outcome.failed.len(), 1);
+        assert!(outside.exists(), "a path outside the install must survive");
+        fs::remove_file(&outside).ok();
+    }
+
+    #[test]
+    fn a_clean_sweep_flatlines_the_record() {
+        let game = game_dir("flatline");
+        let tracked = game.join("mods/Clean/init.lua");
+        write(&PathBuf::from(format!("{}.disabled", tracked.display())), "-- off");
+
+        let mut manager = ModManager::with_database(
+            game.join("mods.json"),
+            vec![fixture("m1", vec![tracked.display().to_string()])],
+        );
+        let (_, removed, failed) = manager.remove_mod("m1").unwrap();
+
+        assert_eq!(removed.len(), 1);
+        assert!(failed.is_empty());
+        let record = &manager.mods[0];
+        assert!(record.removed, "nothing left on disk, so the record flatlines");
+        assert!(record.files.is_empty());
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_file_left_behind_keeps_the_record_alive() {
+        let game = game_dir("leftover");
+        // A directory where a file is tracked: remove_file cannot delete it, so
+        // this stands in for any undeletable file (locked, no permission).
+        let stubborn = game.join("mods/Stubborn/init.lua");
+        fs::create_dir_all(&stubborn).unwrap();
+
+        let mut manager = ModManager::with_database(
+            game.join("mods.json"),
+            vec![fixture("m2", vec![stubborn.display().to_string()])],
+        );
+        let (_, removed, failed) = manager.remove_mod("m2").unwrap();
+
+        assert!(removed.is_empty());
+        assert_eq!(failed.len(), 1);
+        let record = &manager.mods[0];
+        assert!(
+            !record.removed,
+            "the record must not claim removal while the file is still there"
+        );
+        assert_eq!(
+            record.files,
+            vec![stubborn.display().to_string()],
+            "the manifest narrows to what is left, so the user can retry"
+        );
+        cleanup(&game);
+    }
 }

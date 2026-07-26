@@ -641,16 +641,22 @@ function App() {
     setLoading(true);
 
     try {
-      await invoke("remove_mod", { modId });
+      const report = await invoke("remove_mod", { modId });
       await loadMods();
-      setModFilter("removed");
       setMods((cur) => {
-        const flatlined = cur.find(m => m.id === modId);
-        if (flatlined) setSelectedMod(flatlined);
-        else setSelectedMod(null);
+        const target = cur.find((m) => m.id === modId) ?? null;
+        setSelectedMod(target);
+        if (target && !target.removed) {
+          // Files survived the removal (locked, no permission), so the record
+          // stays live — don't send the user to the flatlined list for a mod
+          // that isn't there.
+          setStatusMsg(report);
+        } else {
+          setModFilter("removed");
+          setStatusMsg(`flatlined: ${modName}`);
+        }
         return cur;
       });
-      setStatusMsg(`flatlined: ${modName}`);
     } catch (error) {
       console.error("Failed to remove mod:", error);
       alert("Failed to remove mod: " + error);

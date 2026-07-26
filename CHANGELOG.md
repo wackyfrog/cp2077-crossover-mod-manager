@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Deleting a switched-off mod now really deletes it** — an unslotted mod keeps its files on disk under a `.disabled` suffix, but removal only ever looked for the active filenames. It found nothing, deleted nothing, and marked the mod as removed anyway: every file stayed on disk, and with the record emptied the manager could never see them again. Removal now matches both the active and the ghosted name, and deletes both when both are there. The symptom in-game was Cyber Engine Tweaks logging *"Ignoring mod which does not contain init.lua!"* for each abandoned folder at every launch
+- **A mod is no longer reported as removed when its files are still there** — if a file can't be deleted (locked by the running game, no permission), the mod now stays in the list with its file list narrowed to exactly what survived, so you can see what happened and retry. Previously the record was flatlined regardless, and anything left behind became untracked. A file that was already gone is not treated as a failure — it just means there was nothing left to delete
+
 ## [1.4.0] - 2026-07-26
 
 ### Changed
