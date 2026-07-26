@@ -11,6 +11,7 @@ How to configure Crossover Mod Manager and fix the most common problem:
 - [Verify it actually works](#verify)
 - [Troubleshooting: mods don't appear in the game](#not-appearing)
 - [Troubleshooting: files are there, but mods don't load in-game](#not-loading)
+- [Troubleshooting: installed by v1.2 or earlier into a wrapper folder](#wrapper-folder)
 - [Configuring the CrossOver bottle for advanced mods](#bottle-config)
 - [Mod-type compatibility under CrossOver](#compatibility)
 - [Community resources](#help)
@@ -151,6 +152,45 @@ the mod-loader chain in the bottle, not the manager:
 
 Install the required loaders (RED4ext, Redscript, CET) as mods **first**, then
 your content mods.
+
+---
+
+<a id="wrapper-folder"></a>
+## Troubleshooting: installed by v1.2 or earlier into a wrapper folder
+
+Applies only to mods installed with **v1.2 or earlier**. Those versions copied an
+archive's layout exactly as it came, so a mod packaged inside one folder named
+after itself landed a level too deep:
+
+```
+{game}/Combat/r6/tweaks/…      <- where it went
+{game}/r6/tweaks/…             <- where the loaders look
+```
+
+The mod shows as installed and enabled, every file really is on disk, and
+nothing reports an error — loaders simply never look inside `{game}/Combat/`.
+
+**How to tell.** Look at the top level of the game folder. Alongside the real
+game directories (`archive`, `bin`, `engine`, `mods`, `r6`, `red4ext`, plus GOG
+or Steam files), a folder named after a mod is the giveaway. To confirm a
+specific mod, check whether it turns up where its loader scans:
+
+```sh
+# CET mods
+ls "<game>/bin/x64/plugins/cyber_engine_tweaks/mods"
+# TweakXL tweaks
+ls "<game>/r6/tweaks"
+```
+
+**How to fix.** Update to v1.3+ and use **Config → Check for unloadable mods**,
+which lists what would move before you commit, then **Repair now**. The mod
+database is backed up first, into `~/.crossover-mod-manager/backups/`. Restart
+the game afterwards.
+
+Repair skips anything ambiguous — multi-variant and FOMOD archives, and folders
+with no recognisable game directory inside — so it may report fewer mods than
+you see suspicious folders. Reinstalling a mod fixes it too, since new installs
+strip the wrapper.
 
 ---
 

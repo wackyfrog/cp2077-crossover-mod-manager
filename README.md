@@ -12,6 +12,60 @@ Enjoy Night City, choom!
 
 ![Netrun — sync with NexusMods](docs/screenshots/netrun.png)
 
+## ⚠️ Mods installed before v1.3 may be silently broken
+
+**Read this if you used any version up to 1.2.** It affects mods that were
+installed successfully, show up as enabled, and still do nothing in the game.
+
+**What went wrong.** Mods are usually packaged with the game's own folder
+layout inside the archive (`archive/`, `bin/`, `r6/`…), and those get merged
+into the game directory. But some mods ship everything inside one extra folder
+named after the mod:
+
+```
+the archive:            installed as (wrong):        should have been:
+ModName/                {game}/ModName/r6/…          {game}/r6/…
+  r6/tweaks/…           {game}/ModName/bin/…         {game}/bin/…
+  bin/x64/…
+```
+
+Versions up to 1.2 copied that layout verbatim, wrapper and all. Nothing looks
+wrong from the app's side — the files really were copied, the mod is recorded,
+the toggle says enabled — but no mod loader looks inside `{game}/ModName/`, so
+the mod never loads. There is no error anywhere: CET and TweakXL don't report
+folders they were never told about.
+
+**Whether it hit you** depends on what the mod is made of. The installer had
+fallback rules for `.archive`, `.reds`, `.dll` and `.exe` files, which quietly
+rescued those. Everything else — the `.lua` and `.json` of CET mods, the
+`.yaml` of TweakXL tweaks, loose textures — fell through and stayed in the
+wrapper. In a real 262-mod library, 2 mods were affected.
+
+**How to check and fix it**, in v1.3 or later:
+
+1. The startup banner tells you if anything is affected: *"N mods installed
+   inside a redundant folder and can't be loaded by the game"*.
+2. **Config → Check for unloadable mods** lists exactly what would move,
+   without changing anything yet.
+3. **Repair now** backs up the mod database, moves each file to where the
+   loaders actually look, updates the database, and clears the emptied folders.
+4. Restart the game.
+
+Repair is deliberately cautious and skips anything ambiguous: multi-variant and
+FOMOD archives (moving their parts would enable options you never chose), and
+mods whose top-level folder holds no recognisable game directory. If a file's
+destination is already taken by another mod, it is skipped rather than
+overwritten. Reinstalling a mod also fixes it, since new installs strip the
+wrapper correctly.
+
+## What's New in 1.3
+
+- **Sideload** — install a mod from a `.zip`/`.7z`/`.rar` on disk, for the many NexusMods pages that offer no "Download with Mod Manager" button. Pick it from **Jack In**, or drag the archive onto the window; details are read from the filename for you to confirm
+- **Wrapper-folder fix** — see the section above, plus a repair tool for installs already affected
+- **One install at a time** — a second "Download with Mod Manager" click, or an archive dropped mid-download, no longer starts a second install on top of the first
+- **Legibility pass** — larger text throughout and much higher contrast, especially the dim reds that were hard to read on the dark background
+- **Escape works everywhere** — it used to do nothing unless a text field had focus. Splash screen can be skipped with a click, and is a quarter shorter
+
 ## What's New in 1.2
 
 - **Reliable game-path detection** — Auto-Detect scans every CrossOver bottle (Steam / GOG / Epic / custom) and lets you pick the right one when several are found
@@ -64,10 +118,17 @@ Download the latest release from the [Releases](https://github.com/wackyfrog/cp2
 4. Visit NexusMods → click "Download with Mod Manager" on any CP2077 mod
 5. The app handles everything: download, extract, install, track
 
-> **Mods not showing up in the game?** See
-> **[Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md)** — step-by-step
-> setup, how to verify installs, and how to fix a wrong game path (the usual
-> cause of "installed but nothing in the game").
+No "Download with Mod Manager" button on the mod's page? Download the archive
+yourself, then use **Jack In → Sideload from disk** (or just drag the `.zip` /
+`.7z` / `.rar` onto the window).
+
+> **Mods not showing up in the game?** Two things to check:
+> - If you installed them with **v1.2 or earlier**, see
+>   [the wrapper-folder problem](#-mods-installed-before-v13-may-be-silently-broken)
+>   above — the app can find and repair those.
+> - Otherwise the usual cause is a wrong game path:
+>   **[Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md)** covers
+>   step-by-step setup, verifying installs, and fixing the path.
 
 ## Building from Source
 
