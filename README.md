@@ -58,6 +58,12 @@ destination is already taken by another mod, it is skipped rather than
 overwritten. Reinstalling a mod also fixes it, since new installs strip the
 wrapper correctly.
 
+## What's New in 1.5
+
+- **Switched-off mods are handled properly everywhere** — an unslotted mod keeps its files on disk under a `.disabled` suffix, and three places in the app didn't know that. Deleting such a mod deleted nothing while still marking it removed, leaving its files stranded; "Validate mod files" reported every unslotted mod's files as missing (one install showed *910 missing files* with nothing missing at all)
+- **Check for leftover mod folders** (Config) — Cyber Engine Tweaks logs *"Ignoring mod which does not contain init.lua!"* for every folder that no longer holds a mod, which reads as breakage but isn't. Removal now clears the folders it empties, and this scan finds older leftovers — showing what each holds so you can decide. Folders with settings in them, or holding files that belong to an installed mod, are never swept
+- **Validation now flags files in the wrong state** — a slotted mod whose files are ghosted does nothing in the game, and an unslotted one whose files are active runs anyway. Neither is a missing file, and nothing else would tell you
+
 ## What's New in 1.4
 
 - **Reworked navigation** — menu order is now Chrome / Jack In / Netrun / Config / About. **Netrun** moved up into the main menu, and **Sideload** moved into the **Jack In** screen alongside the NXM link field, since both are ways to install a mod

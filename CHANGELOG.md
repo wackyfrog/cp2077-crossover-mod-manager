@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.5.0] - 2026-07-26
+
+### New
+
+- **Check for leftover mod folders** (Config → Maintenance) — CET writes its own database, log, and often a settings file into a mod's folder while the mod runs, and none of those belong to the mod as far as the manager is concerned. They keep the folder alive after a removal, so it lingers with no mod in it and gets flagged at every launch. The scan lists what each leftover folder holds and how big it is, and you pick what goes. Folders holding settings start unchecked, since deleting those throws configuration away, and a folder containing files that belong to an *installed* mod is never listed at all — mods do ship presets for one another, and those must not be swept up. The startup check reports leftovers too. Ownership is re-checked at deletion time, so a mod reinstalled between the scan and the click is safe
 
 ### Fixed
 
@@ -11,8 +15,6 @@ All notable changes to this project will be documented in this file.
 - **New in that check: files that are on disk but in the wrong state** — a slotted mod whose files are ghosted does nothing in the game, and an unslotted mod whose files are active runs regardless of what the list says. Neither is a missing file and nothing else would tell you, so they are now reported in their own right, marked `~` rather than `×`. Toggling the mod off and on again puts its files back in step
 
 - **Removing a mod now clears the folders it emptied** — deleting a mod's files left its folders standing, and Cyber Engine Tweaks logs *"Ignoring mod which does not contain init.lua!"* for every folder that has no mod in it. Emptied folders are now swept as part of the removal, stopping at anything that still holds content
-- **New: Config → Check for leftover mod folders** — CET writes its own database, log, and settings file into a mod's folder while the mod runs, and none of those belong to the mod as far as the manager is concerned. They keep the folder alive after a removal, so it lingers and gets flagged at every launch. The scan lists what each leftover folder holds and how big it is, and you pick what goes. Folders holding settings start unchecked, since deleting those throws configuration away, and a folder containing files that belong to an *installed* mod is never listed at all — mods do ship presets for one another, and those must not be swept up. The startup check reports leftovers too. Ownership is re-checked at deletion time, so a mod reinstalled between the scan and the click is safe
-
 - **A mod is no longer reported as removed when its files are still there** — if a file can't be deleted (locked by the running game, no permission), the mod now stays in the list with its file list narrowed to exactly what survived, so you can see what happened and retry. Previously the record was flatlined regardless, and anything left behind became untracked. A file that was already gone is not treated as a failure — it just means there was nothing left to delete
 
 ## [1.4.0] - 2026-07-26
