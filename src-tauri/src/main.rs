@@ -4,6 +4,7 @@
 mod archive_extractor;
 mod local_archive;
 mod mod_manager;
+mod mod_repair;
 mod nexusmods_api;
 mod settings;
 
@@ -418,6 +419,184 @@ fn validate_mod_files(state: State<AppState>) -> Result<serde_json::Value, Strin
         "total_files": total_files,
         "missing_files": missing_count,
         "affected_mods": affected,
+    }))
+}
+
+/// Collect every installed mod whose files sit inside a redundant wrapper folder,
+/// together with the moves that would fix it. Read-only — nothing is touched.
+fn collect_wrapped_mods(state: &State<AppState>) -> Result<Vec<mod_repair::WrappedMod>, String> {
+    let game_path = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        settings_guard.get_settings().game_path.clone()
+    };
+    if game_path.is_empty() {
+        return Ok(Vec::new());
+    }
+    let game_dir = std::path::Path::new(&game_path);
+
+    let mods = {
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.get_installed_mods()
+    };
+
+    let mut wrapped = Vec::new();
+    for m in &mods {
+        if m.removed || m.files.is_empty() {
+            continue;
+        }
+        let Some(wrapper) = mod_repair::detect_wrapper(&m.files, game_dir) else {
+            continue;
+        };
+
+        let moves = mod_repair::plan_moves(&m.files, game_dir, &wrapper, |game_dir, inner| {
+            determine_install_path_for_file(game_dir, inner)
+                .and_then(|target| validate_path_within_game_dir(&target, game_dir))
+        });
+        if moves.is_empty() {
+            continue;
+        }
+
+        let blocked_count = moves.iter().filter(|mv| mv.blocked).count();
+        wrapped.push(mod_repair::WrappedMod {
+            id: m.id.clone(),
+            name: m.file_name.as_deref().unwrap_or(&m.name).to_string(),
+            wrapper,
+            file_count: moves.len(),
+            blocked_count,
+            moves,
+        });
+    }
+
+    Ok(wrapped)
+}
+
+/// Dry run: report which mods are installed under a wrapper folder and what a
+/// repair would move. Safe to call at any time.
+#[tauri::command]
+fn scan_wrapped_mods(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let wrapped = collect_wrapped_mods(&state)?;
+    let total_files: usize = wrapped.iter().map(|w| w.file_count).sum();
+    let blocked: usize = wrapped.iter().map(|w| w.blocked_count).sum();
+
+    Ok(serde_json::json!({
+        "mod_count": wrapped.len(),
+        "file_count": total_files,
+        "blocked_count": blocked,
+        "mods": wrapped,
+    }))
+}
+
+/// Move wrapped mods' files to where the loaders actually look, and update the
+/// database to match. Backs the database up first.
+///
+/// `mod_ids` limits the repair to specific mods; `None` repairs everything found.
+#[tauri::command]
+fn repair_wrapped_mods(
+    mod_ids: Option<Vec<String>>,
+    state: State<AppState>,
+) -> Result<serde_json::Value, String> {
+    let game_path = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        settings_guard.get_settings().game_path.clone()
+    };
+    let game_dir = std::path::PathBuf::from(&game_path);
+
+    let wrapped: Vec<_> = collect_wrapped_mods(&state)?
+        .into_iter()
+        .filter(|w| mod_ids.as_ref().map(|ids| ids.contains(&w.id)).unwrap_or(true))
+        .collect();
+
+    if wrapped.is_empty() {
+        return Ok(serde_json::json!({
+            "repaired_mods": 0, "moved_files": 0, "skipped_files": 0,
+            "failed_files": 0, "pruned_dirs": 0, "backup": null, "details": [],
+        }));
+    }
+
+    // Take a database backup before touching anything — this rewrites file paths
+    // for potentially hundreds of entries.
+    let backup_label = backup_database().ok();
+
+    add_log(
+        format!("🔧 Repairing {} mod(s) installed in a wrapper folder", wrapped.len()),
+        "info".to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
+
+    let mut moved_total = 0usize;
+    let mut skipped_total = 0usize;
+    let mut failed_total = 0usize;
+    let mut pruned_total = 0usize;
+    let mut details: Vec<serde_json::Value> = Vec::new();
+
+    for entry in &wrapped {
+        let outcome = mod_repair::apply_moves(&entry.moves, |path, is_dir| {
+            set_wine_compatible_permissions(path, is_dir).ok();
+        });
+
+        // Rewrite the recorded paths for the files that actually moved.
+        if !outcome.remap.is_empty() {
+            let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            manager.rewrite_mod_files(&entry.id, &outcome.remap)?;
+        }
+
+        // Clean up the emptied wrapper, deepest directories first.
+        for dir in &outcome.touched_dirs {
+            pruned_total += mod_repair::prune_empty_dirs(dir, &game_dir);
+        }
+        pruned_total += mod_repair::prune_empty_dirs(&game_dir.join(&entry.wrapper), &game_dir);
+
+        add_log(
+            format!(
+                "🔧 {}: moved {} file(s) out of '{}/'{}",
+                entry.name,
+                outcome.moved,
+                entry.wrapper,
+                if outcome.skipped + outcome.failed > 0 {
+                    format!(" ({} skipped, {} failed)", outcome.skipped, outcome.failed)
+                } else {
+                    String::new()
+                }
+            ),
+            if outcome.failed > 0 { "warning" } else { "info" }.to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+
+        moved_total += outcome.moved;
+        skipped_total += outcome.skipped;
+        failed_total += outcome.failed;
+
+        details.push(serde_json::json!({
+            "id": entry.id,
+            "name": entry.name,
+            "wrapper": entry.wrapper,
+            "moved": outcome.moved,
+            "skipped": outcome.skipped,
+            "failed": outcome.failed,
+            "errors": outcome.errors,
+        }));
+    }
+
+    add_log(
+        format!(
+            "✅ Repair complete: {} file(s) moved, {} skipped, {} failed, {} empty folder(s) removed",
+            moved_total, skipped_total, failed_total, pruned_total
+        ),
+        if failed_total > 0 { "warning" } else { "success" }.to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
+
+    Ok(serde_json::json!({
+        "repaired_mods": wrapped.len(),
+        "moved_files": moved_total,
+        "skipped_files": skipped_total,
+        "failed_files": failed_total,
+        "pruned_dirs": pruned_total,
+        "backup": backup_label,
+        "details": details,
     }))
 }
 
@@ -4903,6 +5082,26 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
         }));
     }
 
+    // 2b. Mods installed under a wrapper folder by a pre-fix release. These look
+    // installed and enabled but no loader can see them, so surface them loudly —
+    // the user has no other way to find out short of noticing in-game.
+    if let Ok(wrapped) = collect_wrapped_mods(&state) {
+        if !wrapped.is_empty() {
+            let files: usize = wrapped.iter().map(|w| w.file_count).sum();
+            issues.push(serde_json::json!({
+                "type": "warning",
+                "code": "wrapped_mods",
+                "message": format!(
+                    "{} mod{} installed inside a redundant folder and can't be loaded by the game ({} file{}). Repair in Config.",
+                    wrapped.len(),
+                    if wrapped.len() == 1 { "" } else { "s" },
+                    files,
+                    if files == 1 { "" } else { "s" }
+                )
+            }));
+        }
+    }
+
     // 3. Check NXM URL handler via LaunchServices (reliable, no PyObjC needed).
     #[cfg(target_os = "macos")]
     {
@@ -5084,6 +5283,8 @@ fn main() {
             install_mod_from_nxm,
             install_mod_from_local,
             parse_local_archive_name,
+            scan_wrapped_mods,
+            repair_wrapped_mods,
             clean_temp_files,
             reveal_in_finder,
             sync_mod_data,

@@ -12,10 +12,10 @@ use std::path::{Path, PathBuf};
 
 /// Top-level directories a Cyberpunk 2077 mod archive may legitimately contain.
 /// Matched case-insensitively — the same set `normalize_game_path` canonicalises.
-const CANONICAL_DIRS: [&str; 6] = ["archive", "bin", "r6", "engine", "mods", "red4ext"];
+pub const CANONICAL_DIRS: [&str; 6] = ["archive", "bin", "r6", "engine", "mods", "red4ext"];
 
-/// Archive noise that must never influence wrapper detection.
-fn is_ignorable(name: &str) -> bool {
+/// Archive and Finder noise that must never influence wrapper detection.
+pub fn is_ignorable(name: &str) -> bool {
     name == "__MACOSX" || name == ".DS_Store" || name.starts_with("._")
 }
 
@@ -124,24 +124,31 @@ pub fn parse_nexus_filename(stem: &str) -> ParsedArchiveName {
 ///
 /// Descends only through directories that are the *sole* entry, so archives with
 /// several top-level options are left untouched.
+///
+/// Crucially, a wrapper is only stripped once a canonical directory is actually
+/// found underneath it. Some mods ship a top-level folder that is *not* a
+/// wrapper at all (`Textures/DLC03/…`, `Data/Textures/…` for LUT packs) — those
+/// carry no canonical directory at any depth, and descending into them blindly
+/// would scatter their files across the game root. When nothing canonical turns
+/// up, the original directory is returned and the layout is preserved as-is.
 pub fn find_content_root(dir: &Path) -> PathBuf {
+    let read_visible = |path: &Path| -> Option<Vec<std::fs::DirEntry>> {
+        std::fs::read_dir(path).ok().map(|read| {
+            read.flatten()
+                .filter(|e| !e.file_name().to_str().map(is_ignorable).unwrap_or(false))
+                .collect()
+        })
+    };
+
     let mut current = dir.to_path_buf();
 
     for _ in 0..5 {
-        let entries: Vec<_> = match std::fs::read_dir(&current) {
-            Ok(read) => read
-                .flatten()
-                .filter(|e| {
-                    !e.file_name()
-                        .to_str()
-                        .map(is_ignorable)
-                        .unwrap_or(false)
-                })
-                .collect(),
-            Err(_) => return current,
+        let entries = match read_visible(&current) {
+            Some(entries) => entries,
+            None => return dir.to_path_buf(),
         };
 
-        // A canonical game directory here means this level is already the root.
+        // A canonical game directory here means this level is the content root.
         let has_canonical = entries.iter().any(|e| {
             e.path().is_dir()
                 && e.file_name()
@@ -156,11 +163,13 @@ pub fn find_content_root(dir: &Path) -> PathBuf {
         // Descend only through a lone wrapper directory — never past loose files.
         match entries.as_slice() {
             [only] if only.path().is_dir() => current = only.path(),
-            _ => return current,
+            _ => return dir.to_path_buf(),
         }
     }
 
-    current
+    // Descended as far as allowed without finding anything canonical: this is
+    // not a wrapper we understand, so change nothing.
+    dir.to_path_buf()
 }
 
 #[cfg(test)]
@@ -287,6 +296,28 @@ mod tests {
         let root = scratch("loose");
         std::fs::create_dir_all(root.join("Extras")).unwrap();
         std::fs::write(root.join("readme.txt"), b"x").unwrap();
+        assert_eq!(find_content_root(&root), root);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn wrapper_without_anything_canonical_is_left_alone() {
+        // Real case: "Psycho LUT" ships Textures/DLC03/… — a lone top-level
+        // folder that is NOT a wrapper. Descending would scatter .dds files
+        // across the game root.
+        let root = scratch("lut");
+        std::fs::create_dir_all(root.join("Textures/DLC03/Effects/LUTS")).unwrap();
+        std::fs::create_dir_all(root.join("Textures/Effects")).unwrap();
+        assert_eq!(find_content_root(&root), root);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn deep_lone_chain_without_canonical_is_left_alone() {
+        // "Stellar LUT": Data/Textures/effects/… — lone folders all the way
+        // down, still nothing canonical.
+        let root = scratch("lut_deep");
+        std::fs::create_dir_all(root.join("Data/Textures/effects/dlc001/luts")).unwrap();
         assert_eq!(find_content_root(&root), root);
         std::fs::remove_dir_all(&root).ok();
     }

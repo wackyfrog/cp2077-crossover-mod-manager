@@ -557,6 +557,45 @@ impl ModManager {
     }
 
     /// Set reinstall status on a mod and save DB
+    /// Replace recorded file paths for one mod, using an old -> new mapping.
+    /// Paths not present in the map are left untouched. Used by the wrapper-folder
+    /// repair, which moves files on disk and must keep the database in step.
+    pub fn rewrite_mod_files(
+        &mut self,
+        mod_id: &str,
+        remap: &HashMap<String, String>,
+    ) -> Result<(), String> {
+        let mod_info = self
+            .mods
+            .iter_mut()
+            .find(|m| m.id == mod_id)
+            .ok_or("Mod not found")?;
+
+        let mut changed = false;
+        for file in mod_info.files.iter_mut() {
+            if let Some(new_path) = remap.get(file.as_str()) {
+                *file = new_path.clone();
+                changed = true;
+            }
+        }
+
+        // Conflict bookkeeping is keyed by path, so it has to follow the move.
+        if !mod_info.file_conflicts.is_empty() {
+            let remapped: HashMap<String, FileConflictInfo> = mod_info
+                .file_conflicts
+                .drain()
+                .map(|(path, info)| (remap.get(&path).cloned().unwrap_or(path), info))
+                .collect();
+            mod_info.file_conflicts = remapped;
+            changed = true;
+        }
+
+        if changed {
+            self.save_database()?;
+        }
+        Ok(())
+    }
+
     pub fn set_reinstall_status(&mut self, mod_id: &str, status: Option<&str>) -> Result<(), String> {
         let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
         mod_info.reinstall_status = status.map(|s| s.to_string());

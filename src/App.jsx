@@ -669,6 +669,7 @@ function App() {
   };
 
   const hasNxmIssue = healthIssues.some((i) => i.code?.startsWith("nxm"));
+  const hasWrappedMods = healthIssues.some((i) => i.code === "wrapped_mods");
 
   return (
     <div className="app">
@@ -702,6 +703,9 @@ function App() {
           <div className="health-banner-actions">
             {hasNxmIssue && (
               <button onClick={handleRegisterNxm}>Register NXM handler</button>
+            )}
+            {hasWrappedMods && (
+              <button onClick={() => setActiveTab("settings")}>Repair mods</button>
             )}
             <button onClick={() => setActiveTab("settings")}>Open Config</button>
             <button className="health-banner-dismiss" onClick={() => setHealthIssues([])}>Dismiss</button>

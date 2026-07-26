@@ -196,6 +196,9 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   const [dedupResult, setDedupResult] = useState("");
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
+  const [wrapScan, setWrapScan] = useState(null);   // dry-run report
+  const [wrapBusy, setWrapBusy] = useState(false);
+  const [wrapResult, setWrapResult] = useState(null); // post-repair summary
   const [backups, setBackups] = useState([]);
   const [backupMsg, setBackupMsg] = useState("");
   const [confirmAction, setConfirmAction] = useState(null); // { type, name, label }
@@ -404,6 +407,28 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
               {validating ? "Validating..." : "Validate mod files"}
             </button>
           </div>
+          <div className="setting-row">
+            <button
+              onClick={async () => {
+                setWrapBusy(true);
+                setWrapScan(null);
+                setWrapResult(null);
+                try {
+                  const r = await invoke("scan_wrapped_mods");
+                  setWrapScan(r);
+                } catch (e) {
+                  setWrapScan({ error: String(e) });
+                } finally {
+                  setWrapBusy(false);
+                }
+              }}
+              className="maintenance-button"
+              disabled={wrapBusy}
+              {...hint("find mods installed inside a redundant folder that the game can't load")}
+            >
+              {wrapBusy ? "Scanning..." : "Check for unloadable mods"}
+            </button>
+          </div>
         </div>
 
         <div className="setting-section">
@@ -584,6 +609,97 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
                       ))}
                     </div>
                   ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {wrapScan && (
+        <div className="validation-backdrop" onClick={() => setWrapScan(null)}>
+          <div className="validation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="validation-header">
+              <span className="validation-title">Unloadable Mods</span>
+              <button className="validation-close" onClick={() => setWrapScan(null)}>✕</button>
+            </div>
+            <div className="validation-body">
+              {wrapScan.error ? (
+                <p className="validation-error">Failed: {wrapScan.error}</p>
+              ) : wrapResult ? (
+                <>
+                  <p className="validation-ok">
+                    Repaired {wrapResult.repaired_mods} mod{wrapResult.repaired_mods === 1 ? "" : "s"} —{" "}
+                    {wrapResult.moved_files} file{wrapResult.moved_files === 1 ? "" : "s"} moved
+                    {wrapResult.pruned_dirs > 0 && `, ${wrapResult.pruned_dirs} empty folder${wrapResult.pruned_dirs === 1 ? "" : "s"} removed`}
+                  </p>
+                  {(wrapResult.skipped_files > 0 || wrapResult.failed_files > 0) && (
+                    <p className="validation-summary">
+                      {wrapResult.skipped_files} skipped, {wrapResult.failed_files} failed
+                    </p>
+                  )}
+                  {wrapResult.backup && (
+                    <p className="validation-summary">Database backed up as {wrapResult.backup}</p>
+                  )}
+                  <p className="validation-summary">Restart the game for the change to take effect.</p>
+                </>
+              ) : wrapScan.mod_count === 0 ? (
+                <p className="validation-ok">
+                  No unloadable mods — every mod is installed where the game looks for it
+                </p>
+              ) : (
+                <>
+                  <p className="validation-summary">
+                    {wrapScan.mod_count} mod{wrapScan.mod_count === 1 ? "" : "s"} sit inside a
+                    redundant folder, so no mod loader can see {wrapScan.mod_count === 1 ? "it" : "them"}.
+                    Repairing moves {wrapScan.file_count} file{wrapScan.file_count === 1 ? "" : "s"} to
+                    where {wrapScan.mod_count === 1 ? "it belongs" : "they belong"} and updates the database.
+                    The mod database is backed up first.
+                  </p>
+                  {wrapScan.blocked_count > 0 && (
+                    <p className="validation-summary">
+                      {wrapScan.blocked_count} file{wrapScan.blocked_count === 1 ? "" : "s"} will be
+                      skipped — something already occupies the destination.
+                    </p>
+                  )}
+                  {wrapScan.mods.map((m) => (
+                    <div key={m.id} className="validation-mod">
+                      <div
+                        className="validation-mod-name"
+                        onClick={() => { setWrapScan(null); onNavigateToMod?.(m.id); }}
+                      >
+                        {m.name} — {m.file_count} file{m.file_count === 1 ? "" : "s"} under {m.wrapper}/
+                      </div>
+                      {m.moves.slice(0, 3).map((mv, j) => (
+                        <div key={j} className="validation-file">
+                          {m.wrapper}/… → {mv.to.split("Cyberpunk 2077/").pop()}
+                        </div>
+                      ))}
+                      {m.moves.length > 3 && (
+                        <div className="validation-file">…and {m.moves.length - 3} more</div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="setting-row">
+                    <button
+                      className="maintenance-button"
+                      disabled={wrapBusy}
+                      onClick={async () => {
+                        setWrapBusy(true);
+                        try {
+                          const r = await invoke("repair_wrapped_mods", { modIds: null });
+                          setWrapResult(r);
+                          onSaved?.();
+                        } catch (e) {
+                          setWrapScan({ error: String(e) });
+                        } finally {
+                          setWrapBusy(false);
+                        }
+                      }}
+                    >
+                      {wrapBusy ? "Repairing..." : "Repair now"}
+                    </button>
+                  </div>
                 </>
               )}
             </div>
