@@ -165,6 +165,46 @@ pub fn delete_tracked_files(files: &[String]) -> DeleteOutcome {
     outcome
 }
 
+/// How a tracked file on disk compares with the state its record calls for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FileState {
+    /// Present, in the state the record calls for.
+    AsExpected,
+    /// Present, but in the opposite state — the mod does not behave as listed.
+    Mismatched,
+    /// Neither spelling exists.
+    Missing,
+}
+
+/// Check a tracked file against its mod's enabled state.
+///
+/// "Does this path exist?" is the wrong question on its own: a switched-off mod
+/// keeps its files under a `.disabled` suffix, so asking only about the active
+/// name reports every file of every disabled mod as gone (docs/bugs.md B4).
+///
+/// Simply accepting either spelling would hide the case worth knowing about,
+/// though. What decides the verdict is whether the file is in the state that
+/// makes the mod behave as listed — `enabled == active`:
+///
+/// - a mod listed as enabled whose file is ghosted does nothing in-game
+/// - a mod listed as disabled whose file is active runs anyway
+///
+/// Both are real, both are invisible everywhere else, and neither is a missing
+/// file. A stray extra copy of the *other* spelling is ignored: no loader reads
+/// `.disabled`, so an enabled mod with a leftover ghost still works correctly.
+pub fn file_state(path: &str, enabled: bool) -> FileState {
+    let active = Path::new(path).exists();
+    let ghosted = PathBuf::from(format!("{}.disabled", path)).exists();
+
+    if !active && !ghosted {
+        FileState::Missing
+    } else if enabled == active {
+        FileState::AsExpected
+    } else {
+        FileState::Mismatched
+    }
+}
+
 /// Refuse to delete anything that is not an absolute path inside a Cyberpunk
 /// 2077 install.
 fn check_safe_to_delete(file_path: &str) -> Result<(), String> {
@@ -1177,6 +1217,61 @@ mod tests {
         assert!(outcome.removed.is_empty());
         assert!(outcome.failed.is_empty(), "ENOENT must not read as a failure");
         assert_eq!(outcome.already_gone.len(), 1);
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_disabled_mods_ghosted_file_is_not_missing() {
+        // The B4 case: 910 files reported gone that were all on disk, ghosted.
+        let game = game_dir("state_ghost");
+        let tracked = game.join("mods/Off/init.lua");
+        write(&PathBuf::from(format!("{}.disabled", tracked.display())), "-- off");
+
+        let path = tracked.display().to_string();
+        assert_eq!(file_state(&path, false), FileState::AsExpected);
+        assert_eq!(
+            file_state(&path, true),
+            FileState::Mismatched,
+            "listed as enabled but ghosted: the mod does nothing in-game"
+        );
+        cleanup(&game);
+    }
+
+    #[test]
+    fn an_enabled_mods_active_file_is_as_expected() {
+        let game = game_dir("state_on");
+        let tracked = game.join("mods/On/init.lua");
+        write(&tracked, "-- on");
+
+        let path = tracked.display().to_string();
+        assert_eq!(file_state(&path, true), FileState::AsExpected);
+        assert_eq!(
+            file_state(&path, false),
+            FileState::Mismatched,
+            "listed as disabled but active: the mod runs anyway"
+        );
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_stray_ghost_beside_an_active_file_is_harmless() {
+        let game = game_dir("state_both");
+        let tracked = game.join("mods/Both/init.lua");
+        write(&tracked, "-- on");
+        write(&PathBuf::from(format!("{}.disabled", tracked.display())), "-- leftover");
+
+        // No loader reads `.disabled`, so the enabled mod still works.
+        assert_eq!(file_state(&tracked.display().to_string(), true), FileState::AsExpected);
+        cleanup(&game);
+    }
+
+    #[test]
+    fn neither_spelling_on_disk_is_missing() {
+        let game = game_dir("state_gone");
+        let path = game.join("mods/Gone/init.lua").display().to_string();
+
+        assert_eq!(file_state(&path, true), FileState::Missing);
+        assert_eq!(file_state(&path, false), FileState::Missing);
         cleanup(&game);
     }
 

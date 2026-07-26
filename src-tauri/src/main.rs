@@ -426,29 +426,45 @@ fn validate_mod_files(state: State<AppState>) -> Result<serde_json::Value, Strin
     let mut total_mods = 0u32;
     let mut total_files = 0u32;
     let mut missing_count = 0u32;
+    let mut mismatched_count = 0u32;
     let mut affected: Vec<serde_json::Value> = Vec::new();
+
+    // Show the path relative to the game root — the absolute one is unreadably long.
+    let shorten = |f: &str| {
+        f.find("Cyberpunk 2077/")
+            .map(|i| f[i + 15..].to_string())
+            .unwrap_or_else(|| f.to_string())
+    };
 
     for m in &mods {
         if m.removed || m.files.is_empty() { continue; }
         total_mods += 1;
         let mut missing: Vec<String> = Vec::new();
+        let mut mismatched: Vec<String> = Vec::new();
         for f in &m.files {
             total_files += 1;
-            if !std::path::Path::new(f).exists() {
-                // Show relative path after "Cyberpunk 2077/"
-                let short = f.find("Cyberpunk 2077/")
-                    .map(|i| &f[i + 15..])
-                    .unwrap_or(f);
-                missing.push(short.to_string());
-                missing_count += 1;
+            // Judged against the mod's own state: a switched-off mod's files
+            // are ghosted on purpose and are not missing (docs/bugs.md B4).
+            match mod_manager::file_state(f, m.enabled) {
+                mod_manager::FileState::AsExpected => {}
+                mod_manager::FileState::Missing => {
+                    missing.push(shorten(f));
+                    missing_count += 1;
+                }
+                mod_manager::FileState::Mismatched => {
+                    mismatched.push(shorten(f));
+                    mismatched_count += 1;
+                }
             }
         }
-        if !missing.is_empty() {
+        if !missing.is_empty() || !mismatched.is_empty() {
             let label = m.file_name.as_deref().unwrap_or(&m.name);
             affected.push(serde_json::json!({
                 "id": m.id,
                 "name": label,
+                "enabled": m.enabled,
                 "missing": missing,
+                "mismatched": mismatched,
                 "total": m.files.len(),
             }));
         }
@@ -458,6 +474,7 @@ fn validate_mod_files(state: State<AppState>) -> Result<serde_json::Value, Strin
         "total_mods": total_mods,
         "total_files": total_files,
         "missing_files": missing_count,
+        "mismatched_files": mismatched_count,
         "affected_mods": affected,
     }))
 }

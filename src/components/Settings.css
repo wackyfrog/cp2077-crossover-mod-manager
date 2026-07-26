@@ -536,6 +536,13 @@
   color: var(--cyber-red-dim);
 }
 
+/* A file that is present but in the wrong state: nothing was lost, so it must
+   not carry the same × as a missing file. */
+.validation-file-state::before {
+  content: '~ ';
+  color: var(--cyber-yellow);
+}
+
 /* A leftover-folder row: checkbox in its own gutter, details beside it, so the
    file list lines up under the name rather than under the box. */
 .orphan-pick {

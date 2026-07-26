@@ -632,25 +632,41 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
             <div className="validation-body">
               {validationResult.error ? (
                 <p className="validation-error">Failed: {validationResult.error}</p>
-              ) : validationResult.missing_files === 0 ? (
+              ) : validationResult.missing_files === 0 && validationResult.mismatched_files === 0 ? (
                 <p className="validation-ok">
                   All files OK — {validationResult.total_files} files across {validationResult.total_mods} mods
                 </p>
               ) : (
                 <>
-                  <p className="validation-summary">
-                    {validationResult.missing_files} missing file{validationResult.missing_files > 1 ? "s" : ""} in {validationResult.affected_mods.length} mod{validationResult.affected_mods.length > 1 ? "s" : ""} (out of {validationResult.total_files} total)
-                  </p>
+                  {validationResult.missing_files > 0 && (
+                    <p className="validation-summary">
+                      {validationResult.missing_files} missing file{validationResult.missing_files > 1 ? "s" : ""} (out of {validationResult.total_files} total)
+                    </p>
+                  )}
+                  {validationResult.mismatched_files > 0 && (
+                    <p className="validation-summary">
+                      {validationResult.mismatched_files} file{validationResult.mismatched_files > 1 ? "s are" : " is"} on disk
+                      in the wrong state — a slotted mod whose files are ghosted does nothing in the
+                      game, and an unslotted one whose files are active runs anyway. Toggling the mod
+                      off and on again puts its files back in step.
+                    </p>
+                  )}
                   {validationResult.affected_mods.map((m, i) => (
                     <div key={i} className="validation-mod">
                       <div
                         className="validation-mod-name"
                         onClick={() => { setValidationResult(null); onNavigateToMod?.(m.id); }}
                       >
-                        {m.name} ({m.missing.length}/{m.total} missing)
+                        {m.name} ({m.missing.length > 0 && `${m.missing.length}/${m.total} missing`}
+                        {m.missing.length > 0 && m.mismatched.length > 0 && ", "}
+                        {m.mismatched.length > 0 &&
+                          `${m.mismatched.length}/${m.total} ${m.enabled ? "ghosted while slotted" : "active while unslotted"}`})
                       </div>
                       {m.missing.map((f, j) => (
                         <div key={j} className="validation-file">{f}</div>
+                      ))}
+                      {m.mismatched.map((f, j) => (
+                        <div key={`x${j}`} className="validation-file validation-file-state">{f}</div>
                       ))}
                     </div>
                   ))}
