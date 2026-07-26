@@ -14,6 +14,8 @@ use settings::{AppSettings, Settings};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 #[allow(unused_imports)] // Listener is used for trait methods (.listen())
 use tauri::{Emitter, Listener, Manager, State};
@@ -57,6 +59,11 @@ struct AppState {
     sync_cancel: Arc<AtomicBool>,
     install_cancel: Arc<AtomicBool>,
     installing: Arc<AtomicBool>,
+    /// Held for the whole of an install request, from the moment it arrives to
+    /// the moment it finishes. Distinct from `installing`, which tracks a single
+    /// mod's pipeline and is cleared between the items of a collection — that
+    /// gap would let a second request slip in mid-collection.
+    install_busy: Arc<AtomicBool>,
     startup_nxm_url: Mutex<Option<String>>,
     force_reinstall: AtomicBool,
     reinstall_mod_id: Mutex<Option<String>>,
@@ -1142,6 +1149,23 @@ async fn handle_nxm_url(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    // Claim the pipeline before anything else. An NXM link can arrive at any
+    // moment — a second click in the browser, or a queued deep link — and the
+    // claim is held for the whole request, collections included.
+    let _slot = match InstallSlot::try_acquire(&state.install_busy) {
+        Some(slot) => slot,
+        None => {
+            add_log(
+                format!("⏳ Ignored NXM link, an install is already running: {}", nxm_url),
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            reject_overlapping_install(&app, "nxm", Some(nxm_url));
+            return Err(INSTALL_BUSY_MESSAGE.to_string());
+        }
+    };
+
     // Log the NXM URL processing
     add_log(
         format!("Processing NXM URL: {}", nxm_url),
@@ -2069,6 +2093,9 @@ struct ModInstallParams {
     local_archive_path: Option<String>,
 }
 
+/// Install one mod. Callers must already hold the [`InstallSlot`] — this runs
+/// once per item of a collection, so taking the slot here would deadlock against
+/// the claim `handle_nxm_url` holds for the whole collection.
 #[allow(unused_assignments)]
 #[tauri::command]
 async fn install_mod_from_nxm(
@@ -2112,6 +2139,25 @@ async fn install_mod_from_local(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    // Same exclusive claim as the NXM path — a dropped archive must not start a
+    // second pipeline on top of a running download.
+    let _slot = match InstallSlot::try_acquire(&state.install_busy) {
+        Some(slot) => slot,
+        None => {
+            add_log(
+                format!(
+                    "⏳ Ignored sideload request, an install is already running: {}",
+                    params.archive_path
+                ),
+                "warning".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            reject_overlapping_install(&app, "sideload", Some(params.mod_name.clone()));
+            return Err(INSTALL_BUSY_MESSAGE.to_string());
+        }
+    };
+
     let archive_path = std::path::PathBuf::from(&params.archive_path);
     if !archive_path.is_file() {
         return Err(format!(
@@ -4275,6 +4321,56 @@ fn detect_wine_windows_version(_game_path: &std::path::Path) -> Result<(String, 
     Ok(("Native Windows".to_string(), true))
 }
 
+/// Exclusive claim on the install pipeline, released when dropped.
+///
+/// Only one installation may run at a time: they share the game directory, the
+/// mod database, the reinstall slot and the `pending_file_*` metadata, so two
+/// overlapping runs would interleave file copies and cross-assign metadata. The
+/// realistic trigger is a user clicking "Download with Mod Manager" twice, or
+/// dropping an archive while a download is still going.
+///
+/// Acquiring is a single compare-and-swap, so two requests arriving together
+/// cannot both win. Dropping releases the claim on every path out — success,
+/// error, cancellation or panic.
+struct InstallSlot(Arc<AtomicBool>);
+
+impl InstallSlot {
+    /// Claim the pipeline, or return `None` if an installation is already running.
+    ///
+    /// Bind the result to a named variable (`let _slot = …`) for as long as the
+    /// install runs. A bare `let _ = …`, or testing it inline with `.is_some()`,
+    /// drops the guard on the spot and releases the claim immediately.
+    fn try_acquire(flag: &Arc<AtomicBool>) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| InstallSlot(Arc::clone(flag)))
+    }
+}
+
+impl Drop for InstallSlot {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// Message shown when a second install is turned away. Also matched by the
+/// frontend to render a friendlier explanation.
+const INSTALL_BUSY_MESSAGE: &str =
+    "An installation is already in progress. Wait for it to finish, or cancel it first.";
+
+/// Turn away an install request because another one holds the pipeline.
+///
+/// Reports through the `install-busy` event rather than `install-progress`:
+/// the latter drives the progress overlay, and pushing an error into it would
+/// make the *running* install look like it failed.
+fn reject_overlapping_install(app: &tauri::AppHandle, source: &str, detail: Option<String>) {
+    app.emit(
+        "install-busy",
+        serde_json::json!({ "source": source, "detail": detail }),
+    )
+    .ok();
+}
+
 /// RAII guard for temporary files/directories
 /// Automatically cleans up the path when dropped (goes out of scope)
 /// This ensures cleanup even if the function panics or returns early
@@ -4782,7 +4878,9 @@ fn cancel_install(state: State<'_, AppState>) {
 
 #[tauri::command]
 fn is_installing(state: State<'_, AppState>) -> bool {
-    state.installing.load(Ordering::Relaxed)
+    // Busy covers the gaps `installing` leaves — between a request arriving and
+    // its download starting, and between the items of a collection.
+    state.install_busy.load(Ordering::Relaxed) || state.installing.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
@@ -5233,6 +5331,7 @@ fn main() {
             sync_cancel: Arc::new(AtomicBool::new(false)),
             install_cancel: Arc::new(AtomicBool::new(false)),
             installing: Arc::new(AtomicBool::new(false)),
+            install_busy: Arc::new(AtomicBool::new(false)),
             startup_nxm_url: Mutex::new(None),
             force_reinstall: AtomicBool::new(false),
             reinstall_mod_id: Mutex::new(None),
@@ -5401,7 +5500,9 @@ fn main() {
                     ..
                 } => {
                     let state = app.state::<AppState>();
-                    if state.installing.load(Ordering::Relaxed) {
+                    if state.install_busy.load(Ordering::Relaxed)
+                        || state.installing.load(Ordering::Relaxed)
+                    {
                         api.prevent_close();
                         if let Some(window) = app.get_webview_window("main") {
                             window.emit("close-requested", ()).ok();
@@ -5415,4 +5516,67 @@ fn main() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod install_slot_tests {
+    use super::*;
+
+    #[test]
+    fn second_claim_is_refused_while_the_first_is_held() {
+        let flag = Arc::new(AtomicBool::new(false));
+
+        let first = InstallSlot::try_acquire(&flag);
+        assert!(first.is_some(), "an idle pipeline must be claimable");
+        assert!(
+            InstallSlot::try_acquire(&flag).is_none(),
+            "a second install must be turned away, not run alongside the first"
+        );
+        assert!(flag.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn dropping_the_slot_frees_the_pipeline() {
+        let flag = Arc::new(AtomicBool::new(false));
+
+        {
+            let _slot = InstallSlot::try_acquire(&flag).unwrap();
+        }
+        assert!(!flag.load(Ordering::Acquire), "the claim must not outlive the install");
+        assert!(
+            InstallSlot::try_acquire(&flag).is_some(),
+            "the next install must be able to start"
+        );
+    }
+
+    #[test]
+    fn only_one_of_many_concurrent_claims_wins() {
+        // The realistic race: several NXM links arriving at once from repeated
+        // clicks in the browser.
+        let flag = Arc::new(AtomicBool::new(false));
+        let winners = Arc::new(AtomicUsize::new(0));
+
+        let threads: Vec<_> = (0..16)
+            .map(|_| {
+                let flag = Arc::clone(&flag);
+                let winners = Arc::clone(&winners);
+                std::thread::spawn(move || {
+                    // Bind the slot to a named variable: `if try_acquire(..).is_some()`
+                    // would drop it inside the condition and release the claim
+                    // immediately.
+                    let slot = InstallSlot::try_acquire(&flag);
+                    if slot.is_some() {
+                        winners.fetch_add(1, Ordering::AcqRel);
+                        // Hold the claim until every thread has had its attempt.
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                })
+            })
+            .collect();
+
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(winners.load(Ordering::Acquire), 1, "exactly one claim may succeed");
+    }
 }

@@ -290,14 +290,36 @@ function App() {
       } catch {}
     };
     setupRelayListener();
+
+    // A second install request was turned away while one was running. Reported
+    // in the status bar rather than the progress overlay — the overlay belongs
+    // to the install that is still going, and an error there would read as if
+    // *that* one had failed.
+    const setupBusyListener = async () => {
+      try {
+        return await listen("install-busy", (event) => {
+          const { source, detail } = event.payload || {};
+          const what = source === "sideload" ? "sideload" : "download";
+          setStatusMsg(
+            `⏳ ${what} ignored · already jacking in${detail ? ` · queued: ${detail}` : ""}`
+          );
+        });
+      } catch (e) {
+        console.error("Failed to setup install-busy listener:", e);
+      }
+    };
+    setupBusyListener();
   }, []);
 
-  // Keep a ref of "something is already running" so the drag&drop handler can
-  // check it without being re-subscribed on every progress tick.
+  // "An install is already under way, or about to be." Kept in a ref so the
+  // drag&drop handler can consult it without being re-subscribed on every
+  // progress tick. A pending sideload form counts: the user has picked an
+  // archive and is one click from starting it.
+  const installBusy = !!installProgress || !!syncProgress || !!sideloadPath;
   const busyRef = useRef(false);
   useEffect(() => {
-    busyRef.current = !!installProgress || !!syncProgress;
-  }, [installProgress, syncProgress]);
+    busyRef.current = installBusy;
+  }, [installBusy]);
 
   // Native drag & drop. Tauri 2 intercepts file drops before the webview sees
   // them, so HTML5 onDrop/dataTransfer never fires — this is the only way to
@@ -324,7 +346,7 @@ function App() {
 
           setDragActive(false);
           if (busyRef.current) {
-            setStatusMsg("busy · finish the current operation before sideloading");
+            setStatusMsg("⏳ drop ignored · finish the current install first");
             return;
           }
 
@@ -508,6 +530,10 @@ function App() {
   };
 
   const handleSideloadPick = async () => {
+    if (installBusy) {
+      setStatusMsg("⏳ already jacking in · finish or cancel the current install first");
+      return;
+    }
     try {
       const selected = await openDialog({
         multiple: false,
@@ -680,8 +706,20 @@ function App() {
           <p className="app-header-app">Crossover Mod Manager</p>
         </div>
         <nav className="nav">
-          <button onClick={() => setNxmInput(true)} {...hint("install a mod from an nxm:// URL")}>Jack In</button>
-          <button onClick={handleSideloadPick} {...hint("install a mod from a .zip/.7z/.rar archive on disk")}>Sideload</button>
+          <button
+            onClick={() => setNxmInput(true)}
+            disabled={installBusy}
+            {...hint(installBusy ? "an install is already running" : "install a mod from an nxm:// URL")}
+          >
+            Jack In
+          </button>
+          <button
+            onClick={handleSideloadPick}
+            disabled={installBusy}
+            {...hint(installBusy ? "an install is already running" : "install a mod from a .zip/.7z/.rar archive on disk")}
+          >
+            Sideload
+          </button>
           <button className={activeTab === "mods"     ? "active" : ""} onClick={() => setActiveTab("mods")} {...hint("browse and manage installed mods")}>Chrome</button>
           <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")} {...hint("game paths, API key, and app settings")}>Config</button>
           <button className={activeTab === "manifest" ? "active" : ""} onClick={() => setActiveTab("manifest")} {...hint("version info, credits, and links")}>About</button>
@@ -766,6 +804,7 @@ function App() {
                 onSync={handleSyncMods}
                 onSideload={handleSideloadPick}
                 dragActive={dragActive}
+                installBusy={installBusy}
                 hint={hint}
               />
             </div>

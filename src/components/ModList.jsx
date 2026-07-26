@@ -22,7 +22,7 @@ function groupMods(mods) {
 
 function ModList({
   mods, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
-  loading, syncing, onSync, onSideload, dragActive = false,
+  loading, syncing, onSync, onSideload, dragActive = false, installBusy = false,
   hint = () => ({}),
 }) {
   const filtered = useMemo(() => {
@@ -196,8 +196,12 @@ function ModList({
           <button
             onClick={onSideload}
             className="footer-btn sideload"
-            disabled={loading || syncing}
-            {...hint("install a mod from a .zip/.7z/.rar archive on disk")}
+            disabled={loading || syncing || installBusy}
+            {...hint(
+              installBusy
+                ? "an install is already running"
+                : "install a mod from a .zip/.7z/.rar archive on disk"
+            )}
           >
             Sideload
           </button>

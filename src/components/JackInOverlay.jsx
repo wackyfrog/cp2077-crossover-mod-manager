@@ -137,6 +137,12 @@ function trimLines(lines) {
 
 function friendlyError(msg) {
   if (!msg) return null;
+  if (msg.includes("installation is already in progress")) {
+    return {
+      title: "Another install is running",
+      hint: "Only one mod can be installed at a time. Wait for the current one to finish, or abort it first.",
+    };
+  }
   if (msg.includes("already installed")) {
     // Extract mod name: "Mod 'Something v1.2' with the same..."
     const match = msg.match(/Mod '(.+?)' with the same/);
