@@ -200,6 +200,10 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   const [wrapScan, setWrapScan] = useState(null);   // dry-run report
   const [wrapBusy, setWrapBusy] = useState(false);
   const [wrapResult, setWrapResult] = useState(null); // post-repair summary
+  const [orphanScan, setOrphanScan] = useState(null);     // dry-run report
+  const [orphanBusy, setOrphanBusy] = useState(false);
+  const [orphanResult, setOrphanResult] = useState(null); // post-sweep summary
+  const [orphanPicked, setOrphanPicked] = useState([]);   // folder paths to delete
   const [backups, setBackups] = useState([]);
   const [backupMsg, setBackupMsg] = useState("");
   const [confirmAction, setConfirmAction] = useState(null); // { type, name, label }
@@ -208,6 +212,7 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   // order they can stack, so the innermost one wins.
   useEscape(!!validationResult, () => setValidationResult(null));
   useEscape(!!wrapScan, () => setWrapScan(null));
+  useEscape(!!orphanScan, () => setOrphanScan(null));
   useEscape(!!candidates, () => setCandidates(null));
   // Same as clicking away from the relocate prompt: keep the new path, move nothing.
   useEscape(!!relocatePrompt, () => doRelocate("skip"));
@@ -438,6 +443,35 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
               {...hint("find mods installed inside a redundant folder that the game can't load")}
             >
               {wrapBusy ? "Scanning..." : "Check for unloadable mods"}
+            </button>
+          </div>
+          <div className="setting-row">
+            <button
+              onClick={async () => {
+                setOrphanBusy(true);
+                setOrphanScan(null);
+                setOrphanResult(null);
+                try {
+                  const r = await invoke("scan_orphan_mod_dirs");
+                  setOrphanScan(r);
+                  // Folders holding settings start unchecked: deleting those
+                  // throws away configuration, which is the user's call.
+                  setOrphanPicked(
+                    (r.dirs ?? [])
+                      .filter((d) => d.kind !== "holds_user_data")
+                      .map((d) => d.path)
+                  );
+                } catch (e) {
+                  setOrphanScan({ error: String(e) });
+                } finally {
+                  setOrphanBusy(false);
+                }
+              }}
+              className="maintenance-button"
+              disabled={orphanBusy}
+              {...hint("find leftover mod folders that Cyber Engine Tweaks warns about at every launch")}
+            >
+              {orphanBusy ? "Scanning..." : "Check for leftover mod folders"}
             </button>
           </div>
         </div>
@@ -709,6 +743,96 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
                       }}
                     >
                       {wrapBusy ? "Repairing..." : "Repair now"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {orphanScan && (
+        <div className="validation-backdrop" onClick={() => setOrphanScan(null)}>
+          <div className="validation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="validation-header">
+              <span className="validation-title">Leftover Mod Folders</span>
+              <button className="validation-close" onClick={() => setOrphanScan(null)}>✕</button>
+            </div>
+            <div className="validation-body">
+              {orphanScan.error ? (
+                <p className="validation-error">Failed: {orphanScan.error}</p>
+              ) : orphanResult ? (
+                <>
+                  <p className="validation-ok">
+                    Removed {orphanResult.deleted} folder{orphanResult.deleted === 1 ? "" : "s"}
+                  </p>
+                  {orphanResult.failed.length > 0 && (
+                    <>
+                      <p className="validation-summary">
+                        {orphanResult.failed.length} left in place:
+                      </p>
+                      {orphanResult.failed.map((f, i) => (
+                        <div key={i} className="validation-file">{f}</div>
+                      ))}
+                    </>
+                  )}
+                </>
+              ) : orphanScan.dir_count === 0 ? (
+                <p className="validation-ok">
+                  No leftovers — every folder in Cyber Engine Tweaks belongs to a mod
+                </p>
+              ) : (
+                <>
+                  <p className="validation-summary">
+                    {orphanScan.dir_count} folder{orphanScan.dir_count === 1 ? "" : "s"} in Cyber
+                    Engine Tweaks hold no mod any more, so it logs a warning for
+                    {orphanScan.dir_count === 1 ? " it" : " each"} at every launch
+                    ({formatSize(orphanScan.bytes)}). The game is unaffected either way — this is
+                    tidying, not a repair. Folders belonging to an installed mod are never listed.
+                  </p>
+                  {orphanScan.dirs.map((d) => (
+                    <label key={d.path} className="validation-mod orphan-pick">
+                      <input
+                        type="checkbox"
+                        checked={orphanPicked.includes(d.path)}
+                        onChange={(e) =>
+                          setOrphanPicked((cur) =>
+                            e.target.checked
+                              ? [...cur, d.path]
+                              : cur.filter((p) => p !== d.path)
+                          )
+                        }
+                      />
+                      <span className="validation-mod-name">
+                        {d.name} — {d.file_count} file{d.file_count === 1 ? "" : "s"},{" "}
+                        {formatSize(d.bytes)}
+                        {d.kind === "holds_user_data" && " · has settings"}
+                        {d.kind === "orphaned_ghosts" && " · switched-off mod files"}
+                      </span>
+                      <span className="validation-file">{d.sample.slice(0, 4).join(", ")}</span>
+                    </label>
+                  ))}
+                  <div className="setting-row">
+                    <button
+                      className="maintenance-button"
+                      disabled={orphanBusy || orphanPicked.length === 0}
+                      onClick={async () => {
+                        setOrphanBusy(true);
+                        try {
+                          const r = await invoke("clean_orphan_mod_dirs", { paths: orphanPicked });
+                          setOrphanResult(r);
+                          onSaved?.();
+                        } catch (e) {
+                          setOrphanScan({ error: String(e) });
+                        } finally {
+                          setOrphanBusy(false);
+                        }
+                      }}
+                    >
+                      {orphanBusy
+                        ? "Clearing..."
+                        : `Delete ${orphanPicked.length} folder${orphanPicked.length === 1 ? "" : "s"}`}
                     </button>
                   </div>
                 </>

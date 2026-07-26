@@ -535,3 +535,23 @@
   content: '× ';
   color: var(--cyber-red-dim);
 }
+
+/* A leftover-folder row: checkbox in its own gutter, details beside it, so the
+   file list lines up under the name rather than under the box. */
+.orphan-pick {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.6rem;
+  align-items: baseline;
+  cursor: pointer;
+}
+
+.orphan-pick input {
+  accent-color: var(--cyber-blue);
+  cursor: pointer;
+}
+
+.orphan-pick .validation-file {
+  grid-column: 2;
+  padding-left: 0;
+}

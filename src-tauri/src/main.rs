@@ -6,6 +6,7 @@ mod local_archive;
 mod mod_manager;
 mod mod_repair;
 mod nexusmods_api;
+mod orphan_cleanup;
 mod settings;
 
 use mod_manager::{ModInfo, ModManager};
@@ -209,6 +210,38 @@ fn remove_mod(
         add_log(
             format!("⚠ Failed to remove: {}", error),
             "warning".to_string(),
+            "removal".to_string(),
+            state.clone(),
+        )?;
+    }
+
+    // Sweep the folders those files vacated. A mod folder left standing without
+    // an init.lua is reported by CET at every launch, which reads as breakage
+    // (docs/bugs.md B3). Folders still holding anything are left untouched.
+    let pruned = {
+        let game_path = {
+            let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+            settings_guard.get_settings().game_path.clone()
+        };
+        if game_path.is_empty() {
+            0
+        } else {
+            let game_dir = std::path::PathBuf::from(&game_path);
+            let mut dirs: Vec<std::path::PathBuf> = removed_files
+                .iter()
+                .filter_map(|f| std::path::Path::new(f).parent().map(|p| p.to_path_buf()))
+                .collect();
+            dirs.sort();
+            dirs.dedup();
+            dirs.iter()
+                .map(|dir| mod_repair::prune_empty_dirs(dir, &game_dir))
+                .sum::<usize>()
+        }
+    };
+    if pruned > 0 {
+        add_log(
+            format!("🧹 Removed {} emptied folder(s)", pruned),
+            "info".to_string(),
             "removal".to_string(),
             state.clone(),
         )?;
@@ -604,6 +637,105 @@ fn repair_wrapped_mods(
         "pruned_dirs": pruned_total,
         "backup": backup_label,
         "details": details,
+    }))
+}
+
+/// CET's mod directory for the configured install, plus the set of file paths
+/// every still-installed mod claims (both spellings, active and ghosted).
+///
+/// The owned set is what keeps cleanup honest: a CET folder can hold files that
+/// belong to a *different* mod — presets one mod ships for another — and those
+/// must survive any sweep.
+fn cet_cleanup_context(
+    state: &State<AppState>,
+) -> Result<(std::path::PathBuf, std::collections::HashSet<String>), String> {
+    let game_path = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        settings_guard.get_settings().game_path.clone()
+    };
+    if game_path.is_empty() {
+        return Err("Game path not configured".to_string());
+    }
+
+    let mods = {
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.get_installed_mods()
+    };
+
+    let mut owned = std::collections::HashSet::new();
+    for m in &mods {
+        if m.removed {
+            continue;
+        }
+        for f in &m.files {
+            owned.insert(f.to_lowercase());
+            owned.insert(format!("{}.disabled", f.to_lowercase()));
+        }
+    }
+
+    Ok((
+        std::path::Path::new(&game_path).join(orphan_cleanup::CET_MODS_REL),
+        owned,
+    ))
+}
+
+/// Dry run: report CET mod folders the loader ignores and no mod claims.
+#[tauri::command]
+fn scan_orphan_mod_dirs(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let (cet_mods_dir, owned) = cet_cleanup_context(&state)?;
+    let found = orphan_cleanup::scan(&cet_mods_dir, &owned);
+
+    let sweepable: Vec<_> = found
+        .iter()
+        .filter(|d| d.kind != orphan_cleanup::OrphanKind::HoldsUserData)
+        .collect();
+
+    Ok(serde_json::json!({
+        "dir_count": found.len(),
+        "sweepable_count": sweepable.len(),
+        "file_count": found.iter().map(|d| d.file_count).sum::<usize>(),
+        "bytes": found.iter().map(|d| d.bytes).sum::<u64>(),
+        "dirs": found,
+    }))
+}
+
+/// Delete the given leftover folders. `paths` comes from a prior scan; anything
+/// that has since been claimed or gained an `init.lua` is refused.
+#[tauri::command]
+fn clean_orphan_mod_dirs(
+    paths: Vec<String>,
+    state: State<AppState>,
+) -> Result<serde_json::Value, String> {
+    let (cet_mods_dir, owned) = cet_cleanup_context(&state)?;
+
+    let (deleted, failed) = orphan_cleanup::delete_dirs(&paths, &cet_mods_dir, &owned);
+
+    for reason in &failed {
+        add_log(
+            format!("⚠ Left in place: {}", reason),
+            "warning".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    }
+    add_log(
+        format!(
+            "🧹 Removed {} leftover mod folder(s){}",
+            deleted,
+            if failed.is_empty() {
+                String::new()
+            } else {
+                format!(", {} left in place", failed.len())
+            }
+        ),
+        if failed.is_empty() { "success" } else { "warning" }.to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
+
+    Ok(serde_json::json!({
+        "deleted": deleted,
+        "failed": failed,
     }))
 }
 
@@ -5200,6 +5332,28 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
         }
     }
 
+    // 2c. CET mod folders left behind by earlier removals. Harmless to the game,
+    // but CET flags each one at every launch, so the user sees a wall of
+    // warnings with nothing telling them where it came from. Folders holding
+    // settings are excluded — those are a judgement call, not a nuisance.
+    if let Ok((cet_mods_dir, owned)) = cet_cleanup_context(&state) {
+        let sweepable = orphan_cleanup::scan(&cet_mods_dir, &owned)
+            .into_iter()
+            .filter(|d| d.kind != orphan_cleanup::OrphanKind::HoldsUserData)
+            .count();
+        if sweepable > 0 {
+            issues.push(serde_json::json!({
+                "type": "warning",
+                "code": "orphan_mod_dirs",
+                "message": format!(
+                    "{} leftover mod folder{} in Cyber Engine Tweaks that it can't load — the game logs a warning for each at startup. Clear them in Config.",
+                    sweepable,
+                    if sweepable == 1 { "" } else { "s" }
+                )
+            }));
+        }
+    }
+
     // 3. Check NXM URL handler via LaunchServices (reliable, no PyObjC needed).
     #[cfg(target_os = "macos")]
     {
@@ -5384,6 +5538,8 @@ fn main() {
             parse_local_archive_name,
             scan_wrapped_mods,
             repair_wrapped_mods,
+            scan_orphan_mod_dirs,
+            clean_orphan_mod_dirs,
             clean_temp_files,
             reveal_in_finder,
             sync_mod_data,
