@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import useEscape from "../hooks/useEscape";
 import "./ConfirmDialog.css";
 
 /**
@@ -30,12 +30,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => { if (e.key === "Escape") onCancel(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onCancel]);
+  useEscape(open, onCancel);
 
   if (!open) return null;
 

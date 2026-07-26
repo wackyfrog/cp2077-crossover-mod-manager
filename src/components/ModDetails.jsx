@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
+import useEscape from "../hooks/useEscape";
 import './ModDetails.css'
 
 function relativeDate(dateStr) {
@@ -99,6 +100,8 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
   const [changelog, setChangelog] = useState(null);
   const [changelogOpen, setChangelogOpen] = useState(false);
   const hasChangelog = changelog && Object.keys(changelog).length > 0;
+
+  useEscape(changelogOpen, () => setChangelogOpen(false));
 
   // Reset changelog when mod changes
   useEffect(() => {

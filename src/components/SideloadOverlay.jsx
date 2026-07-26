@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import useEscape from "../hooks/useEscape";
 import "./SideloadOverlay.css";
 
 /**
@@ -20,6 +21,9 @@ export default function SideloadOverlay({ open, archivePath, onSubmit, onCancel 
   const [error, setError] = useState(null);
   const [parsing, setParsing] = useState(false);
   const nameRef = useRef(null);
+
+  // Escape backs out of the form, whether or not a field has focus.
+  useEscape(open, onCancel);
 
   // Re-parse whenever a new archive is picked
   useEffect(() => {
@@ -87,7 +91,6 @@ export default function SideloadOverlay({ open, archivePath, onSubmit, onCancel 
 
   const onKeyDown = (e) => {
     if (e.key === "Enter") handleInstall();
-    if (e.key === "Escape") onCancel();
   };
 
   return (

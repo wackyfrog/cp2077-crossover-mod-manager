@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import useEscape from "../hooks/useEscape";
 import "./JackInOverlay.css";
 
 const GLITCH_CHARS = "!@#$%^&*()_+-=[]{}|;:,.<>?/~`0123456789ABCDEFabcdef";
@@ -190,7 +191,7 @@ const STAGE_LABELS = {
   error: "ERROR",
 };
 
-export default function JackInOverlay({ open, progress, onSubmit, onRetry, onReinstall, onCancel, onDismiss }) {
+export default function JackInOverlay({ open, progress, onSubmit, onSideload, onRetry, onReinstall, onCancel, onDismiss }) {
   const [url, setUrl] = useState("");
   const [lastNxmUrl, setLastNxmUrl] = useState(null);
   const [modLabel, setModLabel] = useState(null);
@@ -399,6 +400,18 @@ export default function JackInOverlay({ open, progress, onSubmit, onRetry, onRei
 
   const [inputError, setInputError] = useState(null);
 
+  const handleClose = () => {
+    setUrl("");
+    setLines([]);
+    setPhase("input");
+    prevStageRef.current = null;
+    onDismiss();
+  };
+
+  // Escape backs out — but not mid-transfer, where hiding the progress screen
+  // would leave an install running with nothing on screen to show for it.
+  useEscape(open && phase !== "working", handleClose);
+
   if (!open) return null;
 
   const nxmUrl = progress?.nxm_url;
@@ -424,14 +437,6 @@ export default function JackInOverlay({ open, progress, onSubmit, onRetry, onRei
     setLastNxmUrl(trimmed);
     setPhase("working");
     onSubmit(trimmed);
-  };
-
-  const handleClose = () => {
-    setUrl("");
-    setLines([]);
-    setPhase("input");
-    prevStageRef.current = null;
-    onDismiss();
   };
 
   const handleAbort = async () => {
@@ -531,12 +536,34 @@ export default function JackInOverlay({ open, progress, onSubmit, onRetry, onRei
                 onChange={(e) => { setUrl(e.target.value); setInputError(null); }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleGo();
-                  if (e.key === "Escape") handleClose();
                 }}
               />
               <button className="jackin-btn primary" disabled={!url.trim()} onClick={handleGo}>Go</button>
               <button className="jackin-btn" onClick={handleClose}>Abort</button>
             </div>
+
+            {onSideload && (
+              <div className="jackin-alt">
+                <span className="jackin-alt-rule" />
+                <span className="jackin-alt-label">or</span>
+                <span className="jackin-alt-rule" />
+              </div>
+            )}
+            {onSideload && (
+              <div className="jackin-sideload">
+                <button
+                  className="jackin-btn"
+                  onClick={() => { onSideload(); handleClose(); }}
+                >
+                  Sideload from disk
+                </button>
+                <p className="jackin-desc-alt jackin-sideload-hint">
+                  For manual downloads — pick a <span className="jackin-desc-em">.zip</span>,{" "}
+                  <span className="jackin-desc-em">.7z</span> or <span className="jackin-desc-em">.rar</span>{" "}
+                  you already have, or just drag it onto this window.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="jackin-progress-area">

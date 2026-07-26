@@ -173,6 +173,38 @@
   box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
 }
 
+/* ── Alternative install route (sideload) ── */
+.jackin-alt {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.9rem 0 0.7rem;
+}
+
+.jackin-alt-rule {
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 255, 136, 0.18);
+}
+
+.jackin-alt-label {
+  font-size: 0.7rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(0, 255, 136, 0.45);
+}
+
+.jackin-sideload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: flex-start;
+}
+
+.jackin-sideload-hint {
+  margin: 0;
+}
+
 /* ── Progress phase ── */
 .jackin-progress-area {
   display: flex;

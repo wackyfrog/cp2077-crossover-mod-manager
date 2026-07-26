@@ -17,8 +17,15 @@ const BOOT_SEQUENCE = [
   { text: "WELCOME BACK, NETRUNNER",                         delay: 3600, color: "yellow" },
 ];
 
-const TOTAL_MS = 6000;
-const READY_AT = 3800;
+// Every timing below is scaled by this. The boot sequence is decoration, and
+// waiting on decoration gets old fast — 0.75 trims a quarter off the wait while
+// keeping the sequence readable.
+const SPEED = 0.75;
+const ms = (v) => Math.round(v * SPEED);
+
+const TOTAL_MS = ms(6000);
+const READY_AT = ms(3800);
+const START_DELAY = ms(300);
 
 export default function SplashScreen({ onDone }) {
   const [visibleLines, setVisibleLines] = useState([]);
@@ -40,14 +47,14 @@ export default function SplashScreen({ onDone }) {
     const lineTimers = BOOT_SEQUENCE.map(({ text, delay, color }) =>
       setTimeout(() => {
         setVisibleLines((prev) => [...prev, { text, color }]);
-      }, delay + 300)
+      }, ms(delay) + START_DELAY)
     );
 
     const STEPS = 40;
     const progressTimers = Array.from({ length: STEPS }, (_, i) =>
       setTimeout(() => {
         setProgress(Math.round(((i + 1) / STEPS) * 100));
-      }, 300 + i * (3800 / STEPS))
+      }, START_DELAY + i * ((READY_AT - START_DELAY) / STEPS))
     );
 
     const tReady = setTimeout(() => setPhase("ready"), READY_AT);
@@ -62,7 +69,11 @@ export default function SplashScreen({ onDone }) {
   }, []);
 
   return (
-    <div className={`splash ${phase === "out" ? "splash--out" : ""}`}>
+    <div
+      className={`splash ${phase === "out" ? "splash--out" : ""}`}
+      onClick={onDone}
+      title="Click to skip"
+    >
       <div className="splash-inner">
 
         <div className="splash-title">
@@ -88,6 +99,8 @@ export default function SplashScreen({ onDone }) {
         )}
 
       </div>
+
+      <div className="splash-skip">Click anywhere to skip</div>
     </div>
   );
 }

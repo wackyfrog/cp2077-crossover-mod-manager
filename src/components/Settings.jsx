@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import useEscape from "../hooks/useEscape";
 import "./Settings.css";
 
 function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
@@ -202,6 +203,16 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   const [backups, setBackups] = useState([]);
   const [backupMsg, setBackupMsg] = useState("");
   const [confirmAction, setConfirmAction] = useState(null); // { type, name, label }
+
+  // Escape dismisses whichever of these panels is on top. Registered in the
+  // order they can stack, so the innermost one wins.
+  useEscape(!!validationResult, () => setValidationResult(null));
+  useEscape(!!wrapScan, () => setWrapScan(null));
+  useEscape(!!candidates, () => setCandidates(null));
+  // Same as clicking away from the relocate prompt: keep the new path, move nothing.
+  useEscape(!!relocatePrompt, () => doRelocate("skip"));
+  useEscape(!!relocateResult, () => setRelocateResult(null));
+  useEscape(!!confirmAction, () => setConfirmAction(null));
 
   const loadBackups = async () => {
     try {

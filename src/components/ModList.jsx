@@ -22,8 +22,7 @@ function groupMods(mods) {
 
 function ModList({
   mods, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
-  loading, syncing, onSync, onSideload, dragActive = false, installBusy = false,
-  hint = () => ({}),
+  loading, dragActive = false,
 }) {
   const filtered = useMemo(() => {
     let result = mods;
@@ -183,30 +182,7 @@ function ModList({
         {filtered.length}/{mods.filter(m => !m.removed).length}
       </div>
 
-      <div className="mod-list-footer">
-        <button
-          onClick={onSync}
-          className={`footer-btn sync ${syncing ? "syncing" : ""}`}
-          disabled={loading || syncing}
-          {...hint("check for mod updates, fetch details and thumbnails from Nexus")}
-        >
-          {syncing ? "Netrunning…" : "Netrun"}
-        </button>
-        {onSideload && (
-          <button
-            onClick={onSideload}
-            className="footer-btn sideload"
-            disabled={loading || syncing || installBusy}
-            {...hint(
-              installBusy
-                ? "an install is already running"
-                : "install a mod from a .zip/.7z/.rar archive on disk"
-            )}
-          >
-            Sideload
-          </button>
-        )}
-      </div>
+      {/* Netrun and Sideload now live in the main nav and the Jack In screen. */}
     </div>
   );
 }

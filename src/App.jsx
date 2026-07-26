@@ -14,6 +14,7 @@ import Manifest from "./components/Manifest";
 import AppFooter from "./components/AppFooter";
 import JackInOverlay from "./components/JackInOverlay";
 import SideloadOverlay from "./components/SideloadOverlay";
+import useEscape from "./hooks/useEscape";
 import "./App.css";
 
 const SIDELOAD_EXTENSIONS = ["zip", "7z", "rar"];
@@ -52,6 +53,10 @@ function App() {
     onMouseEnter: () => setHoverHint(text),
     onMouseLeave: () => setHoverHint(null),
   });
+
+  // Bottom of the Escape stack: with no overlay open, Escape clears the search.
+  // Registered first, so any overlay mounted later takes the key ahead of it.
+  useEscape(!!searchQuery, () => setSearchQuery(""));
 
   useEffect(() => {
     const full = searchExamples[phIdx];
@@ -706,21 +711,21 @@ function App() {
           <p className="app-header-app">Crossover Mod Manager</p>
         </div>
         <nav className="nav">
+          <button className={activeTab === "mods" ? "active" : ""} onClick={() => setActiveTab("mods")} {...hint("browse and manage installed mods")}>Chrome</button>
           <button
             onClick={() => setNxmInput(true)}
             disabled={installBusy}
-            {...hint(installBusy ? "an install is already running" : "install a mod from an nxm:// URL")}
+            {...hint(installBusy ? "an install is already running" : "install a mod — from an nxm:// link or an archive on disk")}
           >
             Jack In
           </button>
           <button
-            onClick={handleSideloadPick}
-            disabled={installBusy}
-            {...hint(installBusy ? "an install is already running" : "install a mod from a .zip/.7z/.rar archive on disk")}
+            onClick={handleSyncMods}
+            disabled={loading || !!syncProgress}
+            {...hint("check for mod updates, fetch details and thumbnails from Nexus")}
           >
-            Sideload
+            {syncProgress ? "Netrunning…" : "Netrun"}
           </button>
-          <button className={activeTab === "mods"     ? "active" : ""} onClick={() => setActiveTab("mods")} {...hint("browse and manage installed mods")}>Chrome</button>
           <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")} {...hint("game paths, API key, and app settings")}>Config</button>
           <button className={activeTab === "manifest" ? "active" : ""} onClick={() => setActiveTab("manifest")} {...hint("version info, credits, and links")}>About</button>
         </nav>
@@ -800,12 +805,7 @@ function App() {
                 filter={modFilter}
                 sort={modSort}
                 loading={loading}
-                syncing={!!syncProgress}
-                onSync={handleSyncMods}
-                onSideload={handleSideloadPick}
                 dragActive={dragActive}
-                installBusy={installBusy}
-                hint={hint}
               />
             </div>
             <div className="mod-details-pane">
@@ -919,6 +919,7 @@ function App() {
         open={(nxmInput || !!installProgress) && !relayStatus}
         progress={installProgress}
         onSubmit={handleInstallUrl}
+        onSideload={handleSideloadPick}
         onRetry={() => setInstallProgress(null)}
         onReinstall={handleReinstall}
         onCancel={() => setNxmInput(false)}
