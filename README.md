@@ -58,6 +58,14 @@ destination is already taken by another mod, it is skipped rather than
 overwritten. Reinstalling a mod also fixes it, since new installs strip the
 wrapper correctly.
 
+## What's New in 1.4
+
+- **Reworked navigation** — menu order is now Chrome / Jack In / Netrun / Config / About. **Netrun** moved up into the main menu, and **Sideload** moved into the **Jack In** screen alongside the NXM link field, since both are ways to install a mod
+- **Much easier to read** — larger text throughout and a big lift in contrast. The dim red on mod versions measured 2.44:1 against the background, far below what body text needs; that and the washed-out overlay text have been fixed. Borders and glows are untouched, so the look stays the same
+- **Escape works** — previously it only did anything while a text field had focus. It now closes whatever is in front, from anywhere, and clears the mod search when nothing is open. It's ignored mid-install and mid-sync so you can't hide work that's still running
+- **Clearer way out** — the exit button in Jack In and Netrun no longer looks like every other button on the screen, and shows an `esc` hint
+- **Splash screen** — click anywhere to skip, and it's a quarter shorter
+
 ## What's New in 1.3
 
 - **Sideload** — install a mod from a `.zip`/`.7z`/`.rar` on disk, for the many NexusMods pages that offer no "Download with Mod Manager" button. Pick it from **Jack In**, or drag the archive onto the window; details are read from the filename for you to confirm
