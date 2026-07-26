@@ -38,7 +38,7 @@
 }
 
 .jackin-chrome-tag {
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   letter-spacing: 3px;
   color: var(--cyber-green);
   text-shadow: 0 0 4px rgba(0, 255, 136, 0.4);
@@ -52,15 +52,15 @@
 }
 
 .jackin-chrome-sys {
-  font-size: 0.55rem;
+  font-size: 0.69rem;
   letter-spacing: 1.5px;
-  color: rgba(0, 255, 136, 0.3);
+  color: rgba(0, 255, 136, 0.7);
 }
 
 .jackin-chrome-status {
-  font-size: 0.55rem;
+  font-size: 0.69rem;
   letter-spacing: 1.5px;
-  color: rgba(0, 255, 136, 0.5);
+  color: rgba(0, 255, 136, 0.8);
   margin-left: auto;
   animation: jackin-pulse 2s ease-in-out infinite;
 }
@@ -88,7 +88,7 @@
 }
 
 .jackin-title {
-  font-size: 1.4rem;
+  font-size: 1.51rem;
   letter-spacing: 5px;
   color: var(--cyber-green);
   text-transform: uppercase;
@@ -101,7 +101,7 @@
 }
 
 .jackin-pct {
-  font-size: 1.4rem;
+  font-size: 1.51rem;
   letter-spacing: 2px;
   color: var(--cyber-green);
   text-shadow:
@@ -120,27 +120,27 @@
 
 .jackin-desc {
   margin: 0;
-  font-size: 0.72rem;
-  color: rgba(0, 255, 136, 0.45);
+  font-size: 0.83rem;
+  color: rgba(0, 255, 136, 0.72);
   letter-spacing: 0.5px;
 }
 
 .jackin-desc-alt {
   margin: 0.5rem 0 0;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   line-height: 1.5;
-  color: rgba(0, 255, 136, 0.35);
+  color: rgba(0, 255, 136, 0.7);
   letter-spacing: 0.4px;
   max-width: 640px;
 }
 
 .jackin-desc-em {
-  color: rgba(0, 255, 136, 0.7);
+  color: var(--cyber-green);
 }
 
 .jackin-input-error {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-red);
   text-shadow: 0 0 6px rgba(255, 0, 64, 0.4);
   letter-spacing: 0.5px;
@@ -158,18 +158,18 @@
   border: 1px solid rgba(0, 255, 136, 0.25);
   color: var(--cyber-green);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   padding: 0.5rem 0.75rem;
   outline: none;
   letter-spacing: 0.5px;
 }
 
 .jackin-input::placeholder {
-  color: rgba(0, 255, 136, 0.15);
+  color: rgba(0, 255, 136, 0.45);
 }
 
 .jackin-input:focus {
-  border-color: rgba(0, 255, 136, 0.5);
+  border-color: rgba(0, 255, 136, 0.8);
   box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
 }
 
@@ -188,10 +188,10 @@
 }
 
 .jackin-alt-label {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   letter-spacing: 3px;
   text-transform: uppercase;
-  color: rgba(0, 255, 136, 0.45);
+  color: rgba(0, 255, 136, 0.72);
 }
 
 .jackin-sideload {
@@ -213,7 +213,7 @@
 }
 
 .jackin-stage {
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   letter-spacing: 2px;
   color: var(--cyber-green);
   text-shadow: 0 0 6px rgba(0, 255, 136, 0.5);
@@ -230,15 +230,15 @@
 }
 
 .jackin-mod-name {
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-yellow);
   letter-spacing: 1px;
   text-shadow: 0 0 6px rgba(255, 255, 0, 0.3);
 }
 
 .jackin-message {
-  font-size: 0.7rem;
-  color: rgba(0, 255, 136, 0.5);
+  font-size: 0.8rem;
+  color: rgba(0, 255, 136, 0.8);
   letter-spacing: 0.5px;
 }
 
@@ -254,7 +254,7 @@
 }
 
 .jackin-conflict-title {
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--cyber-yellow);
   letter-spacing: 1.5px;
   text-shadow: 0 0 6px rgba(255, 255, 0, 0.3);
@@ -262,7 +262,7 @@
 }
 
 .jackin-conflict-hint {
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-text);
   opacity: 0.7;
   line-height: 1.5;
@@ -282,14 +282,14 @@
 }
 
 .jackin-error-title {
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--cyber-yellow);
   letter-spacing: 1px;
   text-shadow: 0 0 6px rgba(255, 255, 0, 0.3);
 }
 
 .jackin-error-hint {
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-text);
   line-height: 1.6;
   opacity: 0.8;
@@ -301,8 +301,8 @@
 }
 
 .jackin-speed {
-  color: rgba(0, 255, 136, 0.35);
-  font-size: 0.65rem;
+  color: rgba(0, 255, 136, 0.7);
+  font-size: 0.75rem;
 }
 
 .jackin-progress-wrap {
@@ -343,7 +343,7 @@
   position: relative;
   z-index: 2;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 255, 136, 0.15) transparent;
+  scrollbar-color: rgba(0, 255, 136, 0.7) transparent;
   border-left: 2px solid rgba(0, 255, 136, 0.06);
   margin-left: 1rem;
 }
@@ -352,7 +352,7 @@
 .jackin-terminal::-webkit-scrollbar-thumb { background: rgba(0, 255, 136, 0.2); }
 
 .jackin-line {
-  font-size: 0.73rem;
+  font-size: 0.84rem;
   line-height: 1.7;
   white-space: nowrap;
   overflow: hidden;
@@ -361,7 +361,7 @@
 }
 
 .jackin-line-fake {
-  color: rgba(0, 255, 136, 0.25);
+  color: rgba(0, 255, 136, 0.7);
 }
 
 .jackin-line-stage {
@@ -424,9 +424,9 @@
 }
 
 .jackin-footer-readout {
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   letter-spacing: 1.5px;
-  color: rgba(0, 255, 136, 0.4);
+  color: rgba(0, 255, 136, 0.7);
 }
 
 .jackin-footer-actions {
@@ -439,9 +439,9 @@
   padding: 0.4rem 1.2rem;
   background: transparent;
   border: 1px solid rgba(0, 255, 136, 0.3);
-  color: rgba(0, 255, 136, 0.6);
+  color: rgba(0, 255, 136, 0.96);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   letter-spacing: 1.5px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -450,7 +450,7 @@
 
 .jackin-btn:hover:not(:disabled) {
   color: var(--cyber-green);
-  border-color: rgba(0, 255, 136, 0.5);
+  border-color: rgba(0, 255, 136, 0.8);
   box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
 }
 
@@ -474,7 +474,7 @@
   border: 2px solid var(--cyber-red);
   color: var(--cyber-red);
   padding: 0.5rem 2rem;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   letter-spacing: 3px;
   text-shadow: 0 0 6px rgba(255, 0, 64, 0.5);
   box-shadow: 0 0 8px rgba(255, 0, 64, 0.15);

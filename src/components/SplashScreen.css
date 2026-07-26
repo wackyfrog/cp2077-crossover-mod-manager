@@ -18,10 +18,10 @@
   right: 0;
   text-align: center;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(0, 255, 255, 0.5);
+  color: rgba(0, 255, 255, 0.8);
   animation: splash-skip-pulse 2s ease-in-out infinite;
   pointer-events: none;
 }
@@ -70,7 +70,7 @@
 
 .splash-title-game {
   font-family: 'Play', sans-serif;
-  font-size: 2.2rem;
+  font-size: 2.38rem;
   font-weight: 700;
   letter-spacing: 6px;
   color: var(--cyber-yellow);
@@ -81,7 +81,7 @@
 
 .splash-title-app {
   font-family: 'Play', sans-serif;
-  font-size: 1rem;
+  font-size: 1.08rem;
   letter-spacing: 4px;
   color: var(--cyber-red);
   text-shadow: var(--cyber-text-glow);
@@ -98,7 +98,7 @@
 /* ── Boot log ── */
 .splash-boot {
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.82rem;
+  font-size: 0.94rem;
   letter-spacing: 0.5px;
   line-height: 1.9;
   width: 100%;
@@ -109,7 +109,7 @@
   animation: line-in 0.12s ease both;
 }
 
-.splash-line--dim    { color: rgba(255, 0, 64, 0.3); }
+.splash-line--dim    { color: rgba(255, 0, 64, 0.7); }
 .splash-line--normal { color: rgba(240, 210, 210, 0.75); }
 .splash-line--green  { color: var(--cyber-green); text-shadow: 0 0 8px rgba(0, 255, 136, 0.6); }
 .splash-line--yellow { color: var(--cyber-yellow); text-shadow: 0 0 8px rgba(255, 255, 0, 0.5); }
@@ -139,15 +139,15 @@
   right: 0;
   top: 7px;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.65rem;
-  color: rgba(255, 0, 64, 0.45);
+  font-size: 0.75rem;
+  color: rgba(255, 0, 64, 0.72);
   letter-spacing: 1px;
 }
 
 /* ── Ready ── */
 .splash-ready {
   font-family: 'Play', sans-serif;
-  font-size: 1.1rem;
+  font-size: 1.19rem;
   letter-spacing: 6px;
   text-transform: uppercase;
   color: var(--cyber-green);

@@ -48,7 +48,7 @@
 
 .footer-logs-title {
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-red);
   text-transform: uppercase;
   letter-spacing: 2px;
@@ -65,7 +65,7 @@
   border: 1px solid var(--cyber-border);
   color: var(--cyber-text-dim);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   padding: 0.15rem 0.5rem;
@@ -94,7 +94,7 @@
   border: 1px solid var(--cyber-red);
   color: var(--cyber-red);
   font-family: 'Play', sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   padding: 0.2rem 0.75rem;
@@ -124,7 +124,7 @@
 .app-footer-status {
   flex: 1;
   font-family: 'Play', sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-text-dim);
   letter-spacing: 0.5px;
   line-height: 1.5;
@@ -149,7 +149,7 @@
 }
 
 .app-footer-status-indicator {
-  font-size: 0.55rem;
+  font-size: 0.69rem;
   color: var(--cyber-red-dim);
   flex-shrink: 0;
   transition: color 0.15s ease;
@@ -168,7 +168,7 @@
 }
 
 .app-footer-idle {
-  color: rgba(255, 0, 64, 0.2);
+  color: rgba(255, 0, 64, 0.7);
 }
 
 .app-footer-hint {
@@ -185,7 +185,7 @@
 .app-footer-version {
   flex-shrink: 0;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--cyber-red);
   letter-spacing: 1px;
   padding-top: 0.15rem;
@@ -196,13 +196,13 @@
 
 .app-footer-build {
   color: var(--cyber-red-dim);
-  font-size: 0.7rem;
+  font-size: 0.8rem;
 }
 
 .app-footer-dev {
   color: var(--cyber-yellow);
   font-family: 'Play', sans-serif;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 2px;
   margin-left: 0.4rem;
   text-shadow: 0 0 8px rgba(255, 200, 0, 0.6);

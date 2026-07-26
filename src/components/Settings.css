@@ -24,7 +24,7 @@
 }
 
 .setting-section h3 {
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   margin: 0 0 1.2rem 0;
   color: var(--cyber-red);
   text-shadow: var(--cyber-text-glow);
@@ -49,7 +49,7 @@
   color: var(--cyber-red-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
 }
 
 .setting-row label::after {
@@ -78,7 +78,7 @@
   border: 1px solid var(--cyber-border);
   color: var(--cyber-text);
   font-family: 'Play', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
 }
 
 .path-selector input:focus {
@@ -99,7 +99,7 @@
   border: 1px solid var(--cyber-red);
   color: var(--cyber-red);
   font-family: 'Play', sans-serif;
-  font-size: 0.75rem;
+  font-size: 0.86rem;
   cursor: pointer;
   transition: all 0.2s ease;
   text-transform: uppercase;
@@ -132,7 +132,7 @@
 /* ── Detection result ── */
 .detection-result {
   margin: 0.5rem 0 0;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--cyber-text-dim);
   font-family: 'Play', sans-serif;
   letter-spacing: 0.3px;
@@ -177,7 +177,7 @@
 .setting-toggle-row span {
   color: var(--cyber-text);
   font-family: 'Play', sans-serif;
-  font-size: 0.82rem;
+  font-size: 0.94rem;
 }
 
 /* ── Save bar ── */
@@ -201,7 +201,7 @@
   min-width: 140px;
   padding: 0.7rem 1.5rem;
   font-family: 'Play', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   cursor: pointer;
   transition: all 0.2s ease;
   text-transform: uppercase;
@@ -223,7 +223,7 @@
   font-family: 'Play', sans-serif;
   text-transform: uppercase;
   letter-spacing: 1px;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
 }
 
 /* ── Backup list ── */
@@ -254,12 +254,12 @@
 
 .backup-date {
   font-family: 'Play', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   color: var(--cyber-text);
 }
 
 .backup-size {
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   color: var(--cyber-text-dim);
 }
 
@@ -273,7 +273,7 @@
   padding: 0.3rem 0.6rem;
   background: transparent;
   font-family: 'Play', sans-serif;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.15s ease;
   text-transform: uppercase;
@@ -322,7 +322,7 @@
 .backup-confirm-text {
   margin: 0 0 1.2rem;
   font-family: 'Play', sans-serif;
-  font-size: 0.88rem;
+  font-size: 1.01rem;
   color: var(--cyber-text);
   line-height: 1.5;
 }
@@ -339,7 +339,7 @@
   border: 1px solid var(--cyber-red);
   color: var(--cyber-red);
   font-family: 'Play', sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -357,7 +357,7 @@
   border: 1px solid var(--cyber-border-bright);
   color: var(--cyber-text-dim);
   font-family: 'Play', sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -385,7 +385,7 @@
   border: 1px solid var(--cyber-border-bright);
   color: var(--cyber-text);
   font-family: 'Play', sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   cursor: pointer;
   text-align: left;
   word-break: break-all;
@@ -403,7 +403,7 @@
   background: var(--cyber-dark, rgba(0, 0, 0, 0.4));
   border-left: 2px solid var(--cyber-yellow);
   font-family: 'Play', sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--cyber-text-dim);
   word-break: break-all;
 }
@@ -446,7 +446,7 @@
 
 .validation-title {
   font-family: 'Play', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   letter-spacing: 2px;
   color: var(--cyber-yellow);
   text-transform: uppercase;
@@ -456,7 +456,7 @@
   background: transparent;
   border: none;
   color: var(--cyber-text-dim);
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   cursor: pointer;
   padding: 0.1rem 0.3rem;
   transition: color 0.15s;
@@ -477,7 +477,7 @@
 
 .validation-ok {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 1.03rem;
   color: var(--cyber-green);
   font-family: 'Play', sans-serif;
   text-shadow: 0 0 6px rgba(0, 255, 136, 0.4);
@@ -485,13 +485,13 @@
 
 .validation-error {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   color: var(--cyber-red);
 }
 
 .validation-summary {
   margin: 0 0 0.8rem;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   color: var(--cyber-yellow);
   font-family: 'Play', sans-serif;
   letter-spacing: 0.3px;
@@ -510,7 +510,7 @@
 }
 
 .validation-mod-name {
-  font-size: 0.82rem;
+  font-size: 0.94rem;
   color: var(--cyber-blue);
   font-family: 'Play', sans-serif;
   margin-bottom: 0.3rem;
@@ -524,7 +524,7 @@
 }
 
 .validation-file {
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-text-dim);
   font-family: 'Courier New', monospace;
   padding-left: 0.8rem;

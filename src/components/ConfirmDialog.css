@@ -33,13 +33,13 @@
 
 .cdlg-prefix {
   color: var(--cyber-red);
-  font-size: 0.9rem;
+  font-size: 1.03rem;
 }
 
 .cdlg-title {
   color: var(--cyber-yellow);
   font-family: 'Play', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   letter-spacing: 2px;
   text-transform: uppercase;
 }
@@ -55,7 +55,7 @@
 .cdlg-line {
   margin: 0;
   font-family: 'Play', sans-serif;
-  font-size: 0.83rem;
+  font-size: 0.95rem;
   color: var(--cyber-text);
   line-height: 1.6;
 }
@@ -80,7 +80,7 @@
   align-items: baseline;
   gap: 0.6rem;
   padding: 0.45rem 0.9rem;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   border-bottom: 1px solid var(--cyber-border);
 }
 
@@ -91,7 +91,7 @@
 .cdlg-item-icon {
   flex-shrink: 0;
   color: var(--cyber-red);
-  font-size: 0.75rem;
+  font-size: 0.86rem;
   width: 1rem;
   text-align: center;
 }
@@ -128,7 +128,7 @@
 .cdlg-btn {
   padding: 0.5rem 1.4rem;
   font-family: 'Play', sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   cursor: pointer;

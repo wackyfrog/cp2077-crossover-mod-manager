@@ -3,7 +3,9 @@
 :root {
   --cyber-red: #ff0040;
   --cyber-red-bright: #ff3366;
-  --cyber-red-dim: #992233;
+  /* Was #992233, which measured 2.44:1 on the app background — the mod versions
+     and other secondary red text were the worst-reading thing in the UI. */
+  --cyber-red-dim: #cc6677;
   --cyber-blue: #00ffff;
   --cyber-blue-bright: #66ffff;
   --cyber-green: #00ff88;
@@ -16,7 +18,8 @@
   --cyber-border: #2a0010;
   --cyber-border-bright: #550020;
   --cyber-text: #f0cccc;
-  --cyber-text-dim: #996677;
+  /* Was #996677 (4.18:1) — under the 4.5:1 needed for body text. */
+  --cyber-text-dim: #c49aa5;
   --cyber-glow: 0 0 10px rgba(255, 0, 64, 0.5);
   --cyber-text-glow: 0 0 5px rgba(255, 0, 64, 0.6);
 }
@@ -88,7 +91,7 @@ body::before {
 }
 
 .app-header-game {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   margin: 0;
   color: var(--cyber-yellow);
   font-weight: 700;
@@ -100,7 +103,7 @@ body::before {
 }
 
 .app-header-app {
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   margin: 0;
   color: var(--cyber-red);
   letter-spacing: 2px;
@@ -118,9 +121,9 @@ body::before {
   padding: 0.4rem 0.9rem;
   background: transparent;
   border: none;
-  color: rgba(0, 255, 255, 0.55);
+  color: rgba(0, 255, 255, 0.88);
   font-family: 'Play', sans-serif;
-  font-size: 0.95rem;
+  font-size: 1.03rem;
   text-transform: uppercase;
   letter-spacing: 3px;
   cursor: pointer;
@@ -128,7 +131,7 @@ body::before {
 }
 
 .nav button:hover {
-  color: rgba(0, 255, 255, 0.85);
+  color: var(--cyber-blue);
 }
 
 .nav button.active {
@@ -141,7 +144,7 @@ body::before {
 }
 
 .nav button:disabled:hover {
-  color: rgba(0, 255, 255, 0.55);
+  color: rgba(0, 255, 255, 0.88);
 }
 
 
@@ -167,7 +170,7 @@ body::before {
   top: 4px;
   left: 0;
   right: 0;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--cyber-blue);
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -192,7 +195,7 @@ body::before {
   padding: 0.35rem 0.75rem;
   background: transparent;
   font-family: 'Play', sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   cursor: pointer;
@@ -247,7 +250,7 @@ body::before {
   border: 1px solid var(--cyber-green);
   color: var(--cyber-text);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   padding: 0.3rem 0.6rem;
   outline: none;
 }
@@ -255,7 +258,7 @@ body::before {
 .action-bar .nxm-input-row input::placeholder {
   color: var(--cyber-text-dim);
   opacity: 0.5;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
 }
 
 .action-bar .nxm-input-row input:focus {
@@ -280,7 +283,7 @@ body::before {
 .action-bar .nxm-cancel {
   border: 1px solid var(--cyber-text-dim);
   color: var(--cyber-text-dim);
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   padding: 0.3rem 0.5rem;
 }
 
@@ -304,7 +307,7 @@ body::before {
   border-radius: 3px;
   color: var(--cyber-text-dim);
   font-family: 'Play', sans-serif;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   cursor: pointer;
@@ -338,7 +341,7 @@ body::before {
   border-radius: 3px;
   color: var(--cyber-text);
   font-family: 'Play', sans-serif;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   padding: 0.3rem 0.7rem;
@@ -362,7 +365,7 @@ body::before {
   align-items: center;
   padding: 0 0.7rem;
   font-family: 'Play', sans-serif;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   color: var(--cyber-text-dim);
@@ -423,7 +426,7 @@ body::before {
   border-bottom: 1px solid var(--cyber-border-bright);
   background: rgba(255, 0, 64, 0.04);
   font-family: 'Play', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   color: var(--cyber-yellow);
   text-transform: uppercase;
   letter-spacing: 3px;
@@ -432,7 +435,7 @@ body::before {
 .nxm-modal-desc {
   margin: 0;
   padding: 1rem 1.25rem 0;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--cyber-text-dim);
 }
 
@@ -444,7 +447,7 @@ body::before {
   border: 1px solid var(--cyber-border-bright);
   color: var(--cyber-text);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   padding: 0.5rem 0.7rem;
   outline: none;
   box-sizing: border-box;
@@ -471,7 +474,7 @@ body::before {
   padding: 0.45rem 1rem;
   background: transparent;
   font-family: 'Play', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   cursor: pointer;
@@ -605,7 +608,7 @@ body::before {
 
 .health-banner-icon {
   color: var(--cyber-yellow);
-  font-size: 1rem;
+  font-size: 1.08rem;
   line-height: 1.4;
 }
 
@@ -617,7 +620,7 @@ body::before {
 
 .health-banner-line {
   font-family: 'Play', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   line-height: 1.4;
   color: var(--cyber-text);
   word-break: break-word;
@@ -643,7 +646,7 @@ body::before {
   border: 1px solid var(--cyber-yellow);
   color: var(--cyber-yellow);
   font-family: 'Play', sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 1px;

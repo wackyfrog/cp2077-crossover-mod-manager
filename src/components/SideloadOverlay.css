@@ -37,7 +37,7 @@
 }
 
 .sideload-chrome-tag {
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   letter-spacing: 3px;
   color: var(--cyber-green);
   text-shadow: 0 0 4px rgba(0, 255, 136, 0.4);
@@ -51,15 +51,15 @@
 }
 
 .sideload-chrome-sys {
-  font-size: 0.55rem;
+  font-size: 0.69rem;
   letter-spacing: 1.5px;
-  color: rgba(0, 255, 136, 0.3);
+  color: rgba(0, 255, 136, 0.7);
 }
 
 .sideload-chrome-status {
-  font-size: 0.55rem;
+  font-size: 0.69rem;
   letter-spacing: 1.5px;
-  color: rgba(0, 255, 136, 0.5);
+  color: rgba(0, 255, 136, 0.8);
   margin-left: auto;
   animation: sideload-pulse 2s ease-in-out infinite;
 }
@@ -85,7 +85,7 @@
 }
 
 .sideload-title {
-  font-size: 1.4rem;
+  font-size: 1.51rem;
   letter-spacing: 5px;
   color: var(--cyber-green);
   text-transform: uppercase;
@@ -97,15 +97,15 @@
 
 .sideload-desc {
   margin: 0;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   line-height: 1.6;
   letter-spacing: 0.4px;
-  color: rgba(0, 255, 136, 0.4);
+  color: rgba(0, 255, 136, 0.7);
   max-width: 640px;
 }
 
 .sideload-desc-em {
-  color: rgba(0, 255, 136, 0.7);
+  color: var(--cyber-green);
 }
 
 /* ── Selected file ── */
@@ -120,12 +120,12 @@
 
 .sideload-file-icon {
   color: var(--cyber-green);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
 }
 
 .sideload-file-name {
   flex: 1;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: rgba(0, 255, 136, 0.75);
   letter-spacing: 0.3px;
   word-break: break-all;
@@ -133,14 +133,14 @@
 
 .sideload-file-size {
   flex-shrink: 0;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 1px;
-  color: rgba(0, 255, 136, 0.4);
+  color: rgba(0, 255, 136, 0.7);
 }
 
 .sideload-error {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.83rem;
   color: var(--cyber-red);
   text-shadow: 0 0 6px rgba(255, 0, 64, 0.4);
   letter-spacing: 0.5px;
@@ -171,10 +171,10 @@
 }
 
 .sideload-label {
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(0, 255, 136, 0.4);
+  color: rgba(0, 255, 136, 0.7);
 }
 
 .sideload-input {
@@ -182,7 +182,7 @@
   border: 1px solid rgba(0, 255, 136, 0.25);
   color: var(--cyber-green);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   padding: 0.5rem 0.75rem;
   outline: none;
   letter-spacing: 0.5px;
@@ -190,11 +190,11 @@
 }
 
 .sideload-input::placeholder {
-  color: rgba(0, 255, 136, 0.15);
+  color: rgba(0, 255, 136, 0.45);
 }
 
 .sideload-input:focus {
-  border-color: rgba(0, 255, 136, 0.5);
+  border-color: rgba(0, 255, 136, 0.8);
   box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
 }
 
@@ -204,10 +204,10 @@
 
 .sideload-hint {
   margin: 0;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   letter-spacing: 0.3px;
-  color: rgba(0, 255, 136, 0.3);
+  color: rgba(0, 255, 136, 0.7);
   max-width: 640px;
 }
 
@@ -223,9 +223,9 @@
   padding: 0.4rem 1.2rem;
   background: transparent;
   border: 1px solid rgba(0, 255, 136, 0.3);
-  color: rgba(0, 255, 136, 0.6);
+  color: rgba(0, 255, 136, 0.96);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   letter-spacing: 2px;
   text-transform: uppercase;
   cursor: pointer;
@@ -233,13 +233,13 @@
 }
 
 .sideload-btn:hover:not(:disabled) {
-  border-color: rgba(0, 255, 136, 0.6);
+  border-color: rgba(0, 255, 136, 0.96);
   color: var(--cyber-green);
   box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
 }
 
 .sideload-btn.primary {
-  border-color: rgba(0, 255, 136, 0.55);
+  border-color: rgba(0, 255, 136, 0.88);
   color: var(--cyber-green);
 }
 

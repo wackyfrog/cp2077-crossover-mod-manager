@@ -19,7 +19,7 @@
 
 .manifest-logo {
   font-family: 'Play', sans-serif;
-  font-size: 1rem;
+  font-size: 1.08rem;
   letter-spacing: 2px;
   color: var(--cyber-red);
   text-transform: uppercase;
@@ -28,14 +28,14 @@
 
 .manifest-edition {
   color: var(--cyber-yellow);
-  font-size: 1rem;
+  font-size: 1.08rem;
   letter-spacing: 1.5px;
   margin-left: 0.4rem;
 }
 
 .manifest-version {
   font-family: 'Courier New', monospace;
-  font-size: 1.4rem;
+  font-size: 1.51rem;
   color: var(--cyber-blue);
   letter-spacing: 3px;
   text-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
@@ -54,7 +54,7 @@
   gap: 1rem;
   padding: 0.5rem 0.85rem;
   border-bottom: 1px solid var(--cyber-border);
-  font-size: 0.82rem;
+  font-size: 0.94rem;
 }
 .manifest-row:last-child { border-bottom: none; }
 
@@ -64,7 +64,7 @@
   color: var(--cyber-red-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-size: 0.75rem;
+  font-size: 0.86rem;
 }
 
 .manifest-value { color: var(--cyber-text); }
@@ -72,7 +72,7 @@
 .manifest-link {
   color: var(--cyber-blue);
   text-decoration: none;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
 }
 .manifest-link:hover { color: var(--cyber-yellow); text-decoration: underline; }
 
@@ -88,27 +88,27 @@
 }
 
 .manifest-credits-label {
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--cyber-red-dim);
 }
 
 .manifest-credits-author {
-  font-size: 0.95rem !important;
+  font-size: 1.03rem !important;
   letter-spacing: 1px;
 }
 
 .manifest-about {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.98rem;
   color: var(--cyber-text);
   line-height: 1.6;
 }
 
 .manifest-tagline {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   color: var(--cyber-text-dim);
   text-align: center;
   letter-spacing: 0.5px;
@@ -118,7 +118,7 @@
 .manifest-quote {
   margin: 0;
   font-style: italic;
-  font-size: 0.75rem;
+  font-size: 0.86rem;
   color: var(--cyber-yellow);
   text-align: center;
   letter-spacing: 0.5px;

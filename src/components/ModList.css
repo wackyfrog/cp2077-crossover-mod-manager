@@ -13,7 +13,7 @@
 .mod-list-count {
   flex-shrink: 0;
   padding: 0.15rem 0.75rem;
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   color: var(--cyber-text-dim);
   letter-spacing: 1px;
   text-align: right;
@@ -39,7 +39,7 @@
 /* ── Mod badges (unified status + update) ── */
 .mod-badge {
   display: inline-block;
-  font-size: 0.5rem;
+  font-size: 0.62rem;
   padding: 0 0.25rem;
   margin-right: 0.35rem;
   vertical-align: middle;
@@ -82,7 +82,7 @@
 .mod-item-disabled { opacity: 0.7; }
 .mod-item-removed { opacity: 0.45; }
 .mod-item-removed .mod-info h3 { opacity: 0.6; }
-.mod-status.removed { color: #555; font-size: 0.75rem; }
+.mod-status.removed { color: #555; font-size: 0.86rem; }
 
 /* ── Multi-part mod groups ── */
 .mod-group {
@@ -108,7 +108,7 @@
 .mod-group.has-selected > .mod-group-header { color: var(--cyber-yellow); }
 .mod-group-toggle {
   flex-shrink: 0;
-  font-size: 0.55rem;
+  font-size: 0.69rem;
   color: var(--cyber-blue);
   width: 1rem;
   text-align: center;
@@ -143,8 +143,8 @@
 .mod-item-part::after { content: ''; position: absolute; left: 1.75rem; top: 50%; width: 2rem; height: 1px; background: rgba(255, 0, 64, 0.55); z-index: 1; }
 .mod-item-part:last-child { border-bottom: none; }
 
-.mod-part-name { margin: 0; font-size: 0.82rem; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mod-part-meta { margin: 0; font-size: 0.68rem; color: var(--cyber-text-dim); opacity: 0.6; }
+.mod-part-name { margin: 0; font-size: 0.94rem; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mod-part-meta { margin: 0; font-size: 0.78rem; color: var(--cyber-text-dim); opacity: 0.6; }
 
 /* ── Empty state ── */
 .empty-state {
@@ -159,7 +159,7 @@
 
 .empty-title {
   margin: 0 0 1rem 0;
-  font-size: 1.8rem;
+  font-size: 1.94rem;
   text-transform: uppercase;
   letter-spacing: 3px;
   color: var(--cyber-blue);
@@ -168,7 +168,7 @@
 
 .empty-hint {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   color: var(--cyber-text-dim);
   letter-spacing: 0.5px;
   text-transform: none;
@@ -198,10 +198,10 @@
 .mod-item.selected { background: rgba(255, 0, 64, 0.12); color: var(--cyber-yellow); border-left: 3px solid var(--cyber-yellow); padding-left: calc(1.25rem - 2px); }
 
 .mod-info { min-width: 0; flex: 1; }
-.mod-info h3 { margin: 0 0 0.3rem 0; font-size: 0.9rem; color: inherit; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mod-version { font-size: 0.8rem; color: var(--cyber-red-dim); margin: 0; letter-spacing: 0.5px; }
+.mod-info h3 { margin: 0 0 0.3rem 0; font-size: 1.03rem; color: inherit; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mod-version { font-size: 0.92rem; color: var(--cyber-red-dim); margin: 0; letter-spacing: 0.5px; }
 
-.mod-status { font-size: 0.85rem; transition: all 0.3s ease; flex-shrink: 0; }
-.mod-status-inline { font-size: 0.7rem; }
-.mod-status.enabled { color: var(--cyber-green); text-shadow: 0 0 6px rgba(0, 255, 65, 0.5); font-size: 0.9rem; }
-.mod-status.disabled { color: var(--cyber-red-dim); font-size: 0.9rem; }
+.mod-status { font-size: 0.98rem; transition: all 0.3s ease; flex-shrink: 0; }
+.mod-status-inline { font-size: 0.8rem; }
+.mod-status.enabled { color: var(--cyber-green); text-shadow: 0 0 6px rgba(0, 255, 65, 0.5); font-size: 1.03rem; }
+.mod-status.disabled { color: var(--cyber-red-dim); font-size: 1.03rem; }
