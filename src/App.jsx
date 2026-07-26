@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import ModList from "./components/ModList";
 import ModDetails from "./components/ModDetails";
 import DevRelayOverlay from "./components/DevRelayOverlay";
@@ -12,7 +13,10 @@ import SplashScreen from "./components/SplashScreen";
 import Manifest from "./components/Manifest";
 import AppFooter from "./components/AppFooter";
 import JackInOverlay from "./components/JackInOverlay";
+import SideloadOverlay from "./components/SideloadOverlay";
 import "./App.css";
+
+const SIDELOAD_EXTENSIONS = ["zip", "7z", "rar"];
 
 function App() {
   const [mods, setMods] = useState([]);
@@ -41,6 +45,8 @@ function App() {
   const nxmRef = useRef(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [hoverHint, setHoverHint] = useState(null);
+  const [sideloadPath, setSideloadPath] = useState(null); // archive awaiting metadata confirmation
+  const [dragActive, setDragActive] = useState(false);
 
   const hint = (text) => ({
     onMouseEnter: () => setHoverHint(text),
@@ -286,6 +292,70 @@ function App() {
     setupRelayListener();
   }, []);
 
+  // Keep a ref of "something is already running" so the drag&drop handler can
+  // check it without being re-subscribed on every progress tick.
+  const busyRef = useRef(false);
+  useEffect(() => {
+    busyRef.current = !!installProgress || !!syncProgress;
+  }, [installProgress, syncProgress]);
+
+  // Native drag & drop. Tauri 2 intercepts file drops before the webview sees
+  // them, so HTML5 onDrop/dataTransfer never fires — this is the only way to
+  // get real on-disk paths.
+  useEffect(() => {
+    let unlisten = null;
+    let disposed = false;
+
+    (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const un = await getCurrentWebview().onDragDropEvent((event) => {
+          const { type, paths } = event.payload || {};
+
+          if (type === "enter" || type === "over") {
+            if (!busyRef.current) setDragActive(true);
+            return;
+          }
+          if (type === "leave") {
+            setDragActive(false);
+            return;
+          }
+          if (type !== "drop") return;
+
+          setDragActive(false);
+          if (busyRef.current) {
+            setStatusMsg("busy · finish the current operation before sideloading");
+            return;
+          }
+
+          const dropped = paths || [];
+          const archive = dropped.find((p) =>
+            SIDELOAD_EXTENSIONS.includes(p.split(".").pop()?.toLowerCase())
+          );
+
+          if (!archive) {
+            setStatusMsg(
+              dropped.length
+                ? `✗ unsupported file · sideload accepts ${SIDELOAD_EXTENSIONS.join(", ")}`
+                : "✗ nothing to sideload"
+            );
+            return;
+          }
+          setSideloadPath(archive);
+        });
+        if (disposed) un();
+        else unlisten = un;
+      } catch (e) {
+        console.error("Failed to setup drag&drop listener:", e);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
+
   const loadMods = async () => {
     try {
       // Auto-deduplicate on load (cleans up legacy duplicates from pre-fix updates)
@@ -437,6 +507,39 @@ function App() {
     }
   };
 
+  const handleSideloadPick = async () => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        title: "Select a mod archive",
+        filters: [{ name: "Mod archives", extensions: SIDELOAD_EXTENSIONS }],
+      });
+      if (selected) setSideloadPath(selected);
+    } catch (error) {
+      console.error("Failed to open file picker:", error);
+      setStatusMsg(`✗ could not open file picker: ${error}`);
+    }
+  };
+
+  const handleSideloadInstall = async (params) => {
+    setSideloadPath(null);
+    setStatusMsg(`sideloading · ${params.mod_name}...`);
+    try {
+      await invoke("install_mod_from_local", { params });
+    } catch (error) {
+      console.error("Sideload failed:", error);
+      setStatusMsg(`✗ sideload failed: ${error}`);
+      setInstallProgress({ stage: "error", message: String(error) });
+      try {
+        await invoke("add_log_entry", {
+          message: `Sideload failed: ${error}`,
+          level: "error",
+          category: "installation",
+        });
+      } catch {}
+    }
+  };
+
   const handleUpdateAll = async () => {
     const updatable = mods.filter(m => m.update_available);
     if (updatable.length === 0) return;
@@ -577,6 +680,7 @@ function App() {
         </div>
         <nav className="nav">
           <button onClick={() => setNxmInput(true)} {...hint("install a mod from an nxm:// URL")}>Jack In</button>
+          <button onClick={handleSideloadPick} {...hint("install a mod from a .zip/.7z/.rar archive on disk")}>Sideload</button>
           <button className={activeTab === "mods"     ? "active" : ""} onClick={() => setActiveTab("mods")} {...hint("browse and manage installed mods")}>Chrome</button>
           <button className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")} {...hint("game paths, API key, and app settings")}>Config</button>
           <button className={activeTab === "manifest" ? "active" : ""} onClick={() => setActiveTab("manifest")} {...hint("version info, credits, and links")}>About</button>
@@ -656,6 +760,8 @@ function App() {
                 loading={loading}
                 syncing={!!syncProgress}
                 onSync={handleSyncMods}
+                onSideload={handleSideloadPick}
+                dragActive={dragActive}
                 hint={hint}
               />
             </div>
@@ -808,6 +914,13 @@ function App() {
             }
           });
         }}
+      />
+
+      <SideloadOverlay
+        open={!!sideloadPath && !installProgress}
+        archivePath={sideloadPath}
+        onSubmit={handleSideloadInstall}
+        onCancel={() => setSideloadPath(null)}
       />
 
       {relayStatus && (

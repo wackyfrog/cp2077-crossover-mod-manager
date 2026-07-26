@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod archive_extractor;
+mod local_archive;
 mod mod_manager;
 mod nexusmods_api;
 mod settings;
@@ -1290,6 +1291,7 @@ async fn handle_nxm_url(
                 mod_id: mod_id.to_string(),
                 file_id: file_id.to_string(),
                 download_url,
+                local_archive_path: None,
             },
             state.clone(),
             app.clone(),
@@ -1491,6 +1493,7 @@ async fn handle_collection_download(
                 mod_id: collection_mod.mod_id.to_string(),
                 file_id: collection_mod.file_id.to_string(),
                 download_url,
+                local_archive_path: None,
             },
             state.clone(),
             app.clone(),
@@ -1881,6 +1884,10 @@ struct ModInstallParams {
     mod_id: String,
     file_id: String,
     download_url: String,
+    /// Set when the archive already exists on disk (sideload). When present the
+    /// download step is skipped and `download_url` is ignored.
+    #[serde(default)]
+    local_archive_path: Option<String>,
 }
 
 #[allow(unused_assignments)]
@@ -1899,6 +1906,106 @@ async fn install_mod_from_nxm(
     state.installing.store(false, Ordering::Relaxed);
     state.install_cancel.store(false, Ordering::Relaxed);
     result
+}
+
+/// Metadata the user confirmed in the sideload form, plus the archive to install.
+#[derive(Debug, serde::Deserialize)]
+struct LocalInstallParams {
+    archive_path: String,
+    mod_name: String,
+    mod_version: String,
+    #[serde(default)]
+    mod_author: String,
+    /// Nexus mod id, if the user kept the parsed one. Blank means "not a Nexus
+    /// mod as far as we know" — it stays out of metadata sync.
+    #[serde(default)]
+    mod_id: String,
+    /// Timestamp from the Nexus filename, used to build a stable synthetic file id.
+    #[serde(default)]
+    file_stamp: Option<String>,
+}
+
+/// Read a mod archive from disk and install it through the same pipeline as an
+/// NXM download.
+#[tauri::command]
+async fn install_mod_from_local(
+    params: LocalInstallParams,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let archive_path = std::path::PathBuf::from(&params.archive_path);
+    if !archive_path.is_file() {
+        return Err(format!(
+            "Archive not found on disk: {}",
+            archive_path.display()
+        ));
+    }
+
+    let mod_name = params.mod_name.trim().to_string();
+    if mod_name.is_empty() {
+        return Err("Mod name is required.".to_string());
+    }
+
+    let mod_version = {
+        let v = params.mod_version.trim();
+        if v.is_empty() {
+            "1.0".to_string()
+        } else {
+            v.to_string()
+        }
+    };
+
+    // Nexus never issues a file id for a manual download, so synthesise a stable
+    // one. Prefixing keeps it from ever colliding with a real numeric file id,
+    // and `update_file_info` simply won't find it in the Nexus file map — which
+    // is what we want: sync must not overwrite what the user typed.
+    let file_id = match params.file_stamp.as_deref().map(str::trim) {
+        Some(stamp) if !stamp.is_empty() => format!("local-{}", stamp),
+        _ => format!("local-{}", uuid::Uuid::new_v4()),
+    };
+
+    let install_params = ModInstallParams {
+        mod_name,
+        mod_version,
+        mod_author: params.mod_author.trim().to_string(),
+        mod_id: params.mod_id.trim().to_string(),
+        file_id,
+        download_url: String::new(),
+        local_archive_path: Some(params.archive_path.clone()),
+    };
+
+    state.install_cancel.store(false, Ordering::Relaxed);
+    state.installing.store(true, Ordering::Relaxed);
+
+    let result = install_mod_from_nxm_inner(&install_params, &state, &app).await;
+
+    state.installing.store(false, Ordering::Relaxed);
+    state.install_cancel.store(false, Ordering::Relaxed);
+    result
+}
+
+/// Best-effort metadata recovery from an archive filename, for pre-filling the
+/// sideload form. Pure read — touches nothing on disk.
+#[tauri::command]
+fn parse_local_archive_name(path: String) -> Result<serde_json::Value, String> {
+    let file_path = std::path::Path::new(&path);
+    let stem = file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("Could not read a filename from: {}", path))?;
+
+    let parsed = local_archive::parse_nexus_filename(stem);
+    let size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
+
+    Ok(serde_json::json!({
+        "name": parsed.name,
+        "version": parsed.version,
+        "mod_id": parsed.mod_id,
+        "file_stamp": parsed.file_stamp,
+        "file_name": file_path.file_name().map(|n| n.to_string_lossy().to_string()),
+        "size": size,
+        "size_label": format_bytes(size),
+    }))
 }
 
 async fn install_mod_from_nxm_inner(
@@ -2074,134 +2181,173 @@ async fn install_mod_from_nxm_inner(
 
     check_cancel!();
 
-    // Step 1: Download the mod
-    add_log(
-        format!("📥 Downloading mod from: {}", download_url),
-        "info".to_string(),
-        "download".to_string(),
-        state.clone(),
-    )?;
-
-    let response = reqwest::get(&download_url)
-        .await
-        .map_err(|e| format!("Failed to download mod: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Download failed with status: {}",
-            response.status()
-        ));
-    }
-
-    let total_size = response.content_length().unwrap_or(0);
-    add_log(
-        format!("📦 Download size: {}", format_bytes(total_size)),
-        "info".to_string(),
-        "download".to_string(),
-        state.clone(),
-    )?;
-
-    // Check disk space before downloading
-    if total_size > 0 {
-        let temp_dir = std::env::temp_dir();
-        match check_sufficient_disk_space(&temp_dir, total_size) {
-            Ok(_) => {
-                add_log(
-                    "✓ Sufficient disk space available for download and extraction".to_string(),
-                    "info".to_string(),
-                    "download".to_string(),
-                    state.clone(),
-                )?;
-            }
-            Err(err) => {
-                add_log(
-                    format!("❌ {}", err),
-                    "error".to_string(),
-                    "download".to_string(),
-                    state.clone(),
-                )?;
-                add_log(
-                    "💡 Tip: Free up disk space or clean up old mod downloads from system temp folder".to_string(),
-                    "info".to_string(),
-                    "download".to_string(),
-                    state.clone(),
-                )?;
-                return Err(err);
-            }
-        }
-    }
-
-    // Stream download with progress events
-    use futures_util::StreamExt;
-    let total_size_opt: Option<u64> = if total_size > 0 { Some(total_size) } else { None };
-    let mut stream = response.bytes_stream();
-    let mut bytes: Vec<u8> = Vec::new();
-    if let Some(sz) = total_size_opt {
-        bytes.reserve(sz as usize);
-    }
-    let mut received: u64 = 0;
-    let mut last_progress_at: u64 = 0;
-    let emit_interval = total_size_opt.map(|t| (t / 50).max(65536)).unwrap_or(131072);
-
-    emit_install_progress(&app, InstallProgress {
-        stage: "downloading".into(),
-        message: match total_size_opt {
-            Some(t) => format!("Downloading 0 / {}", format_bytes(t)),
-            None => "Downloading...".into(),
-        },
-        bytes_received: Some(0),
-        total_bytes: total_size_opt,
-        ..Default::default()
-    });
-
-    while let Some(chunk) = stream.next().await {
-        check_cancel!();
-        let chunk = chunk.map_err(|e| format!("Failed to read download data: {}", e))?;
-        received += chunk.len() as u64;
-        bytes.extend_from_slice(&chunk);
-        if received - last_progress_at >= emit_interval {
-            last_progress_at = received;
-            emit_install_progress(&app, InstallProgress {
-                stage: "downloading".into(),
-                message: match total_size_opt {
-                    Some(t) => format!("Downloading {} / {}", format_bytes(received), format_bytes(t)),
-                    None => format!("Downloading {}...", format_bytes(received)),
-                },
-                bytes_received: Some(received),
-                total_bytes: total_size_opt,
-                ..Default::default()
-            });
-        }
-    }
-
-    add_log(
-        format!("✓ Downloaded {}", format_bytes(received)),
-        "info".to_string(),
-        "download".to_string(),
-        state.clone(),
-    )?;
-
-    // Step 2: Save to temp file with RAII guard for automatic cleanup
+    // Steps 1-2: obtain the archive.
+    //
+    // A sideloaded mod already has its archive on disk, so the download is
+    // skipped entirely and the user's file is read in place. It deliberately
+    // gets no TempFileGuard and is never recorded in `archive_path` — both of
+    // those delete the file they point at, which here is the user's own
+    // download, not a temporary copy.
     let temp_dir = std::env::temp_dir();
-    let archive_filename = format!("{}_{}.zip", mod_id, file_id);
-    let temp_archive_path = temp_dir.join(&archive_filename);
+    let temp_archive_path: std::path::PathBuf;
+    let mut archive_guard: Option<TempFileGuard> = None;
 
-    // Create RAII guard - will auto-cleanup if function exits early
-    let archive_guard = TempFileGuard::new(
-        temp_archive_path.clone(),
-        format!("archive file: {}", archive_filename),
-    );
-    archive_path = Some(temp_archive_path.clone());
+    if let Some(local) = params.local_archive_path.as_ref() {
+        let local_path = std::path::PathBuf::from(local);
+        if !local_path.is_file() {
+            return Err(format!("Archive not found on disk: {}", local_path.display()));
+        }
 
-    fs::write(&temp_archive_path, &bytes)
-        .map_err(|e| format!("Failed to save downloaded file: {}", e))?;
+        let archive_size = fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
 
-    add_log(
-        "💾 Saved download to temporary location".to_string(),
-        "info".to_string(),
-        "download".to_string(),
-        state.clone(),
-    )?;
+        emit_install_progress(&app, InstallProgress {
+            stage: "fetching".into(),
+            message: format!("Reading local archive ({})", format_bytes(archive_size)),
+            mod_name: Some(mod_name.clone()),
+            ..Default::default()
+        });
+
+        add_log(
+            format!(
+                "📁 Sideloading local archive: {} ({})",
+                local_path.display(),
+                format_bytes(archive_size)
+            ),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+
+        temp_archive_path = local_path;
+    } else {
+        // Step 1: Download the mod
+        add_log(
+            format!("📥 Downloading mod from: {}", download_url),
+            "info".to_string(),
+            "download".to_string(),
+            state.clone(),
+        )?;
+
+        let response = reqwest::get(&download_url)
+            .await
+            .map_err(|e| format!("Failed to download mod: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "Download failed with status: {}",
+                response.status()
+            ));
+        }
+
+        let total_size = response.content_length().unwrap_or(0);
+        add_log(
+            format!("📦 Download size: {}", format_bytes(total_size)),
+            "info".to_string(),
+            "download".to_string(),
+            state.clone(),
+        )?;
+
+        // Check disk space before downloading
+        if total_size > 0 {
+            let temp_dir = std::env::temp_dir();
+            match check_sufficient_disk_space(&temp_dir, total_size) {
+                Ok(_) => {
+                    add_log(
+                        "✓ Sufficient disk space available for download and extraction".to_string(),
+                        "info".to_string(),
+                        "download".to_string(),
+                        state.clone(),
+                    )?;
+                }
+                Err(err) => {
+                    add_log(
+                        format!("❌ {}", err),
+                        "error".to_string(),
+                        "download".to_string(),
+                        state.clone(),
+                    )?;
+                    add_log(
+                        "💡 Tip: Free up disk space or clean up old mod downloads from system temp folder".to_string(),
+                        "info".to_string(),
+                        "download".to_string(),
+                        state.clone(),
+                    )?;
+                    return Err(err);
+                }
+            }
+        }
+
+        // Stream download with progress events
+        use futures_util::StreamExt;
+        let total_size_opt: Option<u64> = if total_size > 0 { Some(total_size) } else { None };
+        let mut stream = response.bytes_stream();
+        let mut bytes: Vec<u8> = Vec::new();
+        if let Some(sz) = total_size_opt {
+            bytes.reserve(sz as usize);
+        }
+        let mut received: u64 = 0;
+        let mut last_progress_at: u64 = 0;
+        let emit_interval = total_size_opt.map(|t| (t / 50).max(65536)).unwrap_or(131072);
+
+        emit_install_progress(&app, InstallProgress {
+            stage: "downloading".into(),
+            message: match total_size_opt {
+                Some(t) => format!("Downloading 0 / {}", format_bytes(t)),
+                None => "Downloading...".into(),
+            },
+            bytes_received: Some(0),
+            total_bytes: total_size_opt,
+            ..Default::default()
+        });
+
+        while let Some(chunk) = stream.next().await {
+            check_cancel!();
+            let chunk = chunk.map_err(|e| format!("Failed to read download data: {}", e))?;
+            received += chunk.len() as u64;
+            bytes.extend_from_slice(&chunk);
+            if received - last_progress_at >= emit_interval {
+                last_progress_at = received;
+                emit_install_progress(&app, InstallProgress {
+                    stage: "downloading".into(),
+                    message: match total_size_opt {
+                        Some(t) => format!("Downloading {} / {}", format_bytes(received), format_bytes(t)),
+                        None => format!("Downloading {}...", format_bytes(received)),
+                    },
+                    bytes_received: Some(received),
+                    total_bytes: total_size_opt,
+                    ..Default::default()
+                });
+            }
+        }
+
+        add_log(
+            format!("✓ Downloaded {}", format_bytes(received)),
+            "info".to_string(),
+            "download".to_string(),
+            state.clone(),
+        )?;
+
+        // Step 2: Save to temp file with RAII guard for automatic cleanup
+        let archive_filename = format!("{}_{}.zip", mod_id, file_id);
+        temp_archive_path = temp_dir.join(&archive_filename);
+
+        // Create RAII guard - will auto-cleanup if function exits early
+        archive_guard = Some(TempFileGuard::new(
+            temp_archive_path.clone(),
+            format!("archive file: {}", archive_filename),
+        ));
+        archive_path = Some(temp_archive_path.clone());
+
+        fs::write(&temp_archive_path, &bytes)
+            .map_err(|e| format!("Failed to save downloaded file: {}", e))?;
+
+        add_log(
+            "💾 Saved download to temporary location".to_string(),
+            "info".to_string(),
+            "download".to_string(),
+            state.clone(),
+        )?;
+    }
 
     check_cancel!();
 
@@ -2261,8 +2407,19 @@ async fn install_mod_from_nxm_inner(
         }
     }
 
-    let temp_extract_dir =
-        temp_dir.join(format!("mod_extract_{}_{}", mod_id, uuid::Uuid::new_v4()));
+    // `cleanup_orphaned_temp_files` only recognises `mod_extract_{digits}_{uuid}`,
+    // so a sideloaded mod with no (or a non-numeric) Nexus id falls back to 0
+    // rather than creating a directory the orphan sweeper would never reclaim.
+    let extract_dir_id = if !mod_id.is_empty() && mod_id.chars().all(|c| c.is_ascii_digit()) {
+        mod_id.as_str()
+    } else {
+        "0"
+    };
+    let temp_extract_dir = temp_dir.join(format!(
+        "mod_extract_{}_{}",
+        extract_dir_id,
+        uuid::Uuid::new_v4()
+    ));
 
     // Create RAII guard - will auto-cleanup if function exits early
     let extract_guard = TempFileGuard::new(
@@ -2291,6 +2448,25 @@ async fn install_mod_from_nxm_inner(
              or in an unsupported format. Nothing was installed."
                 .to_string(),
         );
+    }
+
+    // Many mods ship wrapped in a single folder named after the mod. Installing
+    // that verbatim buries everything under {game}/{Wrapper}/, where the game
+    // never looks — the mod registers as installed but is silently inert.
+    // Walking from the content root instead merges the wrapper's *contents* into
+    // the game directory.
+    let content_root = local_archive::find_content_root(&temp_extract_dir);
+    if content_root != temp_extract_dir {
+        let stripped = content_root
+            .strip_prefix(&temp_extract_dir)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        add_log(
+            format!("📦 Stripped wrapper folder from archive: {}/", stripped),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
     }
 
     // Show installation hints for system tools if not available
@@ -2499,7 +2675,7 @@ async fn install_mod_from_nxm_inner(
     let mut unicode_sanitized: Vec<(String, String)> = Vec::new(); // (original, sanitized)
 
     // Walk through extracted files and install them
-    for entry in WalkDir::new(&temp_extract_dir)
+    for entry in WalkDir::new(&content_root)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -2509,7 +2685,7 @@ async fn install_mod_from_nxm_inner(
         if entry.file_type().is_file() || is_symlink {
             let relative_path = entry
                 .path()
-                .strip_prefix(&temp_extract_dir)
+                .strip_prefix(&content_root)
                 .map_err(|e| e.to_string())?;
 
             // Handle symlinks specially
@@ -2545,7 +2721,7 @@ async fn install_mod_from_nxm_inner(
 
             let relative_path = entry
                 .path()
-                .strip_prefix(&temp_extract_dir)
+                .strip_prefix(&content_root)
                 .map_err(|e| e.to_string())?;
 
             // Check if this is a REDmod (has info.json in mods/ folder)
@@ -3427,12 +3603,32 @@ async fn install_mod_from_nxm_inner(
             } else {
                 Some(mod_author.clone())
             },
-            description: Some(format!(
-                "Installed from NexusMods (Mod ID: {}, File ID: {})",
-                mod_id, file_id
-            )),
-            mod_id: Some(mod_id.clone()),
-            file_id: Some(file_id.clone()),
+            description: Some(match params.local_archive_path.as_ref() {
+                Some(path) => format!(
+                    "Sideloaded from local archive: {}",
+                    std::path::Path::new(path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.clone())
+                ),
+                None => format!(
+                    "Installed from NexusMods (Mod ID: {}, File ID: {})",
+                    mod_id, file_id
+                ),
+            }),
+            // A sideloaded mod may have no recognisable Nexus id — record None
+            // rather than an empty string, which downstream code treats as a
+            // real id and would match against other id-less mods.
+            mod_id: if mod_id.is_empty() {
+                None
+            } else {
+                Some(mod_id.clone())
+            },
+            file_id: if file_id.is_empty() {
+                None
+            } else {
+                Some(file_id.clone())
+            },
             enabled: true,
             files: installed_files.clone(),
             file_conflicts: std::collections::HashMap::new(),
@@ -3476,13 +3672,18 @@ async fn install_mod_from_nxm_inner(
         state.clone(),
     )?;
 
+    // Only a downloaded archive has a guard; a sideloaded one is the user's own
+    // file and stays exactly where they left it.
+    let had_temp_archive = archive_guard.is_some();
     drop(archive_guard);
-    add_log(
-        "✓ Removed archive file".to_string(),
-        "info".to_string(),
-        "installation".to_string(),
-        state.clone(),
-    )?;
+    if had_temp_archive {
+        add_log(
+            "✓ Removed archive file".to_string(),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    }
 
     add_log(
         format!(
@@ -4881,6 +5082,8 @@ fn main() {
             check_startup_health,
             check_and_run_first_setup,
             install_mod_from_nxm,
+            install_mod_from_local,
+            parse_local_archive_name,
             clean_temp_files,
             reveal_in_finder,
             sync_mod_data,

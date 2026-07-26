@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### New
+
+- **Sideload — install a mod from an archive on disk** — not every mod on NexusMods offers "Download with Mod Manager"; some are manual download only, and until now those archives were dead ends. A new **Sideload** button (header and mod-list footer) opens a `.zip`/`.7z`/`.rar` from anywhere on disk, and you can also **drag & drop** the archive straight onto the window. Name, version, author, and Mod ID are pre-filled by parsing the NexusMods filename (e.g. `Some Mod-1464-1-0-1612607650.7z` → *Some Mod*, v1.0, mod 1464) and shown for you to correct before installing. From there it runs the exact same install pipeline as an NXM download — same progress screen, same safety checks, same mod list entry. Keeping the Mod ID lets **Netrun** fetch the thumbnail, summary, and update alerts for a sideloaded mod just like any other; clearing it keeps the mod fully local
+- Your original archive is left untouched in place — sideloading reads it where it sits and never moves or deletes it
+
+### Fixed
+
+- **Mods wrapped in a redundant folder now install correctly** — an archive laid out as `ModName/r6/tweaks/…` used to be copied verbatim to `{game}/ModName/r6/…`, where the game never looks: the mod showed as installed and enabled but was silently inert. The wrapper folder's *contents* are now merged into the game directory, so the files land in `{game}/r6/…` as intended. Applies to NXM downloads as well as sideloads; archives with several top-level folders are left alone
+
 ## [1.2.0] - 2026-07-06
 
 ### New

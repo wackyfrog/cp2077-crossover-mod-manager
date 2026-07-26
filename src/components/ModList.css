@@ -80,6 +80,26 @@
   cursor: not-allowed;
 }
 
+.footer-btn.sideload {
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  color: rgba(0, 255, 255, 0.5);
+  flex: 1;
+  text-shadow: 0 0 8px rgba(0, 255, 255, 0.35);
+  letter-spacing: 2px;
+}
+
+.footer-btn.sideload:hover:not(:disabled) {
+  color: var(--cyber-blue);
+  border-color: rgba(0, 255, 255, 0.4);
+  text-shadow: 0 0 12px rgba(0, 255, 255, 0.6);
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.18);
+}
+
+.footer-btn.sideload:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .footer-btn.url {
   border: 1px solid var(--cyber-green);
   color: var(--cyber-green);

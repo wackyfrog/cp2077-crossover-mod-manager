@@ -22,7 +22,7 @@ function groupMods(mods) {
 
 function ModList({
   mods, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
-  loading, syncing, onSync,
+  loading, syncing, onSync, onSideload, dragActive = false,
   hint = () => ({}),
 }) {
   const filtered = useMemo(() => {
@@ -97,12 +97,15 @@ function ModList({
   );
 
   return (
-    <div className="mod-list">
+    <div className={`mod-list ${dragActive ? "drag-active" : ""}`}>
       <div className="mod-list-content">
         {mods.length === 0 ? (
           <div className="empty-state">
-            <p className="empty-title">No chrome installed</p>
-            <p className="empty-hint">Hit "Download with Mod Manager" on NexusMods to jack in</p>
+            <p className="empty-title">{dragActive ? "Drop to sideload" : "No chrome installed"}</p>
+            <p className="empty-hint">
+              Hit "Download with Mod Manager" on NexusMods to jack in — or drop a
+              .zip/.7z/.rar here to sideload a manual download
+            </p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
@@ -189,6 +192,16 @@ function ModList({
         >
           {syncing ? "Netrunning…" : "Netrun"}
         </button>
+        {onSideload && (
+          <button
+            onClick={onSideload}
+            className="footer-btn sideload"
+            disabled={loading || syncing}
+            {...hint("install a mod from a .zip/.7z/.rar archive on disk")}
+          >
+            Sideload
+          </button>
+        )}
       </div>
     </div>
   );
