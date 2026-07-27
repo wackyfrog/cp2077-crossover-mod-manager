@@ -34,3 +34,13 @@ dist-ssr
 
 # Dev-only files
 CHANGELOG_DEV.md
+
+# Private session-workflow docs (handoff/notes/todo/bugs/questions/runbooks)
+# docs/screenshots/ лишається в репо (використовується в README)
+/docs/next-session.md
+/docs/notes.md
+/docs/todo.md
+/docs/bugs.md
+/docs/questions.md
+/docs/runbooks/
+/docs/history/
