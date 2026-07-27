@@ -191,7 +191,7 @@ const STAGE_LABELS = {
   error: "ERROR",
 };
 
-export default function JackInOverlay({ open, progress, onSubmit, onSideload, onRetry, onReinstall, onCancel, onDismiss }) {
+export default function JackInOverlay({ open, progress, busy, notice, onSubmit, onSideload, onRetry, onReinstall, onCancel, onDismiss }) {
   const [url, setUrl] = useState("");
   const [lastNxmUrl, setLastNxmUrl] = useState(null);
   const [modLabel, setModLabel] = useState(null);
@@ -243,7 +243,19 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
     }
     if (stage === "done") setPhase("done");
     else if (stage === "error") setPhase("error");
-    else if (phase === "input") setPhase("working");
+    else {
+      // A working stage arriving after a finished run means a *new* install
+      // started. Without this the overlay stayed in "error" for good: the new
+      // download's progress showed under the previous run's FAULT DETECTED
+      // header, with its Dismiss/Retry buttons still live (docs/bugs.md B7).
+      if (phase === "error" || phase === "done") {
+        setLines([]);
+        prevStageRef.current = null;
+        setEta(null);
+        dlStartRef.current = null;
+      }
+      setPhase("working");
+    }
 
     if (prevStageRef.current === `${stage}:${message}`) return;
     prevStageRef.current = `${stage}:${message}`;
@@ -266,6 +278,15 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
       return trimLines([...prev, { text: newText, type }]);
     });
   }, [progress?.stage, progress?.message]);
+
+  // A second install request was turned away while this one runs. It belongs on
+  // screen, not only in the status bar the overlay covers (docs/bugs.md B6) —
+  // as its own line, so it never reads as a failure of the running install.
+  useEffect(() => {
+    if (!notice?.seq) return;
+    flushTyping();
+    setLines((prev) => trimLines([...prev, { text: `[IGNORED] ${notice.text}`, type: "notice" }]));
+  }, [notice?.seq]);
 
   // Word-by-word typing of fake line
   useEffect(() => {
@@ -379,9 +400,12 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
     setEta(`~${mins}m ${secs}s`);
   }, [progress?.bytes_received]);
 
-  // Reset on open
+  // Reset on open — but not when an install is what opened it. This effect is
+  // declared after the progress one, so on the commit where both run (an
+  // install starting or failing while the overlay was closed) it would wipe the
+  // state that one just set, leaving an empty input screen (docs/bugs.md B10).
   useEffect(() => {
-    if (open) {
+    if (open && !progress) {
       setUrl("");
       setLastNxmUrl(null);
       setModLabel(null);
@@ -461,6 +485,12 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
   };
 
   const handleRetry = () => {
+    // Retrying while something is running would resubmit the *previous* URL and
+    // wipe the running install's name and transcript from the screen — the
+    // backend refuses the duplicate, but the user is left staring at a nameless
+    // download they then cancel (docs/bugs.md B8).
+    if (busy) return;
+
     const retryUrl = lastNxmUrl || nxmUrl || url;
     if (!retryUrl) {
       console.warn("Retry: no URL available");
@@ -655,7 +685,9 @@ export default function JackInOverlay({ open, progress, onSubmit, onSideload, on
               <button className="jackin-btn exit" onClick={handleClose}>
                 Dismiss <span className="jackin-key">esc</span>
               </button>
-              <button className="jackin-btn primary" onClick={handleRetry}>Retry</button>
+              {!busy && (
+                <button className="jackin-btn primary" onClick={handleRetry}>Retry</button>
+              )}
             </>
           )}
           {phase === "done" && (

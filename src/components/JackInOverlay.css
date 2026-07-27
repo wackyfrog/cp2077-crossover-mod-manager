@@ -381,6 +381,15 @@
   margin-left: -0.7rem;
 }
 
+/* A request that was turned away — not a failure of the running install. */
+.jackin-line-notice {
+  color: var(--cyber-yellow);
+  text-shadow: 0 0 4px rgba(255, 255, 0, 0.4);
+  border-left: 2px solid rgba(255, 255, 0, 0.4);
+  padding-left: 0.6rem;
+  margin-left: -0.7rem;
+}
+
 .jackin-line-done {
   color: var(--cyber-blue);
   text-shadow: 0 0 4px rgba(0, 255, 255, 0.4);

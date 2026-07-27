@@ -32,6 +32,7 @@ function App() {
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
   const [forgetConfirm, setForgetConfirm] = useState(null); // { modId, modName }
   const [installProgress, setInstallProgress] = useState(null);
+  const [busyNotice, setBusyNotice] = useState(null); // { text, seq } — a turned-away request
   const [relayStatus, setRelayStatus] = useState(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const [nxmInput, setNxmInput] = useState(false);
@@ -296,18 +297,21 @@ function App() {
     };
     setupRelayListener();
 
-    // A second install request was turned away while one was running. Reported
-    // in the status bar rather than the progress overlay — the overlay belongs
-    // to the install that is still going, and an error there would read as if
-    // *that* one had failed.
+    // A second install request was turned away while one was running. It goes
+    // to the status bar *and* to the Jack In overlay: the overlay covers the
+    // footer whenever an install is running, which is the only time this can
+    // happen, so the status bar alone told the user nothing (docs/bugs.md B6).
+    // The overlay renders it as its own kind of line, never as a failure of the
+    // install that is still going.
     const setupBusyListener = async () => {
       try {
         return await listen("install-busy", (event) => {
           const { source, detail } = event.payload || {};
           const what = source === "sideload" ? "sideload" : "download";
-          setStatusMsg(
-            `⏳ ${what} ignored · already jacking in${detail ? ` · queued: ${detail}` : ""}`
-          );
+          const text = `${what} ignored · already jacking in${detail ? ` · queued: ${detail}` : ""}`;
+          setStatusMsg(`⏳ ${text}`);
+          // seq, not the text, is what makes a repeated rejection show again.
+          setBusyNotice((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }));
         });
       } catch (e) {
         console.error("Failed to setup install-busy listener:", e);
@@ -321,10 +325,27 @@ function App() {
   // progress tick. A pending sideload form counts: the user has picked an
   // archive and is one click from starting it.
   const installBusy = !!installProgress || !!syncProgress || !!sideloadPath;
-  const busyRef = useRef(false);
+
+  // Narrower than installBusy: work is *actually under way* right now. Once an
+  // install ends, its overlay stays open showing the outcome — that state is
+  // still "busy" for the header buttons, but it is exactly when Retry must
+  // work. Anything mid-flight makes Retry refuse instead (docs/bugs.md B8).
+  const installRunning =
+    (!!installProgress &&
+      installProgress.stage !== "done" &&
+      installProgress.stage !== "error") ||
+    !!syncProgress;
+
+  // What actually blocks starting another install from an archive. A finished
+  // run whose result is still on screen does NOT: dropping a second archive
+  // after a failed one used to be swallowed, with the reason printed to the
+  // footer the overlay covers (docs/bugs.md B9). A sideload form already open
+  // does block — the user is one click from starting that one.
+  const acceptingArchives = !installRunning && !sideloadPath;
+  const acceptingRef = useRef(false);
   useEffect(() => {
-    busyRef.current = installBusy;
-  }, [installBusy]);
+    acceptingRef.current = acceptingArchives;
+  }, [acceptingArchives]);
 
   // Native drag & drop. Tauri 2 intercepts file drops before the webview sees
   // them, so HTML5 onDrop/dataTransfer never fires — this is the only way to
@@ -340,7 +361,7 @@ function App() {
           const { type, paths } = event.payload || {};
 
           if (type === "enter" || type === "over") {
-            if (!busyRef.current) setDragActive(true);
+            if (acceptingRef.current) setDragActive(true);
             return;
           }
           if (type === "leave") {
@@ -350,8 +371,11 @@ function App() {
           if (type !== "drop") return;
 
           setDragActive(false);
-          if (busyRef.current) {
-            setStatusMsg("⏳ drop ignored · finish the current install first");
+          if (!acceptingRef.current) {
+            const text = "drop ignored · finish the current install first";
+            setStatusMsg(`⏳ ${text}`);
+            // The overlay covers the footer whenever this can happen.
+            setBusyNotice((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }));
             return;
           }
 
@@ -368,6 +392,11 @@ function App() {
             );
             return;
           }
+          // Starting a new install supersedes whatever the overlay still shows,
+          // including the NXM input screen: dropping an archive onto it left the
+          // sideload form stacked underneath, invisible (docs/bugs.md B9).
+          setInstallProgress(null);
+          setNxmInput(false);
           setSideloadPath(archive);
         });
         if (disposed) un();
@@ -535,8 +564,10 @@ function App() {
   };
 
   const handleSideloadPick = async () => {
-    if (installBusy) {
-      setStatusMsg("⏳ already jacking in · finish or cancel the current install first");
+    if (!acceptingArchives) {
+      const text = "already jacking in · finish or cancel the current install first";
+      setStatusMsg(`⏳ ${text}`);
+      setBusyNotice((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }));
       return;
     }
     try {
@@ -545,7 +576,12 @@ function App() {
         title: "Select a mod archive",
         filters: [{ name: "Mod archives", extensions: SIDELOAD_EXTENSIONS }],
       });
-      if (selected) setSideloadPath(selected);
+      if (selected) {
+        // Same hand-off as a drop: the picked archive takes over the screen.
+        setInstallProgress(null);
+        setNxmInput(false);
+        setSideloadPath(selected);
+      }
     } catch (error) {
       console.error("Failed to open file picker:", error);
       setStatusMsg(`✗ could not open file picker: ${error}`);
@@ -927,6 +963,8 @@ function App() {
       <JackInOverlay
         open={(nxmInput || !!installProgress) && !relayStatus}
         progress={installProgress}
+        busy={installRunning}
+        notice={busyNotice}
         onSubmit={handleInstallUrl}
         onSideload={handleSideloadPick}
         onRetry={() => setInstallProgress(null)}
