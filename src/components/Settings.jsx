@@ -200,6 +200,9 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   const [wrapScan, setWrapScan] = useState(null);   // dry-run report
   const [wrapBusy, setWrapBusy] = useState(false);
   const [wrapResult, setWrapResult] = useState(null); // post-repair summary
+  const [mangledScan, setMangledScan] = useState(null);   // dry-run report
+  const [mangledBusy, setMangledBusy] = useState(false);
+  const [mangledResult, setMangledResult] = useState(null); // post-repair summary
   const [orphanScan, setOrphanScan] = useState(null);     // dry-run report
   const [orphanBusy, setOrphanBusy] = useState(false);
   const [orphanResult, setOrphanResult] = useState(null); // post-sweep summary
@@ -212,6 +215,7 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   // order they can stack, so the innermost one wins.
   useEscape(!!validationResult, () => setValidationResult(null));
   useEscape(!!wrapScan, () => setWrapScan(null));
+  useEscape(!!mangledScan, () => setMangledScan(null));
   useEscape(!!orphanScan, () => setOrphanScan(null));
   useEscape(!!candidates, () => setCandidates(null));
   // Same as clicking away from the relocate prompt: keep the new path, move nothing.
@@ -443,6 +447,28 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
               {...hint("find mods installed inside a redundant folder that the game can't load")}
             >
               {wrapBusy ? "Scanning..." : "Check for unloadable mods"}
+            </button>
+          </div>
+          <div className="setting-row">
+            <button
+              onClick={async () => {
+                setMangledBusy(true);
+                setMangledScan(null);
+                setMangledResult(null);
+                try {
+                  const r = await invoke("scan_mangled_paths");
+                  setMangledScan(r);
+                } catch (e) {
+                  setMangledScan({ error: String(e) });
+                } finally {
+                  setMangledBusy(false);
+                }
+              }}
+              className="maintenance-button"
+              disabled={mangledBusy}
+              {...hint("find files stored under a Windows-style path the game can't follow")}
+            >
+              {mangledBusy ? "Scanning..." : "Check for scrambled file paths"}
             </button>
           </div>
           <div className="setting-row">
@@ -759,6 +785,97 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
                       }}
                     >
                       {wrapBusy ? "Repairing..." : "Repair now"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mangledScan && (
+        <div className="validation-backdrop" onClick={() => setMangledScan(null)}>
+          <div className="validation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="validation-header">
+              <span className="validation-title">Scrambled File Paths</span>
+              <button className="validation-close" onClick={() => setMangledScan(null)}>✕</button>
+            </div>
+            <div className="validation-body">
+              {mangledScan.error ? (
+                <p className="validation-error">Failed: {mangledScan.error}</p>
+              ) : mangledResult ? (
+                <>
+                  <p className="validation-ok">
+                    Repaired {mangledResult.repaired_mods} mod{mangledResult.repaired_mods === 1 ? "" : "s"} —{" "}
+                    {mangledResult.moved_files} file{mangledResult.moved_files === 1 ? "" : "s"} moved
+                  </p>
+                  {(mangledResult.skipped_files > 0 || mangledResult.failed_files > 0) && (
+                    <p className="validation-summary">
+                      {mangledResult.skipped_files} skipped, {mangledResult.failed_files} failed
+                    </p>
+                  )}
+                  {mangledResult.backup && (
+                    <p className="validation-summary">Database backed up as {mangledResult.backup}</p>
+                  )}
+                  <p className="validation-summary">Restart the game for the change to take effect.</p>
+                </>
+              ) : mangledScan.mod_count === 0 ? (
+                <p className="validation-ok">
+                  No scrambled paths — every mod file sits in a real folder
+                </p>
+              ) : (
+                <>
+                  <p className="validation-summary">
+                    {mangledScan.file_count} file{mangledScan.file_count === 1 ? "" : "s"} in{" "}
+                    {mangledScan.mod_count} mod{mangledScan.mod_count === 1 ? "" : "s"} came from an
+                    archive packed on Windows: the whole path became the file's name, so the folders
+                    it needs were never created and no mod loader can find{" "}
+                    {mangledScan.file_count === 1 ? "it" : "them"}. Repairing rebuilds those folders
+                    and updates the database. The mod database is backed up first.
+                  </p>
+                  {mangledScan.blocked_count > 0 && (
+                    <p className="validation-summary">
+                      {mangledScan.blocked_count} file{mangledScan.blocked_count === 1 ? "" : "s"} will be
+                      skipped — something already occupies the destination.
+                    </p>
+                  )}
+                  {mangledScan.mods.map((m) => (
+                    <div key={m.id} className="validation-mod">
+                      <div
+                        className="validation-mod-name"
+                        onClick={() => { setMangledScan(null); onNavigateToMod?.(m.id); }}
+                      >
+                        {m.name} — {m.file_count} file{m.file_count === 1 ? "" : "s"}
+                      </div>
+                      {m.moves.slice(0, 3).map((mv, j) => (
+                        <div key={j} className="validation-file">
+                          {mv.to.split("Cyberpunk 2077/").pop()}
+                        </div>
+                      ))}
+                      {m.moves.length > 3 && (
+                        <div className="validation-file">…and {m.moves.length - 3} more</div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="setting-row">
+                    <button
+                      className="maintenance-button"
+                      disabled={mangledBusy}
+                      onClick={async () => {
+                        setMangledBusy(true);
+                        try {
+                          const r = await invoke("repair_mangled_paths", { modIds: null });
+                          setMangledResult(r);
+                          onSaved?.();
+                        } catch (e) {
+                          setMangledScan({ error: String(e) });
+                        } finally {
+                          setMangledBusy(false);
+                        }
+                      }}
+                    >
+                      {mangledBusy ? "Repairing..." : "Repair now"}
                     </button>
                   </div>
                 </>

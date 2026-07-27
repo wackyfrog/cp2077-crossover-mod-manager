@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod archive_extractor;
+mod backslash_repair;
 mod local_archive;
 mod mod_manager;
 mod mod_repair;
@@ -648,6 +649,177 @@ fn repair_wrapped_mods(
 
     Ok(serde_json::json!({
         "repaired_mods": wrapped.len(),
+        "moved_files": moved_total,
+        "skipped_files": skipped_total,
+        "failed_files": failed_total,
+        "pruned_dirs": pruned_total,
+        "backup": backup_label,
+        "details": details,
+    }))
+}
+
+/// Collect every installed mod holding a file whose whole path collapsed into
+/// one name, together with the moves that would fix it. Read-only.
+fn collect_mangled_mods(
+    state: &State<AppState>,
+) -> Result<Vec<backslash_repair::MangledMod>, String> {
+    let game_path = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        settings_guard.get_settings().game_path.clone()
+    };
+    if game_path.is_empty() {
+        return Ok(Vec::new());
+    }
+    let game_dir = std::path::Path::new(&game_path);
+
+    let mods = {
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        manager.get_installed_mods()
+    };
+
+    let mut mangled = Vec::new();
+    for m in &mods {
+        if m.removed || m.files.is_empty() || !backslash_repair::has_mangled_paths(&m.files) {
+            continue;
+        }
+
+        let moves = backslash_repair::plan_moves(&m.files, game_dir, |game_dir, inner| {
+            determine_install_path_for_file(game_dir, inner)
+                .and_then(|target| validate_path_within_game_dir(&target, game_dir))
+        });
+        if moves.is_empty() {
+            continue;
+        }
+
+        let blocked_count = moves.iter().filter(|mv| mv.blocked).count();
+        mangled.push(backslash_repair::MangledMod {
+            id: m.id.clone(),
+            name: m.file_name.as_deref().unwrap_or(&m.name).to_string(),
+            file_count: moves.len(),
+            blocked_count,
+            moves,
+        });
+    }
+
+    Ok(mangled)
+}
+
+/// Dry run: report mods whose files were written as one long name instead of a
+/// folder tree, and what a repair would move. Safe to call at any time.
+#[tauri::command]
+fn scan_mangled_paths(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let mangled = collect_mangled_mods(&state)?;
+    let total_files: usize = mangled.iter().map(|m| m.file_count).sum();
+    let blocked: usize = mangled.iter().map(|m| m.blocked_count).sum();
+
+    Ok(serde_json::json!({
+        "mod_count": mangled.len(),
+        "file_count": total_files,
+        "blocked_count": blocked,
+        "mods": mangled,
+    }))
+}
+
+/// Rebuild the folder structure those files should have had, and update the
+/// database to match. Backs the database up first.
+///
+/// `mod_ids` limits the repair to specific mods; `None` repairs everything found.
+#[tauri::command]
+fn repair_mangled_paths(
+    mod_ids: Option<Vec<String>>,
+    state: State<AppState>,
+) -> Result<serde_json::Value, String> {
+    let game_path = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        settings_guard.get_settings().game_path.clone()
+    };
+    let game_dir = std::path::PathBuf::from(&game_path);
+
+    let mangled: Vec<_> = collect_mangled_mods(&state)?
+        .into_iter()
+        .filter(|m| mod_ids.as_ref().map(|ids| ids.contains(&m.id)).unwrap_or(true))
+        .collect();
+
+    if mangled.is_empty() {
+        return Ok(serde_json::json!({
+            "repaired_mods": 0, "moved_files": 0, "skipped_files": 0,
+            "failed_files": 0, "pruned_dirs": 0, "backup": null, "details": [],
+        }));
+    }
+
+    let backup_label = backup_database().ok();
+
+    add_log(
+        format!("🔧 Repairing {} mod(s) with collapsed file paths", mangled.len()),
+        "info".to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
+
+    let mut moved_total = 0usize;
+    let mut skipped_total = 0usize;
+    let mut failed_total = 0usize;
+    let mut pruned_total = 0usize;
+    let mut details: Vec<serde_json::Value> = Vec::new();
+
+    for entry in &mangled {
+        let outcome = mod_repair::apply_moves(&entry.moves, |path, is_dir| {
+            set_wine_compatible_permissions(path, is_dir).ok();
+        });
+
+        if !outcome.remap.is_empty() {
+            let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            manager.rewrite_mod_files(&entry.id, &outcome.remap)?;
+        }
+
+        // The collapsed files sat directly in whatever folder the installer put
+        // them in — usually the game root, which prune stops at anyway.
+        for dir in &outcome.touched_dirs {
+            pruned_total += mod_repair::prune_empty_dirs(dir, &game_dir);
+        }
+
+        add_log(
+            format!(
+                "🔧 {}: rebuilt the folders for {} file(s){}",
+                entry.name,
+                outcome.moved,
+                if outcome.skipped + outcome.failed > 0 {
+                    format!(" ({} skipped, {} failed)", outcome.skipped, outcome.failed)
+                } else {
+                    String::new()
+                }
+            ),
+            if outcome.failed > 0 { "warning" } else { "info" }.to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+
+        moved_total += outcome.moved;
+        skipped_total += outcome.skipped;
+        failed_total += outcome.failed;
+
+        details.push(serde_json::json!({
+            "id": entry.id,
+            "name": entry.name,
+            "moved": outcome.moved,
+            "skipped": outcome.skipped,
+            "failed": outcome.failed,
+            "errors": outcome.errors,
+        }));
+    }
+
+    add_log(
+        format!(
+            "✅ Repair complete: {} file(s) moved, {} skipped, {} failed",
+            moved_total, skipped_total, failed_total
+        ),
+        if failed_total > 0 { "warning" } else { "success" }.to_string(),
+        "installation".to_string(),
+        state.clone(),
+    )?;
+
+    Ok(serde_json::json!({
+        "repaired_mods": mangled.len(),
         "moved_files": moved_total,
         "skipped_files": skipped_total,
         "failed_files": failed_total,
@@ -4888,6 +5060,20 @@ fn determine_install_path_for_file(
         ));
     }
 
+    // A Windows-made archive can store `r6\scripts\x.reds` as one entry name.
+    // Extraction splits those now, but a path can still arrive spelled that way
+    // — from an older install's database, or a system extractor that kept the
+    // name verbatim. Joining it as-is would produce a single file named after
+    // the whole path, which no loader can see (docs/bugs.md B5).
+    let split_path;
+    let relative_path: &std::path::Path = match archive_extractor::sanitize_entry_path(&rel_str) {
+        Some(rel) if rel_str.contains('\\') => {
+            split_path = rel;
+            &split_path
+        }
+        _ => relative_path,
+    };
+
     // Normalize the path to ensure correct casing for game directories
     let normalized_path = normalize_game_path(relative_path);
 
@@ -4907,33 +5093,33 @@ fn determine_install_path_for_file(
     // - mods/...                 (REDmod - official CDPR mod system)
     // - red4ext/plugins/...      (RED4ext plugins)
 
-    if path_str.starts_with("mods/") || path_str.starts_with("mods\\") {
+    if path_str.starts_with("mods/") {
         // REDmod structure: mods/modname/...
         // These mods require launching with -modded parameter
         return Ok(game_dir.join(normalized_path));
     }
 
-    if path_str.starts_with("bin/") || path_str.starts_with("bin\\") {
+    if path_str.starts_with("bin/") {
         // Path already has correct structure: bin/x64/file.dll (with normalized casing)
         return Ok(game_dir.join(normalized_path));
     }
 
-    if path_str.starts_with("r6/") || path_str.starts_with("r6\\") {
+    if path_str.starts_with("r6/") {
         // Path already has correct structure: r6/scripts/file.reds (with normalized casing)
         return Ok(game_dir.join(normalized_path));
     }
 
-    if path_str.starts_with("archive/") || path_str.starts_with("archive\\") {
+    if path_str.starts_with("archive/") {
         // Path already has correct structure: archive/pc/mod/file.archive (with normalized casing)
         return Ok(game_dir.join(normalized_path));
     }
 
-    if path_str.starts_with("engine/") || path_str.starts_with("engine\\") {
+    if path_str.starts_with("engine/") {
         // Path already has correct structure: engine/config/... (with normalized casing)
         return Ok(game_dir.join(normalized_path));
     }
 
-    if path_str.starts_with("red4ext/") || path_str.starts_with("red4ext\\") {
+    if path_str.starts_with("red4ext/") {
         // Path already has correct structure: red4ext/plugins/... (with normalized casing)
         return Ok(game_dir.join(normalized_path));
     }
@@ -4958,10 +5144,7 @@ fn determine_install_path_for_file(
     }
 
     // Handle RED4ext configuration and other files
-    if path_str.contains("red4ext")
-        && !path_str.starts_with("red4ext/")
-        && !path_str.starts_with("red4ext\\")
-    {
+    if path_str.contains("red4ext") && !path_str.starts_with("red4ext/") {
         // Files that contain "red4ext" but aren't in proper structure - place in red4ext/
         if path_str.ends_with(".toml") || path_str.ends_with(".ini") || path_str.ends_with(".txt") {
             return Ok(game_dir
@@ -5349,6 +5532,28 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
         }
     }
 
+    // 2b-ii. Files a pre-fix release wrote as one long name instead of a folder
+    // tree. Same silent failure as a wrapper install — installed, enabled, and
+    // invisible to every loader — but validation calls these files present, so
+    // nothing else in the app would ever mention them.
+    if let Ok(mangled) = collect_mangled_mods(&state) {
+        if !mangled.is_empty() {
+            let files: usize = mangled.iter().map(|m| m.file_count).sum();
+            issues.push(serde_json::json!({
+                "type": "warning",
+                "code": "mangled_paths",
+                "message": format!(
+                    "{} mod{} {} file{} stored under a Windows-style path the game can't follow, so {} not loaded. Repair in Config.",
+                    mangled.len(),
+                    if mangled.len() == 1 { " has" } else { "s have" },
+                    files,
+                    if files == 1 { "" } else { "s" },
+                    if mangled.len() == 1 { "it is" } else { "they are" }
+                )
+            }));
+        }
+    }
+
     // 2c. CET mod folders left behind by earlier removals. Harmless to the game,
     // but CET flags each one at every launch, so the user sees a wall of
     // warnings with nothing telling them where it came from. Folders holding
@@ -5557,6 +5762,8 @@ fn main() {
             repair_wrapped_mods,
             scan_orphan_mod_dirs,
             clean_orphan_mod_dirs,
+            scan_mangled_paths,
+            repair_mangled_paths,
             clean_temp_files,
             reveal_in_finder,
             sync_mod_data,
@@ -5689,6 +5896,77 @@ fn main() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod install_path_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    fn resolve(rel: &str) -> PathBuf {
+        determine_install_path_for_file(Path::new("/game"), Path::new(rel)).unwrap()
+    }
+
+    #[test]
+    fn a_windows_style_path_resolves_to_a_real_tree() {
+        // Second barrier behind the extractor: a path spelled this way must not
+        // become one file named after the whole path (docs/bugs.md B5).
+        assert_eq!(
+            resolve(r"r6\scripts\Ragdoll Execution Fix\Fix.Global.reds"),
+            PathBuf::from("/game/r6/scripts/Ragdoll Execution Fix/Fix.Global.reds")
+        );
+        assert_eq!(
+            resolve(r"bin\x64\plugins\cyber_engine_tweaks\mods\AutoOnNeonRims\init.lua"),
+            PathBuf::from("/game/bin/x64/plugins/cyber_engine_tweaks/mods/AutoOnNeonRims/init.lua")
+        );
+    }
+
+    #[test]
+    fn forward_slash_paths_are_unchanged() {
+        assert_eq!(
+            resolve("archive/pc/mod/x.archive"),
+            PathBuf::from("/game/archive/pc/mod/x.archive")
+        );
+    }
+
+    #[test]
+    fn traversal_is_still_refused() {
+        assert!(determine_install_path_for_file(Path::new("/game"), Path::new(r"..\..\x.reds")).is_err());
+    }
+
+    /// The repair end to end, on disk: a file living under a collapsed name is
+    /// moved into the folder the loader reads, via the same resolver a fresh
+    /// install uses — so repairing lands where reinstalling would.
+    #[test]
+    fn a_collapsed_file_is_repaired_into_the_loaders_folder() {
+        let game = std::env::temp_dir().join(format!("cmm_repair_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&game).unwrap();
+        let game = std::fs::canonicalize(&game).unwrap();
+
+        let recorded = game.join(r"r6\scripts\Ragdoll Execution Fix\Fix.Global.reds");
+        std::fs::write(&recorded, b"// redscript").unwrap();
+        let files = vec![recorded.to_string_lossy().to_string()];
+
+        assert!(backslash_repair::has_mangled_paths(&files));
+
+        let moves = backslash_repair::plan_moves(&files, &game, |game_dir, inner| {
+            determine_install_path_for_file(game_dir, inner)
+                .and_then(|target| validate_path_within_game_dir(&target, game_dir))
+        });
+        assert_eq!(moves.len(), 1);
+
+        let outcome = mod_repair::apply_moves(&moves, |_, _| {});
+
+        assert_eq!(outcome.moved, 1);
+        assert_eq!(outcome.failed, 0);
+        assert!(game
+            .join("r6/scripts/Ragdoll Execution Fix/Fix.Global.reds")
+            .is_file());
+        assert!(!recorded.exists(), "the collapsed name is gone");
+        assert_eq!(outcome.remap.len(), 1, "the database record follows the file");
+
+        std::fs::remove_dir_all(&game).ok();
+    }
 }
 
 #[cfg(test)]

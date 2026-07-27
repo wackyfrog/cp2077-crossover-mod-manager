@@ -2,13 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.5.0] - 2026-07-26
+## [1.5.0] - 2026-07-27
 
 ### New
 
+- **Check for scrambled file paths** (Config → Maintenance) — the repair for the extraction fix below. A mod installed by an earlier version stays broken until its files move, and nothing else in the app would ever mention it: the file exists exactly where the database says it does, so "Validate mod files" calls it fine. The scan finds the recorded paths that were never split into folders, shows where each file would land, and rebuilds the folder structure on request. The mod database is backed up first and updated to match, and a file whose destination is already occupied is skipped rather than overwritten. The startup check reports these mods too
 - **Check for leftover mod folders** (Config → Maintenance) — CET writes its own database, log, and often a settings file into a mod's folder while the mod runs, and none of those belong to the mod as far as the manager is concerned. They keep the folder alive after a removal, so it lingers with no mod in it and gets flagged at every launch. The scan lists what each leftover folder holds and how big it is, and you pick what goes. Folders holding settings start unchecked, since deleting those throws configuration away, and a folder containing files that belong to an *installed* mod is never listed at all — mods do ship presets for one another, and those must not be swept up. The startup check reports leftovers too. Ownership is re-checked at deletion time, so a mod reinstalled between the scan and the click is safe
 
 ### Fixed
+
+- **Mods from archives packed on Windows now install into real folders** — some archives store their entries as `r6\scripts\Mod\file.reds`, with backslashes. macOS treats a backslash as an ordinary character in a filename, so the whole path was written to disk as the *name* of a single file sitting loose in the game folder, and the folders the mod needed were never created. The mod showed as installed and enabled, and every check agreed the file was present — but no loader could find it, so the mod did nothing in the game. Both separators are now recognised when unpacking, in all five extraction paths, so the archive's structure is rebuilt as intended
+- **Archives can no longer write outside the folder they're unpacked into** — an entry named `../../something` was joined onto the extraction path as-is. Such entries are now refused, and the file is skipped with a note in the log
 
 - **Deleting a switched-off mod now really deletes it** — an unslotted mod keeps its files on disk under a `.disabled` suffix, but removal only ever looked for the active filenames. It found nothing, deleted nothing, and marked the mod as removed anyway: every file stayed on disk, and with the record emptied the manager could never see them again. Removal now matches both the active and the ghosted name, and deletes both when both are there. The symptom in-game was Cyber Engine Tweaks logging *"Ignoring mod which does not contain init.lua!"* for each abandoned folder at every launch
 - **"Validate mod files" no longer calls every switched-off mod broken** — it checked each file by its active name only, so an unslotted mod, whose files sit on disk under a `.disabled` suffix by design, came back as entirely missing. One install reported *910 missing files in 7 mods* with nothing actually missing; the biggest "loss" was simply the biggest mod the user had switched off. Files are now judged against the mod's own state, so ghosted files of an unslotted mod count as present

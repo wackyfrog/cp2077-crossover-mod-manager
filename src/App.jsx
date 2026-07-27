@@ -706,7 +706,10 @@ function App() {
   };
 
   const hasNxmIssue = healthIssues.some((i) => i.code?.startsWith("nxm"));
-  const hasWrappedMods = healthIssues.some((i) => i.code === "wrapped_mods");
+  // Both silent-breakage issues are fixed the same way — a repair in Config.
+  const hasBrokenInstalls = healthIssues.some(
+    (i) => i.code === "wrapped_mods" || i.code === "mangled_paths"
+  );
 
   return (
     <div className="app">
@@ -753,7 +756,7 @@ function App() {
             {hasNxmIssue && (
               <button onClick={handleRegisterNxm}>Register NXM handler</button>
             )}
-            {hasWrappedMods && (
+            {hasBrokenInstalls && (
               <button onClick={() => setActiveTab("settings")}>Repair mods</button>
             )}
             <button onClick={() => setActiveTab("settings")}>Open Config</button>

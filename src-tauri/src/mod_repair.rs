@@ -102,6 +102,33 @@ pub fn detect_wrapper(files: &[String], game_dir: &Path) -> Option<String> {
     }
 }
 
+/// Turn a file and its resolved destination into a [`PlannedMove`], or `None`
+/// when the file already sits where it belongs.
+///
+/// Shared by every repair so they agree on the two things that are easy to get
+/// wrong: a ghosted mod's files carry a `.disabled` suffix on disk, and a
+/// destination that is already occupied must be reported, not overwritten.
+pub fn plan_move(file: &str, target: &Path) -> Option<PlannedMove> {
+    if target == Path::new(file) {
+        return None;
+    }
+
+    let disabled = !Path::new(file).exists() && PathBuf::from(format!("{}.disabled", file)).exists();
+
+    let dest_exists = if disabled {
+        PathBuf::from(format!("{}.disabled", target.display())).exists()
+    } else {
+        target.exists()
+    };
+
+    Some(PlannedMove {
+        from: file.to_string(),
+        to: target.to_string_lossy().to_string(),
+        disabled,
+        blocked: dest_exists,
+    })
+}
+
 /// Build the list of moves that would un-wrap a mod.
 ///
 /// `resolve_target` maps a wrapper-relative path to its real install location —
@@ -146,26 +173,10 @@ where
             Ok(target) => target,
             Err(_) => continue,
         };
-        if target == path {
-            continue;
+
+        if let Some(mv) = plan_move(file, &target) {
+            moves.push(mv);
         }
-
-        // A ghosted mod's files carry a .disabled suffix on disk.
-        let disabled_src = PathBuf::from(format!("{}.disabled", file));
-        let disabled = !path.exists() && disabled_src.exists();
-
-        let dest_exists = if disabled {
-            PathBuf::from(format!("{}.disabled", target.display())).exists()
-        } else {
-            target.exists()
-        };
-
-        moves.push(PlannedMove {
-            from: file.clone(),
-            to: target.to_string_lossy().to_string(),
-            disabled,
-            blocked: dest_exists,
-        });
     }
 
     moves

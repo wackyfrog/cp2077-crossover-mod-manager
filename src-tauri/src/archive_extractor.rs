@@ -1,8 +1,101 @@
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
+
+/// Turn an archive entry's stored name into a safe relative path.
+///
+/// Two things make the raw name unusable as-is:
+///
+/// 1. **Separators.** ZIP requires `/`, but Windows archivers write `\` often
+///    enough that Nexus is full of such files. On macOS `\` is an ordinary
+///    filename character, so `extract_dir.join("r6\\scripts\\x.reds")` yields a
+///    single file whose *name* is the whole path — the mod installs, validates
+///    as present, and no loader ever sees it (docs/bugs.md B5). Both characters
+///    are treated as separators here.
+/// 2. **Traversal.** An entry named `../../etc/x` would escape the extraction
+///    directory. Such an entry is rejected outright (`None`) rather than
+///    silently rewritten: an archive that asks for it is not one to guess about.
+///
+/// Empty and `.` segments are dropped, as is a leading drive letter (`C:`).
+/// Returns `None` when nothing usable remains.
+pub fn sanitize_entry_path(raw: &str) -> Option<PathBuf> {
+    let mut out = PathBuf::new();
+
+    for (i, segment) in raw.split(['/', '\\']).enumerate() {
+        match segment {
+            "" | "." => continue,
+            ".." => return None,
+            _ => {}
+        }
+        // "C:" only ever appears as the first segment of an absolute Windows path.
+        if i == 0 && segment.len() == 2 && segment.ends_with(':') {
+            let first = segment.as_bytes()[0];
+            if first.is_ascii_alphabetic() {
+                continue;
+            }
+        }
+        out.push(segment);
+    }
+
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// Split any file whose *name* holds path separators into a real directory tree.
+///
+/// System extractors (`7z`, `unrar`) get the entry name handed to them by the
+/// archive and it is unverified whether they split `\` themselves — this runs
+/// after them so all five extraction paths end up with the same layout.
+/// Returns how many files were moved.
+fn split_flattened_names(extract_dir: &Path) -> usize {
+    // Collect first: renaming while walking would visit moved files again.
+    let flattened: Vec<PathBuf> = WalkDir::new(extract_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.contains('\\'))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    let mut moved = 0;
+    for path in flattened {
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
+        else {
+            continue;
+        };
+        // A name that sanitizes to nothing (or tries to traverse) stays put: it
+        // is inert where it is, and inventing a destination would be worse.
+        let Some(rel) = sanitize_entry_path(name) else {
+            println!("⚠ Refusing to split unsafe entry name: {}", name);
+            continue;
+        };
+        let dest = parent.join(rel);
+        if dest == path || dest.exists() {
+            continue;
+        }
+        if let Some(dest_parent) = dest.parent() {
+            if fs::create_dir_all(dest_parent).is_err() {
+                continue;
+            }
+        }
+        if fs::rename(&path, &dest).is_ok() {
+            println!("↳ Split Windows-style entry name: {}", name);
+            moved += 1;
+        }
+    }
+
+    moved
+}
 
 #[derive(Debug, Clone)]
 pub enum ArchiveType {
@@ -110,9 +203,13 @@ impl ArchiveExtractor {
                 .by_index(i)
                 .map_err(|e| format!("Failed to read entry: {}", e))?;
 
-            let outpath = extract_dir.join(file.name());
+            let Some(rel) = sanitize_entry_path(file.name()) else {
+                println!("⚠ Skipping unsafe archive entry: {}", file.name());
+                continue;
+            };
+            let outpath = extract_dir.join(rel);
 
-            if file.name().ends_with('/') {
+            if file.name().ends_with('/') || file.name().ends_with('\\') {
                 fs::create_dir_all(&outpath).ok();
             } else {
                 if let Some(p) = outpath.parent() {
@@ -178,6 +275,8 @@ impl ArchiveExtractor {
             ));
         }
 
+        split_flattened_names(extract_dir);
+
         // Count extracted files
         let count = WalkDir::new(extract_dir)
             .into_iter()
@@ -204,7 +303,11 @@ impl ArchiveExtractor {
 
         sz.for_each_entries(|entry, reader| {
             if !entry.is_directory() {
-                let output_path = extract_dir.join(entry.name());
+                let Some(rel) = sanitize_entry_path(&entry.name()) else {
+                    println!("⚠ Skipping unsafe archive entry: {}", entry.name());
+                    return Ok(true);
+                };
+                let output_path = extract_dir.join(rel);
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent).ok();
                 }
@@ -264,6 +367,8 @@ impl ArchiveExtractor {
             ));
         }
 
+        split_flattened_names(extract_dir);
+
         // Count extracted files
         let count = WalkDir::new(extract_dir)
             .into_iter()
@@ -296,23 +401,37 @@ impl ArchiveExtractor {
                         .entry()
                         .filename
                         .to_str()
-                        .ok_or("Invalid filename in RAR")?;
+                        .ok_or("Invalid filename in RAR")?
+                        .to_string();
 
-                    if !header.entry().is_directory() {
-                        let output_path = extract_dir.join(entry);
-                        if let Some(parent) = output_path.parent() {
-                            fs::create_dir_all(parent).ok();
-                        }
-
-                        archive = header
-                            .extract_to(&output_path)
-                            .map_err(|e| format!("Failed to extract RAR file: {}", e))?;
-
-                        count += 1;
+                    let target = if header.entry().is_directory() {
+                        None
                     } else {
-                        archive = header
-                            .skip()
-                            .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+                        let rel = sanitize_entry_path(&entry);
+                        if rel.is_none() {
+                            println!("⚠ Skipping unsafe archive entry: {}", entry);
+                        }
+                        rel
+                    };
+
+                    match target {
+                        Some(rel) => {
+                            let output_path = extract_dir.join(rel);
+                            if let Some(parent) = output_path.parent() {
+                                fs::create_dir_all(parent).ok();
+                            }
+
+                            archive = header
+                                .extract_to(&output_path)
+                                .map_err(|e| format!("Failed to extract RAR file: {}", e))?;
+
+                            count += 1;
+                        }
+                        None => {
+                            archive = header
+                                .skip()
+                                .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+                        }
                     }
                 }
                 Ok(None) => break, // End of archive
@@ -364,5 +483,143 @@ impl ArchiveExtractor {
         }
 
         hints
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn splits_windows_separators_into_a_tree() {
+        // The real case: Ragdoll Execution Fix shipped a ZIP made on Windows.
+        assert_eq!(
+            sanitize_entry_path(r"r6\scripts\Ragdoll Execution Fix\Fix.Global.reds"),
+            Some(p("r6/scripts/Ragdoll Execution Fix/Fix.Global.reds"))
+        );
+    }
+
+    #[test]
+    fn leaves_a_well_formed_path_alone() {
+        assert_eq!(
+            sanitize_entry_path("archive/pc/mod/x.archive"),
+            Some(p("archive/pc/mod/x.archive"))
+        );
+    }
+
+    #[test]
+    fn handles_mixed_separators() {
+        assert_eq!(
+            sanitize_entry_path(r"bin/x64\plugins\cyber_engine_tweaks/mods\M\init.lua"),
+            Some(p("bin/x64/plugins/cyber_engine_tweaks/mods/M/init.lua"))
+        );
+    }
+
+    #[test]
+    fn rejects_traversal_in_either_spelling() {
+        assert_eq!(sanitize_entry_path("../../etc/passwd"), None);
+        assert_eq!(sanitize_entry_path(r"..\..\etc\passwd"), None);
+        assert_eq!(sanitize_entry_path("r6/../../escape.reds"), None);
+    }
+
+    #[test]
+    fn a_dotted_filename_is_not_traversal() {
+        assert_eq!(
+            sanitize_entry_path("r6/scripts/..hidden..reds"),
+            Some(p("r6/scripts/..hidden..reds"))
+        );
+    }
+
+    #[test]
+    fn drops_leading_separators_and_drive_letters() {
+        assert_eq!(sanitize_entry_path("/r6/scripts/x.reds"), Some(p("r6/scripts/x.reds")));
+        assert_eq!(sanitize_entry_path(r"C:\r6\scripts\x.reds"), Some(p("r6/scripts/x.reds")));
+        // A drive letter is only special at the start.
+        assert_eq!(sanitize_entry_path("r6/C:/x.reds"), Some(p("r6/C:/x.reds")));
+    }
+
+    #[test]
+    fn drops_empty_and_current_dir_segments() {
+        assert_eq!(sanitize_entry_path("./r6//scripts/./x.reds"), Some(p("r6/scripts/x.reds")));
+    }
+
+    #[test]
+    fn rejects_names_with_nothing_left() {
+        assert_eq!(sanitize_entry_path(""), None);
+        assert_eq!(sanitize_entry_path("/"), None);
+        assert_eq!(sanitize_entry_path(r"\"), None);
+        assert_eq!(sanitize_entry_path("./"), None);
+    }
+
+    #[test]
+    fn splits_flattened_names_left_by_a_system_extractor() {
+        let root = std::env::temp_dir().join(format!("cmm_split_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(r"r6\scripts\Mod\x.reds"), b"code").unwrap();
+        fs::write(root.join("readme.txt"), b"text").unwrap();
+
+        let moved = split_flattened_names(&root);
+
+        assert_eq!(moved, 1);
+        assert!(root.join("r6/scripts/Mod/x.reds").exists());
+        assert!(!root.join(r"r6\scripts\Mod\x.reds").exists());
+        assert!(root.join("readme.txt").exists(), "ordinary files stay put");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// End-to-end through the real extractor, on a ZIP whose entry names use
+    /// Windows separators — exactly what Ragdoll Execution Fix shipped.
+    #[test]
+    fn extracts_a_windows_made_zip_into_real_folders() {
+        use std::io::Write;
+        use zip::write::FileOptions;
+
+        let root = std::env::temp_dir().join(format!("cmm_zip_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let archive_path = root.join("mod.zip");
+
+        {
+            let mut zip = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+            let opts = FileOptions::default();
+            zip.start_file(r"r6\scripts\Ragdoll Execution Fix\Fix.Global.reds", opts)
+                .unwrap();
+            zip.write_all(b"// redscript").unwrap();
+            zip.start_file("archive/pc/mod/ok.archive", opts).unwrap();
+            zip.write_all(b"archive bytes").unwrap();
+            zip.start_file(r"..\..\escape.reds", opts).unwrap();
+            zip.write_all(b"// nope").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let out = root.join("extracted");
+        let (count, _) = ArchiveExtractor::extract(&archive_path, &out).unwrap();
+
+        assert_eq!(count, 2, "the traversing entry is skipped, not extracted");
+        let reds = out.join("r6/scripts/Ragdoll Execution Fix/Fix.Global.reds");
+        assert!(reds.is_file(), "the backslash path became a real tree");
+        assert_eq!(fs::read(&reds).unwrap(), b"// redscript");
+        assert!(out.join("archive/pc/mod/ok.archive").is_file());
+        assert!(!root.join("escape.reds").exists(), "no escape from the extract dir");
+        assert!(!out.join(r"r6\scripts\Ragdoll Execution Fix\Fix.Global.reds").exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn refuses_to_split_a_traversing_name() {
+        let root = std::env::temp_dir().join(format!("cmm_split2_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(r"..\..\escape.reds"), b"code").unwrap();
+
+        let moved = split_flattened_names(&root);
+
+        assert_eq!(moved, 0);
+        assert!(root.join(r"..\..\escape.reds").exists(), "left inert in place");
+        assert!(!root.parent().unwrap().join("escape.reds").exists());
+        fs::remove_dir_all(&root).ok();
     }
 }
