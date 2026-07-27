@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [1.5.0] - 2026-07-27
 
+### Upgrading from an earlier version
+
+Several of the fixes below only change what happens from now on — files already on disk stay exactly where an earlier version put them. **Config → Maintenance** has a scan for each case, and none of them touch anything until you press Repair:
+
+- **Check for scrambled file paths** — mods from archives packed on Windows (installed by any version up to 1.4). These are the hardest to spot on your own: the file exists at the recorded path, so validation calls it fine, and only the game disagrees
+- **Check for unloadable mods** — mods installed inside a redundant wrapper folder (any version up to 1.2)
+- **Validate mod files** and **Check for leftover mod folders** — clutter left behind by removals before 1.5: files of "deleted" mods that were never actually deleted (a switched-off mod's files survived removal entirely, untracked), and Cyber Engine Tweaks folders that outlived the mod they belonged to and get flagged at every game launch
+
+The startup banner reports the first two on its own. The README explains what each defect looked like and why nothing warned you at the time.
+
 ### New
 
 - **Check for scrambled file paths** (Config → Maintenance) — the repair for the extraction fix below. A mod installed by an earlier version stays broken until its files move, and nothing else in the app would ever mention it: the file exists exactly where the database says it does, so "Validate mod files" calls it fine. The scan finds the recorded paths that were never split into folders, shows where each file would land, and rebuilds the folder structure on request. The mod database is backed up first and updated to match, and a file whose destination is already occupied is skipped rather than overwritten. The startup check reports these mods too
