@@ -1,18 +1,57 @@
 # Crossover Mod Manager — Cyberpunk 2077 Edition
 
+[![Latest release](https://img.shields.io/github/v/release/wackyfrog/cp2077-crossover-mod-manager?label=release&color=ff0040&style=flat-square)](https://github.com/wackyfrog/cp2077-crossover-mod-manager/releases/latest)
+[![Platform](https://img.shields.io/badge/macOS-11%2B%20Apple%20Silicon-00ff88?style=flat-square)](#requirements)
+[![CrossOver](https://img.shields.io/badge/CrossOver-25%2B-00ffff?style=flat-square)](https://www.codeweavers.com/crossover)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)](LICENSE)
+
 Mod manager for Cyberpunk 2077 running via CrossOver on macOS.
 
 Enjoy Night City, choom!
 
-![Splash screen](docs/screenshots/welcome.png)
+## Contents
 
-![Mod list and details](docs/screenshots/look.png)
+- [Screenshots](#screenshots)
+- [Mods that show as enabled but do nothing](#mods-that-show-as-enabled-but-do-nothing) — and how to repair them
+- [Housekeeping](#housekeeping) — clutter earlier versions could leave behind
+- [What's new](#whats-new-in-15)
+- [Requirements](#requirements) · [Download](#download) · [Quick start](#quick-start)
+- [Building from source](#building-from-source) · [Tech stack](#tech-stack) · [Data storage](#data-storage)
 
-![Jack In — mod installation terminal](docs/screenshots/jack-in.png)
+## Screenshots
 
-![Netrun — sync with NexusMods](docs/screenshots/netrun.png)
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/look.png" alt="Mod list and details"></td>
+<td width="50%"><img src="docs/screenshots/netrun.png" alt="Netrun — sync with NexusMods"></td>
+</tr>
+<tr>
+<td><b>Chrome</b> — the mod list, with details, versions and update alerts</td>
+<td><b>Netrun</b> — fetch metadata and check for updates</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/jack-in.png" alt="Jack In — mod installation"></td>
+<td><img src="docs/screenshots/welcome.png" alt="Splash screen"></td>
+</tr>
+<tr>
+<td><b>Jack In</b> — paste an NXM link, or sideload an archive from disk</td>
+<td><b>Splash</b> — click anywhere to skip</td>
+</tr>
+</table>
 
-## ⚠️ Mods that show as enabled but do nothing in the game
+<details>
+<summary><b>Jack In, while it works</b> — download progress and the finished install</summary>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/jack-in2.png" alt="Jack In — downloading"></td>
+<td width="50%"><img src="docs/screenshots/jack-in3.png" alt="Jack In — install complete"></td>
+</tr>
+</table>
+
+</details>
+
+## Mods that show as enabled but do nothing
 
 Two separate defects could put a mod's files somewhere no mod loader looks.
 Both are fixed for new installs, but files already on disk stay where they
@@ -24,7 +63,7 @@ If a mod isn't working and you used an earlier version, run **Config →
 Maintenance** and check both scans below. They only report; nothing changes
 until you press Repair.
 
-### Wrapper folders — versions up to 1.2
+### Wrapper folders (versions up to 1.2)
 
 It affects mods that were installed successfully, show up as enabled, and
 still do nothing in the game.
@@ -70,7 +109,7 @@ destination is already taken by another mod, it is skipped rather than
 overwritten. Reinstalling a mod also fixes it, since new installs strip the
 wrapper correctly.
 
-### Archives packed on Windows — versions up to 1.4
+### Archives packed on Windows (versions up to 1.4)
 
 Some archives store their entries with backslashes: `r6\scripts\Mod\file.reds`
 instead of `r6/scripts/Mod/file.reds`. On Windows those are folder separators.
@@ -98,10 +137,11 @@ for it. Only the loader disagrees.
 
 In a real 262-mod library, 1 mod was affected. Reinstalling also fixes it.
 
-## Housekeeping: clutter earlier versions could leave behind
+## Housekeeping
 
-None of this breaks the game — it wastes space and produces warnings that look
-like breakage. Versions up to 1.4 could leave three kinds of leftovers:
+Clutter earlier versions could leave behind. None of this breaks the game — it
+wastes space and produces warnings that look like breakage. Versions up to 1.4
+could leave three kinds of leftovers:
 
 - **Files of deleted mods.** Deleting a *switched-off* mod deleted nothing at
   all: its files live under a `.disabled` suffix while unslotted, and removal
@@ -139,7 +179,10 @@ mostly about tidying what earlier versions left.
 - **Check for leftover mod folders** (Config) — Cyber Engine Tweaks logs *"Ignoring mod which does not contain init.lua!"* for every folder that no longer holds a mod, which reads as breakage but isn't. Removal now clears the folders it empties, and this scan finds older leftovers — showing what each holds so you can decide. Folders with settings in them, or holding files that belong to an installed mod, are never swept
 - **Validation now flags files in the wrong state** — a slotted mod whose files are ghosted does nothing in the game, and an unslotted one whose files are active runs anyway. Neither is a missing file, and nothing else would tell you
 
-## What's New in 1.4
+<details>
+<summary><b>Earlier releases</b> — 1.4, 1.3, 1.2, 1.1, 1.0</summary>
+
+### What's New in 1.4
 
 - **Reworked navigation** — menu order is now Chrome / Jack In / Netrun / Config / About. **Netrun** moved up into the main menu, and **Sideload** moved into the **Jack In** screen alongside the NXM link field, since both are ways to install a mod
 - **Much easier to read** — larger text throughout and a big lift in contrast. The dim red on mod versions measured 2.44:1 against the background, far below what body text needs; that and the washed-out overlay text have been fixed. Borders and glows are untouched, so the look stays the same
@@ -147,7 +190,7 @@ mostly about tidying what earlier versions left.
 - **Clearer way out** — the exit button in Jack In and Netrun no longer looks like every other button on the screen, and shows an `esc` hint
 - **Splash screen** — click anywhere to skip, and it's a quarter shorter
 
-## What's New in 1.3
+### What's New in 1.3
 
 - **Sideload** — install a mod from a `.zip`/`.7z`/`.rar` on disk, for the many NexusMods pages that offer no "Download with Mod Manager" button. Pick it from **Jack In**, or drag the archive onto the window; details are read from the filename for you to confirm
 - **Wrapper-folder fix** — see the section above, plus a repair tool for installs already affected
@@ -155,7 +198,7 @@ mostly about tidying what earlier versions left.
 - **Legibility pass** — larger text throughout and much higher contrast, especially the dim reds that were hard to read on the dark background
 - **Escape works everywhere** — it used to do nothing unless a text field had focus. Splash screen can be skipped with a click, and is a quarter shorter
 
-## What's New in 1.2
+### What's New in 1.2
 
 - **Reliable game-path detection** — Auto-Detect scans every CrossOver bottle (Steam / GOG / Epic / custom) and lets you pick the right one when several are found
 - **Mod relocation** — changing the game path offers to move (or copy) already-installed mods to the new location, so nothing is left behind
@@ -164,7 +207,7 @@ mostly about tidying what earlier versions left.
 - **Shareable logs** — activity is mirrored to `~/.crossover-mod-manager/logs/app.log` with **Copy** and **Show in Finder** buttons for easy bug reports
 - **Docs** — new [Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md) guide
 
-## What's New in 1.1
+### What's New in 1.1
 
 - **Auto-sync after install** — picture, summary, and file descriptions fetched from Nexus API immediately after install/update, no manual Netrun needed
 - **Database backup/restore** — create, restore, and delete backups of mod database from Config page
@@ -173,7 +216,7 @@ mostly about tidying what earlier versions left.
 - **Smarter updates** — ghosted (disabled) mods stay ghosted after an update; same file with a different version is treated as an update, not an error
 - **Fixes** — filter no longer resets after updating a mod, mod details refresh correctly, correct sub-mod selected after install/update
 
-## What's New in 1.0
+### What's New in 1.0
 
 - **Cyberpunk 2077 UI** — full redesign styled after the game aesthetic, themed vocabulary throughout
 - **Mod lifecycle** — install, update, reinstall, and remove mods via NXM deep-link handler ("Download with Mod Manager")
@@ -185,6 +228,10 @@ mostly about tidying what earlier versions left.
 - **Startup checks** — auto-detect game path, verify permissions, API key, NXM URL handler
 - **Path safety** — traversal protection and game directory validation on all file operations
 - **Error handling** — verbose logging, conflict detection, detailed status messages
+
+</details>
+
+Full history in the [CHANGELOG](CHANGELOG.md).
 
 ## Requirements
 
@@ -212,9 +259,9 @@ yourself, then use **Jack In → Sideload from disk** (or just drag the `.zip` /
 `.7z` / `.rar` onto the window).
 
 > **Mods not showing up in the game?** Two things to check:
-> - If you installed them with **v1.2 or earlier**, see
->   [the wrapper-folder problem](#-mods-installed-before-v13-may-be-silently-broken)
->   above — the app can find and repair those.
+> - If you installed them with an earlier version, see
+>   [mods that show as enabled but do nothing](#mods-that-show-as-enabled-but-do-nothing)
+>   above — the app can find and repair both causes.
 > - Otherwise the usual cause is a wrong game path:
 >   **[Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md)** covers
 >   step-by-step setup, verifying installs, and fixing the path.
@@ -232,6 +279,14 @@ npm run tauri:build  # production
 Requires: Node.js 18+, Rust 1.70+, Xcode Command Line Tools.
 
 Optional (faster extraction): `brew install p7zip unrar`
+
+**Tests** cover the parts where a mistake is silent — archive extraction and
+path handling, install-path resolution, the repair and cleanup passes, and
+removal of switched-off mods:
+
+```bash
+cd src-tauri && cargo test
+```
 
 ## Tech Stack
 
