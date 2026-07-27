@@ -1464,6 +1464,18 @@ async fn handle_nxm_url_internal(nxm_url: String, app: tauri::AppHandle) -> Resu
     result
 }
 
+/// Strip an NXM link's query string, which carries a time-limited download key.
+///
+/// Which mod and file the link points at is worth logging; the key is not — log
+/// files and screenshots get attached to bug reports verbatim. The parsed-URL
+/// line further down already reports the key's presence without its value.
+fn redact_nxm_url(url: &str) -> String {
+    match url.split_once('?') {
+        Some((base, _)) => format!("{}?<key redacted>", base),
+        None => url.to_string(),
+    }
+}
+
 #[tauri::command]
 async fn handle_nxm_url(
     nxm_url: String,
@@ -1477,19 +1489,19 @@ async fn handle_nxm_url(
         Some(slot) => slot,
         None => {
             add_log(
-                format!("⏳ Ignored NXM link, an install is already running: {}", nxm_url),
+                format!("⏳ Ignored NXM link, an install is already running: {}", redact_nxm_url(&nxm_url)),
                 "warning".to_string(),
                 "installation".to_string(),
                 state.clone(),
             )?;
-            reject_overlapping_install(&app, "nxm", Some(nxm_url));
+            reject_overlapping_install(&app, "nxm", Some(redact_nxm_url(&nxm_url)));
             return Err(INSTALL_BUSY_MESSAGE.to_string());
         }
     };
 
     // Log the NXM URL processing
     add_log(
-        format!("Processing NXM URL: {}", nxm_url),
+        format!("Processing NXM URL: {}", redact_nxm_url(&nxm_url)),
         "info".to_string(),
         "system".to_string(),
         state.clone(),
@@ -5896,6 +5908,28 @@ fn main() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod nxm_logging_tests {
+    use super::*;
+
+    #[test]
+    fn a_download_key_never_reaches_the_log() {
+        let url = "nxm://cyberpunk2077/mods/5486/files/30345?key=6rSKM5PhJr-6nVX77s7vHQ&expires=1785337788&user_id=275294224";
+        let redacted = redact_nxm_url(url);
+
+        assert!(!redacted.contains("6rSKM5PhJr"), "the key must not survive");
+        assert!(!redacted.contains("user_id"));
+        // What the line is for — which mod, which file — still reads.
+        assert!(redacted.starts_with("nxm://cyberpunk2077/mods/5486/files/30345"));
+    }
+
+    #[test]
+    fn a_link_without_a_query_is_untouched() {
+        let url = "nxm://cyberpunk2077/mods/5486/files/30345";
+        assert_eq!(redact_nxm_url(url), url);
+    }
 }
 
 #[cfg(test)]

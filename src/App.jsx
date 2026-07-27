@@ -19,6 +19,20 @@ import "./App.css";
 
 const SIDELOAD_EXTENSIONS = ["zip", "7z", "rar"];
 
+/// Name a turned-away request without printing its NXM link in full: the query
+/// string carries a download key, and this line is exactly what ends up in the
+/// screenshots people attach to bug reports. Anything that isn't an NXM link
+/// (a sideload path) is shown by file name only, for the same reason.
+function shortenTurnedAway(detail) {
+  if (!detail) return null;
+  const nxm = detail.match(/^nxm:\/\/([^/]+)\/mods\/(\d+)(?:\/files\/(\d+))?/i);
+  if (nxm) {
+    const [, game, modId, fileId] = nxm;
+    return `${game} mod ${modId}${fileId ? ` · file ${fileId}` : ""}`;
+  }
+  return detail.split("/").pop() || null;
+}
+
 function App() {
   const [mods, setMods] = useState([]);
   const [selectedMod, setSelectedMod] = useState(null);
@@ -308,7 +322,8 @@ function App() {
         return await listen("install-busy", (event) => {
           const { source, detail } = event.payload || {};
           const what = source === "sideload" ? "sideload" : "download";
-          const text = `${what} ignored · already jacking in${detail ? ` · queued: ${detail}` : ""}`;
+          const label = shortenTurnedAway(detail);
+          const text = `${what} ignored · already jacking in${label ? ` · queued: ${label}` : ""}`;
           setStatusMsg(`⏳ ${text}`);
           // seq, not the text, is what makes a repeated rejection show again.
           setBusyNotice((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }));
