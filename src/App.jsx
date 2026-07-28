@@ -541,13 +541,17 @@ function App() {
     setSyncOpen(true);
   };
 
+  // Every outcome now arrives from the backend — a progress event, or a rejected
+  // promise. There is deliberately no timer watching for silence: the one that
+  // used to live here fired *after* the install had already finished and
+  // overwrote its result with a fabricated "no response" error (docs/bugs.md
+  // B11). An unparseable link is an Err from `handle_nxm_url`, like any other
+  // failure, so nothing here has to infer anything from a lack of events.
   const handleInstallUrl = async (url) => {
     setStatusMsg("jacking in · processing NXM URL...");
-    let failed = false;
     try {
       await invoke("handle_nxm_url", { nxmUrl: url });
     } catch (error) {
-      failed = true;
       console.error("Failed to process NXM URL:", error);
       setStatusMsg(`✗ jack in failed: ${error}`);
       setInstallProgress({
@@ -562,19 +566,6 @@ function App() {
           category: "nxm_protocol",
         });
       } catch {}
-    }
-    // Backend may return Ok(()) without emitting progress for invalid URLs
-    if (!failed) {
-      setTimeout(() => {
-        setInstallProgress((prev) => {
-          // If still no progress event arrived, force error
-          if (!prev || (prev.stage !== "downloading" && prev.stage !== "installing" && prev.stage !== "extracting" && prev.stage !== "registering" && prev.stage !== "done" && prev.stage !== "error")) {
-            setStatusMsg("✗ jack in failed: no response from backend");
-            return { stage: "error", message: "No response — URL may be invalid or backend failed silently", nxm_url: url };
-          }
-          return prev;
-        });
-      }, 2000);
     }
   };
 

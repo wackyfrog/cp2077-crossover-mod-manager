@@ -172,10 +172,16 @@ function friendlyError(msg) {
       hint: "The mod ID or file ID in the URL may be wrong. Check the link on nexusmods.com.",
     };
   }
-  if (msg.includes("No response") || msg.includes("timed out")) {
+  if (msg.includes("Not a valid NXM link")) {
     return {
-      title: "No response from backend",
-      hint: "The URL may be malformed. Use the full link from nexusmods.com with all parameters.",
+      title: "That link isn't an NXM link",
+      hint: "Use \"Download with Mod Manager\" on nexusmods.com and paste the full nxm:// link, query string included.",
+    };
+  }
+  if (msg.includes("timed out")) {
+    return {
+      title: "Nexus timed out",
+      hint: "The download or API call ran out of time. Check your connection and retry.",
     };
   }
   return null;

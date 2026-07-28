@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **A successful install no longer ends in a made-up "No response from backend" error** — the Jack In screen ran a two-second timer that fired *after* the backend had already finished, and rewrote whatever was on screen with a failure. Closing the screen in those two seconds was enough to trigger it: the mod was installed, the files were on disk, and the app reported that nothing had happened. Pressing Retry then produced a real but confusing "already installed", because the first install had in fact worked. Nothing needs repairing — mods installed this way were installed correctly. The timer is gone; every outcome now comes from the backend itself
+- **A malformed NXM link now says so** — a link matching neither the mod nor the collection shape was logged and then reported as success, which is what the guessing timer above existed to paper over. It is now a proper error naming the shape a link should have
+
 ## [1.5.0] - 2026-07-27
 
 ### Upgrading from an earlier version

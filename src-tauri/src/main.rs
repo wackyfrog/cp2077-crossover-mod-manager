@@ -1859,12 +1859,24 @@ async fn handle_nxm_url(
             }
         }
     } else {
+        // A link that matches neither shape is a failure and must be reported as
+        // one. Returning Ok(()) here used to leave the caller with no progress
+        // event and no error — silence the frontend had to guess at with a timer
+        // (docs/bugs.md B11).
         add_log(
-            format!("Failed to parse NXM URL: {}", nxm_url),
+            format!("Failed to parse NXM URL: {}", redact_nxm_url(&nxm_url)),
             "error".to_string(),
             "system".to_string(),
             state.clone(),
         )?;
+        let message = "Not a valid NXM link. Expected nxm://<game>/mods/<mod id>/files/<file id> — copy the full link from nexusmods.com.".to_string();
+        emit_install_progress(&app, InstallProgress {
+            stage: "error".into(),
+            message: message.clone(),
+            nxm_url: Some(nxm_url.clone()),
+            ..Default::default()
+        });
+        return Err(message);
     }
 
     Ok(())
