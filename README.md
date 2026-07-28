@@ -244,7 +244,35 @@ Full history in the [CHANGELOG](CHANGELOG.md).
 
 Download the latest release from the [Releases](https://github.com/wackyfrog/cp2077-crossover-mod-manager/releases) page.
 
-**First launch on macOS**: Right-click the app → Open → Open (bypasses Gatekeeper for unsigned apps).
+<a id="first-launch-on-macos"></a>
+### First launch on macOS
+
+The app is **ad-hoc signed and not notarized** — there is no paid Apple Developer account behind this project. macOS therefore blocks it the first time, with a message about an unidentified developer or a damaged app. Nothing is actually wrong with the download; the app simply has no Apple-issued signature for Gatekeeper to check.
+
+Anything you download through a browser is tagged with a `com.apple.quarantine` attribute, and that tag is what triggers the check. Pick either route:
+
+**System Settings (macOS 15 Sequoia and later)**
+
+1. Try to open the app once and let it be blocked — this is what creates the entry to approve
+2. **Apple menu → System Settings → Privacy & Security**
+3. Scroll to **Security**, find the message about the blocked app, click **Open Anyway** (available for about an hour after the blocked attempt)
+4. Enter your login password
+
+The app is then saved as an exception and opens normally from that point on.
+
+**Terminal (any macOS version)**
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Crossover Mod Manager.app"
+```
+
+This strips the quarantine tag, after which the app launches like any other.
+
+> **Control-click → Open no longer works on macOS 15+.** Apple removed that bypass: *"In macOS Sequoia, users will no longer be able to Control-click to override Gatekeeper when opening software that isn't signed correctly or notarized. They'll need to visit System Settings > Privacy & Security to review security information for software before allowing it to run."* — [Updates to runtime protection in macOS Sequoia](https://developer.apple.com/news/?id=saqachfa) (Apple Developer, 6 Aug 2024). On macOS 14 and earlier, Control-click → Open still works.
+
+Apple's own instructions: [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
+
+Notarizing would remove this step entirely, but it requires membership in the [Apple Developer Program](https://developer.apple.com/programs/) ($99/year). If you would rather not take the app on trust, build it yourself from source — see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Quick Start
 

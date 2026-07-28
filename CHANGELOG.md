@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Documentation
+
+- **First-launch instructions now match current macOS** — the README told users to Control-click → Open, which Apple removed as a Gatekeeper bypass in macOS 15 Sequoia. The section now explains why the app is blocked at all (ad-hoc signed, not notarized), gives the System Settings → Privacy & Security → Open Anyway route and the `xattr` one, and cites Apple's own documentation for both
+
 ## [1.5.1] - 2026-07-28
 
 ### Fixed

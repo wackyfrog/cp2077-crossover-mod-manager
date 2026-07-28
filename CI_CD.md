@@ -102,7 +102,7 @@ Stable versions (`vX.Y.Z`, no `-beta` suffix) are **not** built by CI — the ma
    npm run tauri build
    ```
 
-   The DMG lands in `src-tauri/target/release/bundle/dmg/`. It is ad-hoc signed (`signingIdentity: "-"`) and not notarized — that is expected; users open it the first time via right-click → Open.
+   The DMG lands in `src-tauri/target/release/bundle/dmg/`. It is ad-hoc signed (`signingIdentity: "-"`) and not notarized — that is expected; on first launch users approve it via System Settings → Privacy & Security → **Open Anyway** (see [First launch on macOS](README.md#first-launch-on-macos) in the README).
 
 3. Create the annotated tag and push it:
 
@@ -202,7 +202,7 @@ The workflows use these GitHub secrets:
 
 ### Signing & Notarization
 
-The macOS DMG is currently ad-hoc signed and not notarized, so users bypass Gatekeeper on first launch (right-click → Open). Proper code signing and notarization would require an Apple Developer account; this is tracked as future work.
+The macOS DMG is currently ad-hoc signed and not notarized, so users must approve it past Gatekeeper on first launch — System Settings → Privacy & Security → **Open Anyway**, or `xattr -dr com.apple.quarantine <app>`. Control-click → Open is **not** a route on macOS 15 Sequoia and later: Apple removed that bypass ([Updates to runtime protection in macOS Sequoia](https://developer.apple.com/news/?id=saqachfa)). Proper code signing and notarization would require an Apple Developer Program membership ($99/year); this is tracked as future work.
 
 ## Monitoring
 
