@@ -73,6 +73,8 @@ Builds for Apple Silicon (M1/M2/M3/M4) Macs:
 
 The app version lives in `package.json`; `src-tauri/tauri.conf.json` reads it via `"version": "../package.json"`. **Do not** hand-edit the version in `tauri.conf.json` — that would break the pointer. Bump `package.json` instead (the release helper does this for you).
 
+**`src-tauri/Cargo.toml` carries its own version and must be bumped to match.** It is not derived from `package.json`, and the on-disk log stamps every session with `env!("CARGO_PKG_VERSION")` — which reads Cargo.toml. Leave it behind and the build reports the *previous* version in `~/.crossover-mod-manager/logs/app.log`, the one file bug reports are diagnosed from, while the UI (fed from `package.json` via `__APP_VERSION__`) shows the new one. This bit v1.5.1, which shipped stamping its log `v1.5.0`. `release.sh` now bumps both; on the manual path, bump both by hand.
+
 ### BETA release (automated via CI)
 
 BETA builds are published automatically by the Release workflow.
@@ -93,7 +95,7 @@ BETA builds are published automatically by the Release workflow.
 
 Stable versions (`vX.Y.Z`, no `-beta` suffix) are **not** built by CI — the maintainer builds and publishes them locally.
 
-1. Bump the version in `package.json` and add the `## [X.Y.Z]` section to `CHANGELOG.md`; commit both to `main`.
+1. Bump the version in **both** `package.json` and `src-tauri/Cargo.toml` (see the note above — the log's version comes from Cargo.toml), refresh `Cargo.lock`, and add the `## [X.Y.Z]` section to `CHANGELOG.md`; commit them to `main`.
 2. Build the app locally (the frontend is built automatically via `beforeBuildCommand`):
 
    ```bash

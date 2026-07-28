@@ -87,6 +87,17 @@ sed -i.bak "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" package.json
 rm package.json.bak
 print_success "Version updated in package.json"
 
+# Update the crate version too. The on-disk log stamps every session with
+# env!("CARGO_PKG_VERSION"), which reads Cargo.toml and knows nothing about
+# package.json — leave it behind and the build reports the previous version in
+# exactly the file bug reports get diagnosed from.
+print_info "Updating version in src-tauri/Cargo.toml..."
+sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+rm src-tauri/Cargo.toml.bak
+# Refresh Cargo.lock so the bump lands in the same commit
+(cd src-tauri && cargo update --workspace --quiet 2>/dev/null) || true
+print_success "Version updated in src-tauri/Cargo.toml"
+
 # Check if CHANGELOG.md has entry for this version
 print_info "Checking CHANGELOG.md..."
 if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
@@ -128,7 +139,7 @@ fi
 
 # Show changes to be committed
 print_info "The following changes will be committed:"
-git diff package.json CHANGELOG.md
+git diff package.json CHANGELOG.md src-tauri/Cargo.toml
 
 echo ""
 if [ -n "$BETA_NUM" ]; then
@@ -145,7 +156,7 @@ fi
 
 # Commit version changes
 print_info "Committing version changes..."
-git add package.json CHANGELOG.md
+git add package.json CHANGELOG.md src-tauri/Cargo.toml src-tauri/Cargo.lock
 if [ -n "$BETA_NUM" ]; then
     git commit -m "chore: BETA Release $TAG
 
