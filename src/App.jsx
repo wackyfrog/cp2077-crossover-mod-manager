@@ -41,6 +41,7 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [statusMsg, setStatusMsg] = useState(null);
   const [healthIssues, setHealthIssues] = useState([]); // persistent startup/self-check warnings
+  const [pendingScan, setPendingScan] = useState(null); // Config scan the banner's Repair button asked for
   const [syncProgress, setSyncProgress] = useState(null); // { current, total, modName }
   const [syncSummary, setSyncSummary] = useState(null); // { synced, total, updated, errors, cancelled }
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
@@ -748,10 +749,15 @@ function App() {
   };
 
   const hasNxmIssue = healthIssues.some((i) => i.code?.startsWith("nxm"));
-  // Every silent-breakage issue is fixed the same way — a repair in Config.
-  const hasBrokenInstalls = healthIssues.some((i) =>
-    ["wrapped_mods", "partial_wrapped_mods", "mangled_paths"].includes(i.code)
-  );
+  // Which Config scan owns each silent-breakage issue. Whichever the health
+  // check reported first decides where Repair sends the user — the backend
+  // lists them in the order it wants them dealt with.
+  const REPAIR_SCAN = {
+    wrapped_mods: "wrapped",
+    partial_wrapped_mods: "wrapped",
+    mangled_paths: "mangled",
+  };
+  const repairScan = REPAIR_SCAN[healthIssues.find((i) => REPAIR_SCAN[i.code])?.code];
 
   return (
     <div className="app">
@@ -798,8 +804,15 @@ function App() {
             {hasNxmIssue && (
               <button onClick={handleRegisterNxm}>Register NXM handler</button>
             )}
-            {hasBrokenInstalls && (
-              <button onClick={() => setActiveTab("settings")}>Repair mods</button>
+            {repairScan && (
+              <button
+                onClick={() => {
+                  setPendingScan(repairScan);
+                  setActiveTab("settings");
+                }}
+              >
+                Repair mods
+              </button>
             )}
             <button onClick={() => setActiveTab("settings")}>Open Config</button>
             <button className="health-banner-dismiss" onClick={() => setHealthIssues([])}>Dismiss</button>
@@ -876,10 +889,16 @@ function App() {
         ) : activeTab === "manifest" ? (
           <Manifest version={__APP_VERSION__} />
         ) : (
-          <Settings hint={hint} onSaved={recheckHealth} onNavigateToMod={(modId) => {
-            const mod = mods.find(m => m.id === modId);
-            if (mod) { setSelectedMod(mod); setActiveTab("mods"); }
-          }} />
+          <Settings
+            hint={hint}
+            onSaved={recheckHealth}
+            autoScan={pendingScan}
+            onAutoScanDone={() => setPendingScan(null)}
+            onNavigateToMod={(modId) => {
+              const mod = mods.find(m => m.id === modId);
+              if (mod) { setSelectedMod(mod); setActiveTab("mods"); }
+            }}
+          />
         )}
       </main>
 

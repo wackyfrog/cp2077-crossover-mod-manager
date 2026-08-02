@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **"Repair mods" in the startup banner now opens the repair** — it and "Open Config" both did the same thing: switch to the Config tab and leave you to find the right scan among the maintenance buttons. The Repair button now runs the scan its warning belongs to and shows the report directly. Every scan is a dry run that changes nothing, so arriving at one is safe
 - **The scan states a shared destination once instead of three times** — when every file of a mod lands in the same folder, which is the usual shape, the report printed three near-identical paths that wrapped across half the dialog and said nothing the fourth line didn't. It now names the destination folder once. Mods whose files fan out to several places still list examples as before
 - **A report holding only partial wrappers is no longer titled "Unloadable Mods"** — those mods do load, just not all of them, so the title contradicted the first line of its own summary. It reads "Misplaced Mod Files" in that case; anything else keeps the familiar title
 

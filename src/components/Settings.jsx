@@ -45,7 +45,7 @@ function WrappedModRow({ mod, onOpen, children }) {
   );
 }
 
-function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
+function Settings({ hint = () => ({}), onNavigateToMod, onSaved, autoScan, onAutoScanDone }) {
   const [gamePath, setGamePath] = useState("");
   const [initialGamePath, setInitialGamePath] = useState("");
   const [modStoragePath, setModStoragePath] = useState("");
@@ -264,6 +264,43 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   useEscape(!!relocateResult, () => setRelocateResult(null));
   useEscape(!!confirmAction, () => setConfirmAction(null));
 
+  const runWrappedScan = async () => {
+    setWrapBusy(true);
+    setWrapScan(null);
+    setWrapResult(null);
+    try {
+      setWrapScan(await invoke("scan_wrapped_mods"));
+    } catch (e) {
+      setWrapScan({ error: String(e) });
+    } finally {
+      setWrapBusy(false);
+    }
+  };
+
+  const runMangledScan = async () => {
+    setMangledBusy(true);
+    setMangledScan(null);
+    setMangledResult(null);
+    try {
+      setMangledScan(await invoke("scan_mangled_paths"));
+    } catch (e) {
+      setMangledScan({ error: String(e) });
+    } finally {
+      setMangledBusy(false);
+    }
+  };
+
+  // The startup banner's Repair button lands here and names the scan its issue
+  // belongs to, so the user arrives at the report rather than at a page of
+  // buttons to pick from. Every scan is a dry run, so opening one uninvited
+  // changes nothing. Cleared immediately, or it would re-fire on every render.
+  useEffect(() => {
+    if (!autoScan) return;
+    onAutoScanDone?.();
+    if (autoScan === "wrapped") runWrappedScan();
+    else if (autoScan === "mangled") runMangledScan();
+  }, [autoScan]);
+
   const loadBackups = async () => {
     try {
       const list = await invoke("list_backups");
@@ -470,19 +507,7 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
           </div>
           <div className="setting-row">
             <button
-              onClick={async () => {
-                setWrapBusy(true);
-                setWrapScan(null);
-                setWrapResult(null);
-                try {
-                  const r = await invoke("scan_wrapped_mods");
-                  setWrapScan(r);
-                } catch (e) {
-                  setWrapScan({ error: String(e) });
-                } finally {
-                  setWrapBusy(false);
-                }
-              }}
+              onClick={runWrappedScan}
               className="maintenance-button"
               disabled={wrapBusy}
               {...hint("find mods installed inside a redundant folder that the game can't load")}
@@ -492,19 +517,7 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
           </div>
           <div className="setting-row">
             <button
-              onClick={async () => {
-                setMangledBusy(true);
-                setMangledScan(null);
-                setMangledResult(null);
-                try {
-                  const r = await invoke("scan_mangled_paths");
-                  setMangledScan(r);
-                } catch (e) {
-                  setMangledScan({ error: String(e) });
-                } finally {
-                  setMangledBusy(false);
-                }
-              }}
+              onClick={runMangledScan}
               className="maintenance-button"
               disabled={mangledBusy}
               {...hint("find files stored under a Windows-style path the game can't follow")}
