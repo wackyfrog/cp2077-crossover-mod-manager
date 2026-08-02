@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-02
+
+### Upgrading from an earlier version
+
+If a mod of yours installed only *part* of itself into a wrapper folder, no earlier version could tell you — the check skipped it entirely. **Config → Check for unloadable mods** now finds those too, and the startup banner reports them. Nothing is moved until you press a button, and the scan itself changes nothing.
+
 ### Fixed
 
 - **A mod that installed *half* of itself into a redundant folder is now reported** — "Check for unloadable mods" only ever looked at mods whose every file sat under one wrapper folder. A mod that put some files where they belong and the rest under a wrapper was skipped entirely, so it never showed up in the scan, in the startup banner, or anywhere else: part of it loaded, the rest was invisible to every loader, and nothing in the app said so. Real case: Guns Redone V3.0 (PL) put one script in `r6/scripts/` and 556 tweaks under a folder named after the variant. These now appear in the scan under their own heading
