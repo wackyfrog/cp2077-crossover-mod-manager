@@ -502,7 +502,7 @@ fn collect_wrapped_mods(state: &State<AppState>) -> Result<Vec<mod_repair::Wrapp
         if m.removed || m.files.is_empty() {
             continue;
         }
-        let Some(wrapper) = mod_repair::detect_wrapper(&m.files, game_dir) else {
+        let Some((wrapper, kind)) = mod_repair::detect_wrapper_kind(&m.files, game_dir) else {
             continue;
         };
 
@@ -519,6 +519,7 @@ fn collect_wrapped_mods(state: &State<AppState>) -> Result<Vec<mod_repair::Wrapp
             id: m.id.clone(),
             name: m.file_name.as_deref().unwrap_or(&m.name).to_string(),
             wrapper,
+            kind,
             file_count: moves.len(),
             blocked_count,
             moves,
@@ -536,10 +537,22 @@ fn scan_wrapped_mods(state: State<AppState>) -> Result<serde_json::Value, String
     let total_files: usize = wrapped.iter().map(|w| w.file_count).sum();
     let blocked: usize = wrapped.iter().map(|w| w.blocked_count).sum();
 
+    // Counted separately so the UI can keep the two apart: whole wrappers are a
+    // safe bulk repair, partial ones need the user to rule out a FOMOD variant.
+    let is_partial = |w: &mod_repair::WrappedMod| w.kind == mod_repair::WrapperKind::Partial;
+    let partial_mod_count = wrapped.iter().filter(|w| is_partial(w)).count();
+    let partial_file_count: usize = wrapped
+        .iter()
+        .filter(|w| is_partial(w))
+        .map(|w| w.file_count)
+        .sum();
+
     Ok(serde_json::json!({
         "mod_count": wrapped.len(),
         "file_count": total_files,
         "blocked_count": blocked,
+        "partial_mod_count": partial_mod_count,
+        "partial_file_count": partial_file_count,
         "mods": wrapped,
     }))
 }
@@ -547,7 +560,11 @@ fn scan_wrapped_mods(state: State<AppState>) -> Result<serde_json::Value, String
 /// Move wrapped mods' files to where the loaders actually look, and update the
 /// database to match. Backs the database up first.
 ///
-/// `mod_ids` limits the repair to specific mods; `None` repairs everything found.
+/// `mod_ids` limits the repair to specific mods. `None` means "everything safe to
+/// do unattended", which deliberately excludes [`mod_repair::WrapperKind::Partial`]
+/// mods: those are shape-identical to an unselected FOMOD variant, so flattening
+/// one without being asked could activate content the user never chose. Naming a
+/// partial mod's id explicitly still repairs it — that is the user's call.
 #[tauri::command]
 fn repair_wrapped_mods(
     mod_ids: Option<Vec<String>>,
@@ -561,7 +578,10 @@ fn repair_wrapped_mods(
 
     let wrapped: Vec<_> = collect_wrapped_mods(&state)?
         .into_iter()
-        .filter(|w| mod_ids.as_ref().map(|ids| ids.contains(&w.id)).unwrap_or(true))
+        .filter(|w| match mod_ids.as_ref() {
+            Some(ids) => ids.contains(&w.id),
+            None => w.kind == mod_repair::WrapperKind::Whole,
+        })
         .collect();
 
     if wrapped.is_empty() {
@@ -5540,15 +5560,37 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
     // installed and enabled but no loader can see them, so surface them loudly —
     // the user has no other way to find out short of noticing in-game.
     if let Ok(wrapped) = collect_wrapped_mods(&state) {
-        if !wrapped.is_empty() {
-            let files: usize = wrapped.iter().map(|w| w.file_count).sum();
+        let (partial, whole): (Vec<_>, Vec<_>) = wrapped
+            .iter()
+            .partition(|w| w.kind == mod_repair::WrapperKind::Partial);
+
+        if !whole.is_empty() {
+            let files: usize = whole.iter().map(|w| w.file_count).sum();
             issues.push(serde_json::json!({
                 "type": "warning",
                 "code": "wrapped_mods",
                 "message": format!(
                     "{} mod{} installed inside a redundant folder and can't be loaded by the game ({} file{}). Repair in Config.",
-                    wrapped.len(),
-                    if wrapped.len() == 1 { "" } else { "s" },
+                    whole.len(),
+                    if whole.len() == 1 { "" } else { "s" },
+                    files,
+                    if files == 1 { "" } else { "s" }
+                )
+            }));
+        }
+
+        // Partial wrappers get their own line: part of the mod does load, so the
+        // symptom is a mod that half-works rather than one that is plainly dead,
+        // and the repair needs a human to rule out an optional variant first.
+        if !partial.is_empty() {
+            let files: usize = partial.iter().map(|w| w.file_count).sum();
+            issues.push(serde_json::json!({
+                "type": "warning",
+                "code": "partial_wrapped_mods",
+                "message": format!(
+                    "{} mod{} partly installed inside a redundant folder — {} file{} sit where no loader looks. Review in Config.",
+                    partial.len(),
+                    if partial.len() == 1 { "" } else { "s" },
                     files,
                     if files == 1 { "" } else { "s" }
                 )

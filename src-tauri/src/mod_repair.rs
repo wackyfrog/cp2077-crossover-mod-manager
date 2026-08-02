@@ -24,12 +24,29 @@ pub struct PlannedMove {
     pub blocked: bool,
 }
 
+/// How much of a mod the wrapper swallowed.
+///
+/// The distinction is not cosmetic: it decides whether a repair may run
+/// unattended. See [`detect_wrapper_kind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WrapperKind {
+    /// Every recorded file sits under the wrapper. Nothing about the mod works
+    /// today, so moving it can only be an improvement.
+    Whole,
+    /// Part of the mod landed correctly and the rest sits under one wrapper.
+    /// Indistinguishable on disk from an optional FOMOD variant, so this always
+    /// needs the user to confirm.
+    Partial,
+}
+
 /// A mod detected as installed under a wrapper folder, plus its repair plan.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WrappedMod {
     pub id: String,
     pub name: String,
     pub wrapper: String,
+    pub kind: WrapperKind,
     pub file_count: usize,
     pub blocked_count: usize,
     pub moves: Vec<PlannedMove>,
@@ -39,30 +56,46 @@ fn is_canonical(component: &str) -> bool {
     CANONICAL_DIRS.contains(&component.to_lowercase().as_str())
 }
 
-/// Decide whether a mod's installed files sit under a single wrapper folder.
+/// Decide whether a mod's installed files sit under a single wrapper folder, and
+/// how much of the mod that wrapper holds.
 ///
-/// Returns the wrapper's name, or `None` when the layout should be left alone.
+/// Returns the wrapper's name and its [`WrapperKind`], or `None` when the layout
+/// should be left alone.
 ///
 /// Two conditions must both hold, and they exist to avoid making things worse:
 ///
-/// 1. **Every** file lives under one and the same non-canonical top-level folder.
-///    A mod with files in both `r6/` and `Variants/` is a multi-variant or FOMOD
-///    archive — moving its parts would activate options the user never chose.
+/// 1. Exactly **one** non-canonical top-level folder is involved. A mod spread
+///    across `Variants/` *and* `Options/` is a multi-variant or FOMOD archive —
+///    picking one of those to flatten would activate an option the user never
+///    chose.
 /// 2. A canonical directory (`r6`, `bin`, `archive`, …) appears immediately
 ///    inside that folder. Without this, the folder may not be a wrapper at all:
 ///    LUT packs ship `Textures/DLC03/…` and `Data/Textures/…`, which are
 ///    meaningful as-is, and flattening them would scatter loose files across the
 ///    game root.
 ///
-/// This mirrors [`crate::local_archive::find_content_root`] exactly, so repairing
+/// When every file sits under the wrapper the result is [`WrapperKind::Whole`],
+/// which mirrors [`crate::local_archive::find_content_root`] exactly: repairing
 /// yields the same result a fresh install would.
-pub fn detect_wrapper(files: &[String], game_dir: &Path) -> Option<String> {
+///
+/// When some files landed under canonical directories and the rest under the
+/// wrapper, the result is [`WrapperKind::Partial`]. Real case: Guns Redone V3.0
+/// (PL) put one `.reds` in `r6/scripts/` and 556 tweaks under
+/// `Guns Redone Overhauled v3.0 (PL)/r6/tweaks/…`. On disk that is *identical* in
+/// shape to a mod whose base files installed correctly alongside an unselected
+/// `Optional - Extra/archive/…` variant, and no inspection can tell the two
+/// apart — so a partial wrapper is only ever repaired on explicit request.
+///
+/// A file sitting directly in the game root still aborts detection entirely: a
+/// layout that loose is not one this function claims to understand.
+pub fn detect_wrapper_kind(files: &[String], game_dir: &Path) -> Option<(String, WrapperKind)> {
     if files.is_empty() {
         return None;
     }
 
     let mut wrapper: Option<String> = None;
     let mut has_canonical_child = false;
+    let mut canonical_siblings = 0usize;
 
     for file in files {
         let path = Path::new(file);
@@ -76,13 +109,14 @@ pub fn detect_wrapper(files: &[String], game_dir: &Path) -> Option<String> {
             return None;
         }
         if is_canonical(&top) {
-            return None;
+            canonical_siblings += 1;
+            continue;
         }
 
         match &wrapper {
             None => wrapper = Some(top),
             Some(existing) if *existing == top => {}
-            // Files under two different top-level folders: not a simple wrapper.
+            // Files under two different non-canonical folders: not a wrapper.
             Some(_) => return None,
         }
 
@@ -95,11 +129,17 @@ pub fn detect_wrapper(files: &[String], game_dir: &Path) -> Option<String> {
         }
     }
 
-    if has_canonical_child {
-        wrapper
-    } else {
-        None
+    let wrapper = wrapper?;
+    if !has_canonical_child {
+        return None;
     }
+
+    let kind = if canonical_siblings == 0 {
+        WrapperKind::Whole
+    } else {
+        WrapperKind::Partial
+    };
+    Some((wrapper, kind))
 }
 
 /// Turn a file and its resolved destination into a [`PlannedMove`], or `None`
@@ -334,13 +374,43 @@ mod tests {
             "Combat/r6/tweaks/x.yaml",
             "Combat/bin/x64/plugins/cyber_engine_tweaks/mods/Combat/init.lua",
         ]);
-        assert_eq!(detect_wrapper(&f, &game()), Some("Combat".to_string()));
+        assert_eq!(
+            detect_wrapper_kind(&f, &game()),
+            Some(("Combat".to_string(), WrapperKind::Whole))
+        );
     }
 
     #[test]
     fn canonical_layout_is_not_wrapped() {
         let f = files(&["r6/tweaks/x.yaml", "archive/pc/mod/y.archive"]);
-        assert_eq!(detect_wrapper(&f, &game()), None);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
+    }
+
+    #[test]
+    fn a_wrapper_beside_canonical_files_is_partial() {
+        // Real case: Guns Redone V3.0 (PL) — one script landed in r6/scripts/,
+        // the 556 tweaks under a folder named after the variant.
+        let f = files(&[
+            "r6/scripts/StaminaDebuffReduced.reds",
+            "Guns Redone Overhauled v3.0 (PL)/r6/tweaks/Guns Redone Overhauled v3.0 (PL)/a.yaml",
+        ]);
+        assert_eq!(
+            detect_wrapper_kind(&f, &game()),
+            Some((
+                "Guns Redone Overhauled v3.0 (PL)".to_string(),
+                WrapperKind::Partial
+            ))
+        );
+    }
+
+    #[test]
+    fn two_non_canonical_folders_are_left_alone() {
+        // Genuinely ambiguous: picking one to flatten would activate a variant.
+        let f = files(&[
+            "Optional - Red/archive/pc/mod/red.archive",
+            "Optional - Blue/archive/pc/mod/blue.archive",
+        ]);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
     }
 
     #[test]
@@ -350,7 +420,7 @@ mod tests {
             "fomod/Options/a.archive",
             "archive/pc/mod/void_Ducati_916_xx_base.archive",
         ]);
-        assert_eq!(detect_wrapper(&f, &game()), None);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
     }
 
     #[test]
@@ -360,19 +430,42 @@ mod tests {
             "Textures/DLC03/Effects/LUTS/a.dds",
             "Textures/Effects/LUTS/b.dds",
         ]);
-        assert_eq!(detect_wrapper(&f, &game()), None);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
     }
 
     #[test]
     fn loose_file_in_game_root_is_not_wrapped() {
         let f = files(&["readme.txt"]);
-        assert_eq!(detect_wrapper(&f, &game()), None);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
+    }
+
+    #[test]
+    fn a_loose_file_beside_a_wrapper_still_aborts_detection() {
+        // Real case: SPLAT Physics drops a PDF field guide in the game root.
+        let f = files(&["SPLAT_Settings_Field_Guide.pdf", "Combat/r6/tweaks/x.yaml"]);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
     }
 
     #[test]
     fn files_outside_the_game_dir_abort_detection() {
         let f = vec!["/elsewhere/Combat/r6/x.yaml".to_string()];
-        assert_eq!(detect_wrapper(&f, &game()), None);
+        assert_eq!(detect_wrapper_kind(&f, &game()), None);
+    }
+
+    #[test]
+    fn a_partial_plan_moves_only_the_wrapped_files() {
+        let f = files(&[
+            "r6/scripts/keep.reds",
+            "Guns Redone Overhauled v3.0 (PL)/r6/tweaks/Guns/a.yaml",
+        ]);
+        let moves = plan_moves(
+            &f,
+            &game(),
+            "Guns Redone Overhauled v3.0 (PL)",
+            |game_dir, inner| Ok(game_dir.join(inner)),
+        );
+        assert_eq!(moves.len(), 1, "the correctly installed file stays put");
+        assert_eq!(moves[0].to, "/game/r6/tweaks/Guns/a.yaml");
     }
 
     #[test]

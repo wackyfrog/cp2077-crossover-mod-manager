@@ -109,6 +109,13 @@ destination is already taken by another mod, it is skipped rather than
 overwritten. Reinstalling a mod also fixes it, since new installs strip the
 wrapper correctly.
 
+A mod can also land *half* in a wrapper: some files where they belong, the rest
+under a folder no loader reads. The scan lists these separately, because that
+shape on disk is indistinguishable from a mod whose base files installed
+correctly next to an optional variant you never selected. **Repair now** leaves
+them alone; each gets its own button, since moving the files activates whatever
+they contain and only you know which it is. Check the mod's page first.
+
 ### Archives packed on Windows (versions up to 1.4)
 
 Some archives store their entries with backslashes: `r6\scripts\Mod\file.reds`

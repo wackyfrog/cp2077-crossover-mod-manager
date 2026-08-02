@@ -748,9 +748,9 @@ function App() {
   };
 
   const hasNxmIssue = healthIssues.some((i) => i.code?.startsWith("nxm"));
-  // Both silent-breakage issues are fixed the same way — a repair in Config.
-  const hasBrokenInstalls = healthIssues.some(
-    (i) => i.code === "wrapped_mods" || i.code === "mangled_paths"
+  // Every silent-breakage issue is fixed the same way — a repair in Config.
+  const hasBrokenInstalls = healthIssues.some((i) =>
+    ["wrapped_mods", "partial_wrapped_mods", "mangled_paths"].includes(i.code)
   );
 
   return (

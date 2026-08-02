@@ -4,6 +4,28 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import useEscape from "../hooks/useEscape";
 import "./Settings.css";
 
+// One entry in the unloadable-mods report: what would move, and where to.
+// Shared by the whole-wrapper list and the partial-wrapper list, which differ
+// only in the footer each row carries.
+function WrappedModRow({ mod, onOpen, children }) {
+  return (
+    <div className="validation-mod">
+      <div className="validation-mod-name" onClick={onOpen}>
+        {mod.name} — {mod.file_count} file{mod.file_count === 1 ? "" : "s"} under {mod.wrapper}/
+      </div>
+      {mod.moves.slice(0, 3).map((mv, j) => (
+        <div key={j} className="validation-file">
+          {mod.wrapper}/… → {mv.to.split("Cyberpunk 2077/").pop()}
+        </div>
+      ))}
+      {mod.moves.length > 3 && (
+        <div className="validation-file">…and {mod.moves.length - 3} more</div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
   const [gamePath, setGamePath] = useState("");
   const [initialGamePath, setInitialGamePath] = useState("");
@@ -735,59 +757,86 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
                   No unloadable mods — every mod is installed where the game looks for it
                 </p>
               ) : (
-                <>
-                  <p className="validation-summary">
-                    {wrapScan.mod_count} mod{wrapScan.mod_count === 1 ? "" : "s"} sit inside a
-                    redundant folder, so no mod loader can see {wrapScan.mod_count === 1 ? "it" : "them"}.
-                    Repairing moves {wrapScan.file_count} file{wrapScan.file_count === 1 ? "" : "s"} to
-                    where {wrapScan.mod_count === 1 ? "it belongs" : "they belong"} and updates the database.
-                    The mod database is backed up first.
-                  </p>
-                  {wrapScan.blocked_count > 0 && (
-                    <p className="validation-summary">
-                      {wrapScan.blocked_count} file{wrapScan.blocked_count === 1 ? "" : "s"} will be
-                      skipped — something already occupies the destination.
-                    </p>
-                  )}
-                  {wrapScan.mods.map((m) => (
-                    <div key={m.id} className="validation-mod">
-                      <div
-                        className="validation-mod-name"
-                        onClick={() => { setWrapScan(null); onNavigateToMod?.(m.id); }}
-                      >
-                        {m.name} — {m.file_count} file{m.file_count === 1 ? "" : "s"} under {m.wrapper}/
-                      </div>
-                      {m.moves.slice(0, 3).map((mv, j) => (
-                        <div key={j} className="validation-file">
-                          {m.wrapper}/… → {mv.to.split("Cyberpunk 2077/").pop()}
-                        </div>
-                      ))}
-                      {m.moves.length > 3 && (
-                        <div className="validation-file">…and {m.moves.length - 3} more</div>
+                (() => {
+                  const whole = wrapScan.mods.filter((m) => m.kind !== "partial");
+                  const partial = wrapScan.mods.filter((m) => m.kind === "partial");
+                  const wholeFiles = whole.reduce((n, m) => n + m.file_count, 0);
+                  const openMod = (id) => { setWrapScan(null); onNavigateToMod?.(id); };
+                  const repair = async (modIds) => {
+                    setWrapBusy(true);
+                    try {
+                      setWrapResult(await invoke("repair_wrapped_mods", { modIds }));
+                      onSaved?.();
+                    } catch (e) {
+                      setWrapScan({ error: String(e) });
+                    } finally {
+                      setWrapBusy(false);
+                    }
+                  };
+
+                  return (
+                    <>
+                      {whole.length > 0 && (
+                        <>
+                          <p className="validation-summary">
+                            {whole.length} mod{whole.length === 1 ? "" : "s"} sit inside a
+                            redundant folder, so no mod loader can see {whole.length === 1 ? "it" : "them"}.
+                            Repairing moves {wholeFiles} file{wholeFiles === 1 ? "" : "s"} to
+                            where {whole.length === 1 ? "it belongs" : "they belong"} and updates the database.
+                            The mod database is backed up first.
+                          </p>
+                          {wrapScan.blocked_count > 0 && (
+                            <p className="validation-summary">
+                              {wrapScan.blocked_count} file{wrapScan.blocked_count === 1 ? "" : "s"} will be
+                              skipped — something already occupies the destination.
+                            </p>
+                          )}
+                          {whole.map((m) => (
+                            <WrappedModRow key={m.id} mod={m} onOpen={() => openMod(m.id)} />
+                          ))}
+                          <div className="setting-row">
+                            <button
+                              className="maintenance-button"
+                              disabled={wrapBusy}
+                              onClick={() => repair(null)}
+                            >
+                              {wrapBusy ? "Repairing..." : "Repair now"}
+                            </button>
+                          </div>
+                        </>
                       )}
-                    </div>
-                  ))}
-                  <div className="setting-row">
-                    <button
-                      className="maintenance-button"
-                      disabled={wrapBusy}
-                      onClick={async () => {
-                        setWrapBusy(true);
-                        try {
-                          const r = await invoke("repair_wrapped_mods", { modIds: null });
-                          setWrapResult(r);
-                          onSaved?.();
-                        } catch (e) {
-                          setWrapScan({ error: String(e) });
-                        } finally {
-                          setWrapBusy(false);
-                        }
-                      }}
-                    >
-                      {wrapBusy ? "Repairing..." : "Repair now"}
-                    </button>
-                  </div>
-                </>
+
+                      {partial.length > 0 && (
+                        <>
+                          <p className="validation-summary validation-summary-warn">
+                            {partial.length} mod{partial.length === 1 ? "" : "s"} installed
+                            {partial.length === 1 ? " part of itself" : " part of themselves"} into a
+                            redundant folder — the rest loads normally, so the mod half-works rather
+                            than plainly failing.
+                          </p>
+                          <p className="validation-summary">
+                            These are not repaired automatically: an optional FOMOD variant you never
+                            selected looks exactly the same on disk. Check the mod's page first —
+                            moving the files activates whatever they contain.
+                          </p>
+                          {partial.map((m) => (
+                            <WrappedModRow key={m.id} mod={m} onOpen={() => openMod(m.id)}>
+                              <div className="setting-row">
+                                <button
+                                  className="maintenance-button"
+                                  disabled={wrapBusy}
+                                  onClick={() => repair([m.id])}
+                                >
+                                  {wrapBusy ? "Moving..." : "Move these files"}
+                                </button>
+                              </div>
+                            </WrappedModRow>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  );
+                })()
               )}
             </div>
           </div>

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A mod that installed *half* of itself into a redundant folder is now reported** — "Check for unloadable mods" only ever looked at mods whose every file sat under one wrapper folder. A mod that put some files where they belong and the rest under a wrapper was skipped entirely, so it never showed up in the scan, in the startup banner, or anywhere else: part of it loaded, the rest was invisible to every loader, and nothing in the app said so. Real case: Guns Redone V3.0 (PL) put one script in `r6/scripts/` and 556 tweaks under a folder named after the variant. These now appear in the scan under their own heading
+
+### New
+
+- **Partial wrappers are repaired one mod at a time, on request** — the layout is genuinely ambiguous: a mod whose base files installed correctly beside an optional FOMOD variant you never selected looks *identical* on disk to one that half-misinstalled. Nothing can tell the two apart, so "Repair now" leaves these alone and each gets its own button instead, with the caveat spelled out. Moving the files activates whatever they contain, which is the user's call to make. Whole-wrapper mods keep repairing in bulk as before
+
 ### Documentation
 
 - **First-launch instructions now match current macOS** — the README told users to Control-click → Open, which Apple removed as a Gatekeeper bypass in macOS 15 Sequoia. The section now explains why the app is blocked at all (ad-hoc signed, not notarized), gives the System Settings → Privacy & Security → Open Anyway route and the `xattr` one, and cites Apple's own documentation for both

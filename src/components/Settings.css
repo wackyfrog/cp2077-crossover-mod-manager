@@ -497,6 +497,12 @@
   letter-spacing: 0.3px;
 }
 
+/* Heads the partial-wrapper list, where the repair needs a decision from the
+   user rather than a click. Red separates it from the routine yellow summary. */
+.validation-summary-warn {
+  color: var(--cyber-red-bright);
+}
+
 .validation-mod {
   margin-bottom: 0.6rem;
   padding-bottom: 0.6rem;
