@@ -12,6 +12,11 @@ All notable changes to this project will be documented in this file.
 
 - **Partial wrappers are repaired one mod at a time, on request** — the layout is genuinely ambiguous: a mod whose base files installed correctly beside an optional FOMOD variant you never selected looks *identical* on disk to one that half-misinstalled. Nothing can tell the two apart, so "Repair now" leaves these alone and each gets its own button instead, with the caveat spelled out. Moving the files activates whatever they contain, which is the user's call to make. Whole-wrapper mods keep repairing in bulk as before
 
+### Changed
+
+- **The scan states a shared destination once instead of three times** — when every file of a mod lands in the same folder, which is the usual shape, the report printed three near-identical paths that wrapped across half the dialog and said nothing the fourth line didn't. It now names the destination folder once. Mods whose files fan out to several places still list examples as before
+- **A report holding only partial wrappers is no longer titled "Unloadable Mods"** — those mods do load, just not all of them, so the title contradicted the first line of its own summary. It reads "Misplaced Mod Files" in that case; anything else keeps the familiar title
+
 ### Documentation
 
 - **First-launch instructions now match current macOS** — the README told users to Control-click → Open, which Apple removed as a Gatekeeper bypass in macOS 15 Sequoia. The section now explains why the app is blocked at all (ad-hoc signed, not notarized), gives the System Settings → Privacy & Security → Open Anyway route and the `xattr` one, and cites Apple's own documentation for both

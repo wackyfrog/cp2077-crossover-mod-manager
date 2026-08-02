@@ -4,22 +4,41 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import useEscape from "../hooks/useEscape";
 import "./Settings.css";
 
-// One entry in the unloadable-mods report: what would move, and where to.
+const shortPath = (p) => p.split("Cyberpunk 2077/").pop();
+const parentDir = (p) => p.slice(0, p.lastIndexOf("/"));
+
+// One entry in the misplaced-files report: what would move, and where to.
 // Shared by the whole-wrapper list and the partial-wrapper list, which differ
 // only in the footer each row carries.
+//
+// A mod whose files all land in one directory — the common case, since a
+// wrapper usually holds a single tweaks or scripts folder — gets that
+// destination stated once. Listing three near-identical paths instead says
+// nothing extra and wraps across half the dialog.
 function WrappedModRow({ mod, onOpen, children }) {
+  const dirs = mod.moves.map((mv) => parentDir(mv.to));
+  const oneDestination = dirs.every((d) => d === dirs[0]);
+
   return (
     <div className="validation-mod">
       <div className="validation-mod-name" onClick={onOpen}>
         {mod.name} — {mod.file_count} file{mod.file_count === 1 ? "" : "s"} under {mod.wrapper}/
       </div>
-      {mod.moves.slice(0, 3).map((mv, j) => (
-        <div key={j} className="validation-file">
-          {mod.wrapper}/… → {mv.to.split("Cyberpunk 2077/").pop()}
+      {oneDestination ? (
+        <div className="validation-file">
+          {mod.wrapper}/… → {shortPath(dirs[0])}/
         </div>
-      ))}
-      {mod.moves.length > 3 && (
-        <div className="validation-file">…and {mod.moves.length - 3} more</div>
+      ) : (
+        <>
+          {mod.moves.slice(0, 3).map((mv, j) => (
+            <div key={j} className="validation-file">
+              {mod.wrapper}/… → {shortPath(mv.to)}
+            </div>
+          ))}
+          {mod.moves.length > 3 && (
+            <div className="validation-file">…and {mod.moves.length - 3} more</div>
+          )}
+        </>
       )}
       {children}
     </div>
@@ -729,7 +748,15 @@ function Settings({ hint = () => ({}), onNavigateToMod, onSaved }) {
         <div className="validation-backdrop" onClick={() => setWrapScan(null)}>
           <div className="validation-modal" onClick={(e) => e.stopPropagation()}>
             <div className="validation-header">
-              <span className="validation-title">Unloadable Mods</span>
+              {/* "Unloadable" is wrong for a partial wrapper — that mod does
+                  load, just not all of it. Only relabel when the report holds
+                  nothing else, so the familiar title stays put in every other
+                  case. */}
+              <span className="validation-title">
+                {wrapScan.mods?.length > 0 && wrapScan.mods.every((m) => m.kind === "partial")
+                  ? "Misplaced Mod Files"
+                  : "Unloadable Mods"}
+              </span>
               <button className="validation-close" onClick={() => setWrapScan(null)}>✕</button>
             </div>
             <div className="validation-body">
