@@ -7,6 +7,8 @@
 
 Mod manager for Cyberpunk 2077 running via CrossOver on macOS.
 
+**[wackyfrog.github.io/cp2077-crossover-mod-manager](https://wackyfrog.github.io/cp2077-crossover-mod-manager/)** — the short version, if you would rather not read all of this.
+
 Enjoy Night City, choom!
 
 ## Contents
@@ -249,7 +251,7 @@ Full history in the [CHANGELOG](CHANGELOG.md).
 
 ## Download
 
-Download the latest release from the [Releases](https://github.com/wackyfrog/cp2077-crossover-mod-manager/releases) page.
+Download the latest release from the [Releases](https://github.com/wackyfrog/cp2077-crossover-mod-manager/releases) page, or from the [project page](https://wackyfrog.github.io/cp2077-crossover-mod-manager/).
 
 <a id="first-launch-on-macos"></a>
 ### First launch on macOS

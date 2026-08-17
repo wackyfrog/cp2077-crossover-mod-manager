@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Documentation
 
 - **The project describes itself in its own words again** — `package.json` and `Cargo.toml` both carried the description of an unrelated project with a near-identical name, word for word, which left search engines treating this repository as a duplicate of it and showing the other one instead. Both now say what this app actually does, and `Cargo.toml` points at its own repository rather than an empty string
-- **A landing page on GitHub Pages** — a short page for people who arrive from a search engine rather than from the repository, published from a separate `gh-pages` branch so that nothing under `docs/` is exposed
+- **A landing page on GitHub Pages** — [wackyfrog.github.io/cp2077-crossover-mod-manager](https://wackyfrog.github.io/cp2077-crossover-mod-manager/), a short page for people who arrive from a search engine rather than from the repository, styled with the app's own palette so it doesn't look like a stranger to the screenshot on it. It is published from a separate `gh-pages` branch, because `docs/` in this branch holds working notes rather than user documentation and publishing that folder would put them online. The README links to it from the top and from the Download section
 
 ## [1.6.0] - 2026-08-02
 
