@@ -9,6 +9,8 @@ $cyber-cyan: #00ffff;
 $cyber-yellow: #ffff00;
 $cyber-dark: #0d0d0d;
 $cyber-text-dim: #c49aa5;
+/* The neon red is unreadable on white; this is the same hue, darkened for body text */
+$accent-ink: #c1003a;
 $mono: ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
 
 .page-header {
@@ -61,16 +63,23 @@ $mono: ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
 
 /* Enough of the accent to stop the body fighting the header */
 .main-content {
-  h2 {
+  /* Cayman colours h2-h6 green in one shared rule; override or the headings
+     keep the colour of the gradient we just removed */
+  h2,
+  h3 {
     font-family: $mono;
+    color: $accent-ink;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+  }
+
+  h2 {
     border-bottom: 1px solid rgba(255, 0, 64, 0.35);
     padding-bottom: 0.3rem;
   }
 
   a {
-    color: #c1003a;
+    color: $accent-ink;
 
     &:hover {
       color: $cyber-red;
