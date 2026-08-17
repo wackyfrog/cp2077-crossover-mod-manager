@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The project describes itself in its own words again** — `package.json` and `Cargo.toml` both carried the description of an unrelated project with a near-identical name, word for word, which left search engines treating this repository as a duplicate of it and showing the other one instead. Both now say what this app actually does, and `Cargo.toml` points at its own repository rather than an empty string
+- **A landing page on GitHub Pages** — a short page for people who arrive from a search engine rather than from the repository, published from a separate `gh-pages` branch so that nothing under `docs/` is exposed
+
 ## [1.6.0] - 2026-08-02
 
 ### Upgrading from an earlier version

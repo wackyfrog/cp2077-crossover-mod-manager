@@ -1,10 +1,10 @@
 [package]
 name = "crossover-mod-manager"
 version = "1.6.0"
-description = "Nexus Mod Manager for CP2077 on Mac via Crossover"
+description = "Native macOS mod manager for Cyberpunk 2077 under CrossOver — one-click NexusMods installs, update checks and safe uninstall"
 authors = ["Oleksandr Degtiar"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/wackyfrog/cp2077-crossover-mod-manager"
 edition = "2021"
 
 [build-dependencies]

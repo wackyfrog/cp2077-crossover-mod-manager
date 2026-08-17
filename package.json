@@ -1,7 +1,7 @@
 {
   "name": "crossover-mod-manager",
   "version": "1.6.0",
-  "description": "Nexus Mod Manager for CP2077 on Mac via Crossover",
+  "description": "Native macOS mod manager for Cyberpunk 2077 under CrossOver — one-click NexusMods installs, update checks and safe uninstall",
   "type": "module",
   "scripts": {
     "dev": "vite",
