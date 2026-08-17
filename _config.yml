@@ -1,0 +1,7 @@
+title: Crossover Mod Manager
+description: Install Cyberpunk 2077 mods on macOS, inside your CrossOver bottle
+theme: jekyll-theme-cayman
+url: https://wackyfrog.github.io
+baseurl: /cp2077-crossover-mod-manager
+plugins:
+  - jekyll-sitemap
