@@ -5,3 +5,13 @@ url: https://wackyfrog.github.io
 baseurl: /cp2077-crossover-mod-manager
 plugins:
   - jekyll-sitemap
+
+# The Search Console verification file is a bare text line, not a page anyone
+# should land on from a search result. Keep it out of the sitemap; it still has
+# to stay served at its URL, so it is only the listing that is suppressed.
+defaults:
+  - scope:
+      path: google4111202764e631cf.html
+    values:
+      sitemap: false
+
