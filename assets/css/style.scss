@@ -1,0 +1,89 @@
+---
+---
+
+@import "{{ site.theme }}";
+
+/* Palette lifted from the app itself — src/App.css */
+$cyber-red: #ff0040;
+$cyber-cyan: #00ffff;
+$cyber-yellow: #ffff00;
+$cyber-dark: #0d0d0d;
+$cyber-text-dim: #c49aa5;
+$mono: ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
+
+.page-header {
+  background-color: $cyber-dark;
+  background-image:
+    radial-gradient(ellipse at 50% 130%, rgba(255, 0, 64, 0.35), transparent 62%),
+    repeating-linear-gradient(0deg, rgba(255, 0, 64, 0.07) 0 1px, transparent 1px 3px);
+  border-bottom: 2px solid $cyber-red;
+  box-shadow: inset 0 -24px 40px -30px $cyber-red;
+}
+
+.project-name {
+  font-family: $mono;
+  color: $cyber-yellow;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-shadow: 0 0 18px rgba(255, 255, 0, 0.45);
+}
+
+.project-tagline {
+  font-family: $mono;
+  color: $cyber-cyan;
+  opacity: 1;
+  letter-spacing: 0.03em;
+
+  /* The terminal-prompt marker the app uses in front of a mod name */
+  &::before {
+    content: "// ";
+    color: $cyber-red;
+  }
+}
+
+.page-header .btn {
+  font-family: $mono;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: $cyber-red;
+  background: rgba(255, 0, 64, 0.06);
+  border: 1px solid $cyber-red;
+  border-radius: 0;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    color: $cyber-dark;
+    background: $cyber-red;
+    border-color: $cyber-red;
+    box-shadow: 0 0 18px rgba(255, 0, 64, 0.6);
+  }
+}
+
+/* Enough of the accent to stop the body fighting the header */
+.main-content {
+  h2 {
+    font-family: $mono;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid rgba(255, 0, 64, 0.35);
+    padding-bottom: 0.3rem;
+  }
+
+  a {
+    color: #c1003a;
+
+    &:hover {
+      color: $cyber-red;
+    }
+  }
+
+  img {
+    border: 1px solid rgba(255, 0, 64, 0.35);
+  }
+}
+
+.site-footer {
+  border-top: 1px solid rgba(255, 0, 64, 0.35);
+  font-family: $mono;
+  color: $cyber-text-dim;
+}
