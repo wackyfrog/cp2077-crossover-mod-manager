@@ -1,13 +1,23 @@
-Cyberpunk 2077 has no Mac release. The way people play it on macOS is inside a
-CrossOver bottle — and every mod manager the modding scene uses (Vortex, MO2,
-the Nexus app) is a Windows program that expects a Windows filesystem. Running
-one *inside* the bottle to manage the game in the same bottle works about as
-well as it sounds.
+Cyberpunk 2077 has run natively on macOS since July 2025 — and almost nothing
+the modding scene builds runs with it. The Mac build has no CET, no RED4ext, no
+ArchiveXL or TweakXL; the [modding wiki](https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-users/users-modding-cyberpunk-2077/modding-on-macos)
+lists redscript alone as unofficially supported, which rules out most of what
+people actually install. So the mods stay where the Windows build is: inside a
+CrossOver bottle.
+
+Which leaves the managing of them. Vortex, MO2 and the Nexus app are Windows
+programs, so the usual answer is to run one *inside* the same bottle it is
+meant to manage — people do get that working. It is still a Windows file
+manager wearing a Windows theme, sitting in a Wine prefix, on your Mac.
 
 **Crossover Mod Manager is a native macOS app** that reaches into the bottle
 from outside. It speaks NXM links, so *Download with Mod Manager* on
 [NexusMods](https://www.nexusmods.com/cyberpunk2077) hands the mod straight to
 it, and it writes files where CET, TweakXL and REDmod actually look for them.
+
+It is a pet project, and it looks like one on purpose: the whole thing is
+styled after Night City rather than after a file browser. The part underneath
+is meant to be dull and correct.
 
 [**Download the latest release**](https://github.com/wackyfrog/cp2077-crossover-mod-manager/releases/latest)
  · [Source on GitHub](https://github.com/wackyfrog/cp2077-crossover-mod-manager)
@@ -21,14 +31,15 @@ it, and it writes files where CET, TweakXL and REDmod actually look for them.
 - **Handles ZIP, 7z and RAR**, including archives packed on Windows that store
   their paths with backslashes — on macOS those become part of the filename
   instead of folders, and the mod lands as one long file the game can't follow.
-- **Fixes the case-sensitivity trap.** Windows treats `Archive/` and `archive/`
-  as the same folder; the macOS filesystem under Wine does not, and a mod that
-  guesses wrong silently never loads. The installer corrects the casing to
-  match the game's real layout.
+- **Keeps the game's folder casing straight.** Archives spell the game's own
+  folders every which way — `Archive/`, `R6/`, `BIN/`. The installer writes
+  them under the casing the game uses, so a mod's files join the real folders
+  instead of forming a set of near-identical ones beside them.
 - **Checks for updates** against NexusMods and tells you which of your mods
   have a newer version.
-- **Uninstalls cleanly** — every file a mod put on disk is tracked, so removing
-  it leaves the vanilla game untouched.
+- **Uninstalls what it installed.** Every file the app puts on disk is tracked
+  and goes with the mod, emptied folders included — the switched-off ones too,
+  whose files sit on disk under a different name.
 - **Repairs mods that installed wrong**, including ones put there by older
   versions of this app: a scan reports what it would move before anything is
   moved.
@@ -37,7 +48,7 @@ it, and it writes files where CET, TweakXL and REDmod actually look for them.
 
 - macOS 11 or later, Apple Silicon
 - [CrossOver](https://www.codeweavers.com/crossover) 25 or later
-- Cyberpunk 2077 already installed in a bottle
+- The **Windows** build of Cyberpunk 2077, installed in a bottle
 - A [NexusMods](https://www.nexusmods.com) account, for the API key
 
 ## First launch
