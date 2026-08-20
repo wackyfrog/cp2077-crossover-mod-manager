@@ -7,6 +7,16 @@
 
 Mod manager for Cyberpunk 2077 running via CrossOver on macOS.
 
+The game itself runs natively on macOS; the modding stack does not. The Mac
+build has no CET, no RED4ext, no ArchiveXL or TweakXL — [the modding
+wiki](https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-users/users-modding-cyberpunk-2077/modding-on-macos)
+lists redscript alone as unofficially supported — so a modded playthrough means
+the **Windows** build inside a CrossOver bottle. Vortex, MO2 and the Nexus app
+are Windows programs, and managing that install with one means running it
+inside the same bottle. This is a native macOS app that reaches into the bottle
+from outside instead, and being a pet project it is dressed for Night City
+rather than for a file browser.
+
 **[wackyfrog.github.io/cp2077-crossover-mod-manager](https://wackyfrog.github.io/cp2077-crossover-mod-manager/)** — the short version, if you would rather not read all of this.
 
 Enjoy Night City, choom!
@@ -16,7 +26,7 @@ Enjoy Night City, choom!
 - [Screenshots](#screenshots)
 - [Mods that show as enabled but do nothing](#mods-that-show-as-enabled-but-do-nothing) — and how to repair them
 - [Housekeeping](#housekeeping) — clutter earlier versions could leave behind
-- [What's new](#whats-new-in-15)
+- [What's new](#whats-new-in-16)
 - [Requirements](#requirements) · [Download](#download) · [Quick start](#quick-start)
 - [Building from source](#building-from-source) · [Tech stack](#tech-stack) · [Data storage](#data-storage)
 
@@ -180,16 +190,33 @@ could leave three kinds of leftovers:
 Deleting a mod through the app now clears the folders it empties, so this is
 mostly about tidying what earlier versions left.
 
-## What's New in 1.5
+## What's New in 1.6
+
+- **Mods that misinstalled *half* of themselves are now reported** — "Check for
+  unloadable mods" only ever looked at mods whose every file sat under one
+  wrapper folder. A mod that put some files where they belong and the rest under
+  a wrapper was skipped entirely: part of it loaded, the rest was invisible to
+  every loader, and nothing said so. They now appear in the scan and in the
+  startup banner, under their own heading
+- **Those get repaired one mod at a time, on request** — on disk they are
+  indistinguishable from a mod whose base files installed correctly beside an
+  optional variant you never selected, so "Repair now" leaves them alone and each
+  gets its own button. Moving the files activates whatever they contain, which is
+  your call to make
+- **The banner's Repair button opens the repair** — it used to drop you on the
+  Config tab to find the right scan yourself. Reports are also shorter and no
+  longer titled "Unloadable Mods" when everything in them does, in fact, load
+
+<details>
+<summary><b>Earlier releases</b> — 1.5, 1.4, 1.3, 1.2, 1.1, 1.0</summary>
+
+### What's New in 1.5
 
 - **Mods from archives packed on Windows now install into real folders** — backslash paths used to become one long filename that no loader could find, while every check reported the file as present. **Config → Check for scrambled file paths** repairs mods already installed that way. Archives can also no longer write outside the folder they're unpacked into
 - **The Jack In screen keeps track of what's running** — after any failure it used to stay on FAULT DETECTED for good, with a live Retry button that would resubmit the *previous* mod and blank out the running download's name, so the next click cancelled it. A failed install with the screen closed showed an empty prompt instead of the error, and dropping a second archive after a failed one was silently refused. All fixed; a download turned away while another is running now says so on screen instead of behind the overlay
 - **Switched-off mods are handled properly everywhere** — an unslotted mod keeps its files on disk under a `.disabled` suffix, and three places in the app didn't know that. Deleting such a mod deleted nothing while still marking it removed, leaving its files stranded; "Validate mod files" reported every unslotted mod's files as missing (one install showed *910 missing files* with nothing missing at all)
 - **Check for leftover mod folders** (Config) — Cyber Engine Tweaks logs *"Ignoring mod which does not contain init.lua!"* for every folder that no longer holds a mod, which reads as breakage but isn't. Removal now clears the folders it empties, and this scan finds older leftovers — showing what each holds so you can decide. Folders with settings in them, or holding files that belong to an installed mod, are never swept
 - **Validation now flags files in the wrong state** — a slotted mod whose files are ghosted does nothing in the game, and an unslotted one whose files are active runs anyway. Neither is a missing file, and nothing else would tell you
-
-<details>
-<summary><b>Earlier releases</b> — 1.4, 1.3, 1.2, 1.1, 1.0</summary>
 
 ### What's New in 1.4
 
@@ -246,7 +273,7 @@ Full history in the [CHANGELOG](CHANGELOG.md).
 
 - macOS 11.0+ (Apple Silicon)
 - [CrossOver](https://www.codeweavers.com/crossover) 25+
-- Cyberpunk 2077 installed in a CrossOver bottle
+- The **Windows** build of Cyberpunk 2077, installed in a CrossOver bottle (the native Mac build can't load the mods)
 - [NexusMods](https://www.nexusmods.com) account (for API key and downloads)
 
 ## Download
