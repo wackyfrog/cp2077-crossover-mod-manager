@@ -12,6 +12,7 @@ How to configure Crossover Mod Manager and fix the most common problem:
 - [Troubleshooting: mods don't appear in the game](#not-appearing)
 - [Troubleshooting: files are there, but mods don't load in-game](#not-loading)
 - [Troubleshooting: installed by v1.2 or earlier into a wrapper folder](#wrapper-folder)
+- [Troubleshooting: a mod says up to date, but the game has the old version](#same-file-update)
 - [Configuring the CrossOver bottle for advanced mods](#bottle-config)
 - [Mod-type compatibility under CrossOver](#compatibility)
 - [Community resources](#help)
@@ -194,6 +195,31 @@ strip the wrapper.
 
 ---
 
+<a id="same-file-update"></a>
+## Troubleshooting: a mod says up to date, but the game has the old version
+
+**Symptom.** You pressed **Update** in v1.6 or earlier, the install finished,
+the update badge disappeared — and the game still behaves like the old version.
+
+**Cause.** Update asked NexusMods for the newest file *with the same name* as
+the installed one. When the author puts the version in the file name, no newer
+file has that name, so the app asked for — and reinstalled — the file you
+already had, then recorded the mod at its latest version anyway.
+
+**How to check.** Open the mod's **Version** row. If the version marked
+**INSTALLED** in the changelog is older than the version at the start of the
+row, the record is wrong.
+
+**How to fix.** Update to v1.7+ and run **NETRUN** once (a startup banner asks
+for it). It checks the installed file itself: if the author moved it to *Old
+versions* on NexusMods, the mod is marked **OUTDATED** and its recorded version
+is set back to the one on disk. Then press **Update** — for these mods it opens
+the **Files** tab on NexusMods, where you choose the newer file. If the author
+deleted the old file from NexusMods, the check can't see it; reinstall the mod
+from its Files tab by hand.
+
+---
+
 <a id="bottle-config"></a>
 ## Configuring the CrossOver bottle for advanced mods
 
@@ -275,6 +301,7 @@ All manager data lives in `~/.crossover-mod-manager/`:
 | --- | --- |
 | `settings.json` | Game path, mod storage path, API key, flags |
 | `mods.json` | The installed-mods database (names, versions, tracked file paths) |
+| `changelogs.json` | Changelogs NETRUN fetched from NexusMods, one entry per mod; safe to delete, the next NETRUN rebuilds it |
 | `backups/` | Database backups (Config → backup/restore) |
 | `logs/` | Activity log `app.log` (+ rotated `app.log.1`…`app.log.5`) |
 

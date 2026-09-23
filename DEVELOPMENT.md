@@ -163,6 +163,7 @@ All data is stored in the user's home directory:
 ```
 ~/.crossover-mod-manager/
 ├── mods.json       # Installed mods database
+├── changelogs.json # Per-version changelogs by Nexus mod id, written by NETRUN
 └── settings.json   # Application settings
 ```
 

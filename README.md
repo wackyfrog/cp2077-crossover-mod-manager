@@ -24,9 +24,8 @@ Enjoy Night City, choom!
 ## Contents
 
 - [Screenshots](#screenshots)
-- [Mods that show as enabled but do nothing](#mods-that-show-as-enabled-but-do-nothing) — and how to repair them
-- [Housekeeping](#housekeeping) — clutter earlier versions could leave behind
-- [What's new](#whats-new-in-16)
+- [What's new in 1.7](#whats-new)
+- [Upgrading from an earlier version](#upgrading) — what earlier releases got wrong, and what to do about it
 - [Requirements](#requirements) · [Download](#download) · [Quick start](#quick-start)
 - [Building from source](#building-from-source) · [Tech stack](#tech-stack) · [Data storage](#data-storage)
 
@@ -63,19 +62,131 @@ Enjoy Night City, choom!
 
 </details>
 
-## Mods that show as enabled but do nothing
+<a id="whats-new"></a>
+## What's New in 1.7
 
-Two separate defects could put a mod's files somewhere no mod loader looks.
-Both are fixed for new installs, but files already on disk stay where they
-were put until you repair them. Neither produces an error anywhere: the files
-were really copied, the mod is recorded, the toggle says enabled — and the
-loaders simply never see them.
+- **The changelog unfolds from the Version row** — click `2.2.10 → v2.2.11 · 1 month ago ▶` and the mod's history opens in place: newest upload first, your installed version marked where it falls, older ones folded away. Versions whose author never wrote notes show the file's description instead, labelled as such
+- **NETRUN is quicker and brings the changelogs** — it asks NexusMods about 50 mods at a time, so a few hundred mods take about ten requests instead of hundreds, and the changelog it fetches always matches the update badge. It stops cleanly at the NexusMods request limit instead of failing every remaining mod
+- **OUTDATED and LATEST instead of UPD** — a mod with a newer version on Nexus says **OUTDATED**; one you've just updated says **LATEST** and names the version it came from. Working down the **Updates** filter no longer loses your place: an updated mod stays where it was until you quit
+- **Updates actually update** — Update could reinstall the file you already had and then call the mod up to date. Fixed, and NETRUN finds the mods it already happened to; see [below](#updates-that-didnt-update)
+- **Smaller things** — the Author row names the NexusMods account and opens its mods; the Mod Page link says *Open on NexusMods ↗*; **Flatline** moved left of **Update/Reinstall**, so the button on the right is never the one that deletes; unfolding Version or Files scrolls what opened into view
 
-If a mod isn't working and you used an earlier version, run **Config →
-Maintenance** and check both scans below. They only report; nothing changes
-until you press Repair.
+Full history in the [CHANGELOG](CHANGELOG.md).
 
-### Wrapper folders (versions up to 1.2)
+<a id="upgrading"></a>
+## Upgrading from an earlier version
+
+Earlier releases had defects whose effects stay on disk or in the mod database
+after you upgrade. Each is fixed for new installs; the ones below also need a
+step from you to put right what was done before. Newest first.
+
+<a id="updates-that-didnt-update"></a>
+### Updates that didn't update (versions up to 1.6)
+
+**What went wrong.** Update asked NexusMods for the newest file with the same
+name as the one installed. Many authors put the version in the file name —
+*"Native Interactions Framework 1.0.5a"* — so no newer file has that name, and
+the file it asked for was the one you already had. NexusMods sent it back, it
+was reinstalled, and the app then recorded the mod at its latest version with
+the update badge cleared: up to date on screen, unchanged on disk.
+
+**Whether it hit you.** Only mods updated through the app, and only those whose
+author renames the file with each release. In one real library, 4 of 17
+updates had done this.
+
+**How to fix it**, in v1.7 or later:
+
+1. A startup banner asks for it once: **Run NETRUN**.
+2. NETRUN checks the file you actually have installed. When the author has
+   moved it to *Old versions*, the mod is marked **OUTDATED**, and its recorded
+   version goes back to the one that is really on disk. Nothing is reinstalled
+   or moved by the check.
+3. Press **Update** on those mods. For them it opens the mod's **Files** tab,
+   where you pick the newer file.
+
+The same check also flags updates the author never reflected in the mod's own
+version number. It can't see a mod whose old file the author has deleted from
+NexusMods, since there is nothing left to compare against.
+
+These older ones produce no error anywhere: the files were really copied, the
+mod is recorded, the toggle says enabled — and the mod loaders simply never see
+them, or leftovers pile up. If a mod isn't working and you used an earlier
+version, run the scans under **Config → Maintenance**. They only report;
+nothing changes until you press Repair.
+
+<a id="windows-paths"></a>
+<details>
+<summary><b>Archives packed on Windows</b> (versions up to 1.4) — files the game can't follow</summary>
+
+Some archives store their entries with backslashes: `r6\scripts\Mod\file.reds`
+instead of `r6/scripts/Mod/file.reds`. On Windows those are folder separators.
+On macOS a backslash is an ordinary character in a filename, so the whole path
+became the *name* of one file sitting loose in the game folder, and the folders
+it spells out were never created:
+
+```
+the archive:                     installed as (wrong):              should have been:
+r6\scripts\Mod\file.reds         {game}/r6\scripts\Mod\file.reds    {game}/r6/scripts/Mod/file.reds
+                                 (one file, backslashes in name)
+```
+
+This one is harder to notice than the wrapper case, because **"Validate mod
+files" calls the file present** — it does exist, at exactly the path recorded
+for it. Only the loader disagrees.
+
+**How to check and fix it**, in v1.5 or later:
+
+1. The startup banner reports it: *"N mods have M files stored under a
+   Windows-style path the game can't follow"*.
+2. **Config → Check for scrambled file paths** shows where each file would go.
+3. **Repair now** backs up the database, rebuilds the folder structure, and
+   updates the records. Then restart the game.
+
+In a real 262-mod library, 1 mod was affected. Reinstalling also fixes it.
+
+</details>
+
+<a id="housekeeping"></a>
+<details>
+<summary><b>Housekeeping</b> (versions up to 1.4) — leftovers of deleted mods</summary>
+
+Clutter earlier versions could leave behind. None of this breaks the game — it
+wastes space and produces warnings that look like breakage. Versions up to 1.4
+could leave three kinds of leftovers:
+
+- **Files of deleted mods.** Deleting a *switched-off* mod deleted nothing at
+  all: its files live under a `.disabled` suffix while unslotted, and removal
+  only looked for the active names. The mod vanished from the list while every
+  file stayed on disk, now untracked. One library had 18 working `.lua` files
+  left over from a single mod this way.
+- **Empty mod folders.** Removing a mod left its folders standing, and Cyber
+  Engine Tweaks logs *"Ignoring mod which does not contain init.lua!"* for each
+  one at every launch. Folders also survive because CET writes its own
+  `db.sqlite3`, logs and settings into them — files no mod's manifest knows about.
+- **Loose files in the game root.** Some archives ship readmes, `fomod/` option
+  trees, or texture folders that no loader reads; those land in the game
+  directory alongside the real files.
+
+**To clean up**, in v1.5 or later, under **Config → Maintenance**:
+
+- **Validate mod files** — reports files that are missing, and files that are
+  on disk but in the wrong state (a slotted mod whose files are ghosted does
+  nothing; an unslotted one whose files are active runs anyway)
+- **Check for leftover mod folders** — lists CET folders that hold no mod any
+  more, with what each contains and how big it is, and lets you pick. Folders
+  holding settings start unchecked, and a folder containing files that belong
+  to an *installed* mod is never listed — mods do ship presets for one another
+- **Remove duplicate records** and **Clean temporary files** — database
+  duplicates and leftover extraction directories in `/tmp`
+
+Deleting a mod through the app now clears the folders it empties, so this is
+mostly about tidying what earlier versions left.
+
+</details>
+
+<a id="wrapper-folders"></a>
+<details>
+<summary><b>Wrapper folders</b> (versions up to 1.2) — mods installed one folder too deep</summary>
 
 It affects mods that were installed successfully, show up as enabled, and
 still do nothing in the game.
@@ -128,69 +239,15 @@ correctly next to an optional variant you never selected. **Repair now** leaves
 them alone; each gets its own button, since moving the files activates whatever
 they contain and only you know which it is. Check the mod's page first.
 
-### Archives packed on Windows (versions up to 1.4)
+</details>
 
-Some archives store their entries with backslashes: `r6\scripts\Mod\file.reds`
-instead of `r6/scripts/Mod/file.reds`. On Windows those are folder separators.
-On macOS a backslash is an ordinary character in a filename, so the whole path
-became the *name* of one file sitting loose in the game folder, and the folders
-it spells out were never created:
+<a id="earlier-releases"></a>
+## Earlier releases
 
-```
-the archive:                     installed as (wrong):              should have been:
-r6\scripts\Mod\file.reds         {game}/r6\scripts\Mod\file.reds    {game}/r6/scripts/Mod/file.reds
-                                 (one file, backslashes in name)
-```
+<details>
+<summary><b>1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0</b> — newest first</summary>
 
-This one is harder to notice than the wrapper case, because **"Validate mod
-files" calls the file present** — it does exist, at exactly the path recorded
-for it. Only the loader disagrees.
-
-**How to check and fix it**, in v1.5 or later:
-
-1. The startup banner reports it: *"N mods have M files stored under a
-   Windows-style path the game can't follow"*.
-2. **Config → Check for scrambled file paths** shows where each file would go.
-3. **Repair now** backs up the database, rebuilds the folder structure, and
-   updates the records. Then restart the game.
-
-In a real 262-mod library, 1 mod was affected. Reinstalling also fixes it.
-
-## Housekeeping
-
-Clutter earlier versions could leave behind. None of this breaks the game — it
-wastes space and produces warnings that look like breakage. Versions up to 1.4
-could leave three kinds of leftovers:
-
-- **Files of deleted mods.** Deleting a *switched-off* mod deleted nothing at
-  all: its files live under a `.disabled` suffix while unslotted, and removal
-  only looked for the active names. The mod vanished from the list while every
-  file stayed on disk, now untracked. One library had 18 working `.lua` files
-  left over from a single mod this way.
-- **Empty mod folders.** Removing a mod left its folders standing, and Cyber
-  Engine Tweaks logs *"Ignoring mod which does not contain init.lua!"* for each
-  one at every launch. Folders also survive because CET writes its own
-  `db.sqlite3`, logs and settings into them — files no mod's manifest knows about.
-- **Loose files in the game root.** Some archives ship readmes, `fomod/` option
-  trees, or texture folders that no loader reads; those land in the game
-  directory alongside the real files.
-
-**To clean up**, in v1.5 or later, under **Config → Maintenance**:
-
-- **Validate mod files** — reports files that are missing, and files that are
-  on disk but in the wrong state (a slotted mod whose files are ghosted does
-  nothing; an unslotted one whose files are active runs anyway)
-- **Check for leftover mod folders** — lists CET folders that hold no mod any
-  more, with what each contains and how big it is, and lets you pick. Folders
-  holding settings start unchecked, and a folder containing files that belong
-  to an *installed* mod is never listed — mods do ship presets for one another
-- **Remove duplicate records** and **Clean temporary files** — database
-  duplicates and leftover extraction directories in `/tmp`
-
-Deleting a mod through the app now clears the folders it empties, so this is
-mostly about tidying what earlier versions left.
-
-## What's New in 1.6
+### What's New in 1.6
 
 - **Mods that misinstalled *half* of themselves are now reported** — "Check for
   unloadable mods" only ever looked at mods whose every file sat under one
@@ -207,8 +264,6 @@ mostly about tidying what earlier versions left.
   Config tab to find the right scan yourself. Reports are also shorter and no
   longer titled "Unloadable Mods" when everything in them does, in fact, load
 
-<details>
-<summary><b>Earlier releases</b> — 1.5, 1.4, 1.3, 1.2, 1.1, 1.0</summary>
 
 ### What's New in 1.5
 
@@ -229,7 +284,7 @@ mostly about tidying what earlier versions left.
 ### What's New in 1.3
 
 - **Sideload** — install a mod from a `.zip`/`.7z`/`.rar` on disk, for the many NexusMods pages that offer no "Download with Mod Manager" button. Pick it from **Jack In**, or drag the archive onto the window; details are read from the filename for you to confirm
-- **Wrapper-folder fix** — see the section above, plus a repair tool for installs already affected
+- **Wrapper-folder fix** — see [Wrapper folders](#wrapper-folders), plus a repair tool for installs already affected
 - **One install at a time** — a second "Download with Mod Manager" click, or an archive dropped mid-download, no longer starts a second install on top of the first
 - **Legibility pass** — larger text throughout and much higher contrast, especially the dim reds that were hard to read on the dark background
 - **Escape works everywhere** — it used to do nothing unless a text field had focus. Splash screen can be skipped with a click, and is a quarter shorter
@@ -266,8 +321,6 @@ mostly about tidying what earlier versions left.
 - **Error handling** — verbose logging, conflict detection, detailed status messages
 
 </details>
-
-Full history in the [CHANGELOG](CHANGELOG.md).
 
 ## Requirements
 
@@ -324,8 +377,8 @@ yourself, then use **Jack In → Sideload from disk** (or just drag the `.zip` /
 
 > **Mods not showing up in the game?** Two things to check:
 > - If you installed them with an earlier version, see
->   [mods that show as enabled but do nothing](#mods-that-show-as-enabled-but-do-nothing)
->   above — the app can find and repair both causes.
+>   [upgrading from an earlier version](#upgrading)
+>   above — the app can find and repair each cause.
 > - Otherwise the usual cause is a wrong game path:
 >   **[Setup & Troubleshooting](SETUP_AND_TROUBLESHOOTING.md)** covers
 >   step-by-step setup, verifying installs, and fixing the path.
@@ -345,8 +398,8 @@ Requires: Node.js 18+, Rust 1.70+, Xcode Command Line Tools.
 Optional (faster extraction): `brew install p7zip unrar`
 
 **Tests** cover the parts where a mistake is silent — archive extraction and
-path handling, install-path resolution, the repair and cleanup passes, and
-removal of switched-off mods:
+path handling, install-path resolution, the repair and cleanup passes,
+removal of switched-off mods, and how NETRUN decides a mod is out of date:
 
 ```bash
 cd src-tauri && cargo test
@@ -362,6 +415,7 @@ cd src-tauri && cargo test
 All data stored in `~/.crossover-mod-manager/`:
 - `mods.json` — installed mods database
 - `settings.json` — app settings and API key
+- `changelogs.json` — changelogs NETRUN fetched from NexusMods, one entry per mod
 
 Uninstalling the app does **not** remove mods from the game directory.
 
