@@ -156,11 +156,6 @@
   margin-top: 1rem;
 }
 
-/* What an update would bring: the same yellow as the → vX badge */
-.changelog-version--new {
-  border-left-color: rgba(255, 255, 0, 0.45);
-}
-
 .changelog-version--installed {
   border-left-color: var(--cyber-green);
 }
@@ -172,7 +167,6 @@
   color: var(--cyber-text-dim);
 }
 
-.changelog-version--new .changelog-ver-label { color: var(--cyber-yellow); }
 .changelog-version--installed .changelog-ver-label { color: var(--cyber-text); }
 
 .changelog-installed-badge {
@@ -202,7 +196,7 @@
   max-width: 72ch;
 }
 
-.changelog-version--old .changelog-entry { color: var(--cyber-text-dim); }
+
 
 .changelog-older-toggle {
   display: block;

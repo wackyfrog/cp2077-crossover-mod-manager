@@ -384,6 +384,11 @@ async fn fetch_one_v1(
 pub struct VersionNotes {
     pub lines: Vec<String>,
     pub date: Option<String>,
+    /// Unix seconds of the version's first upload. Version numbers on Nexus
+    /// don't order reliably ("0.65" vs "0.7"), upload times do. Absent in
+    /// caches written before it existed, until the next NETRUN.
+    #[serde(default)]
+    pub uploaded: Option<i64>,
 }
 
 /// One entry per version, from the files that carry it. Archived and deleted
@@ -411,7 +416,7 @@ fn build_changelog(files: &[NexusFile]) -> BTreeMap<String, VersionNotes> {
         .into_iter()
         .map(|(ver, (ts, lines))| {
             let date = ts.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map(|d| d.format("%d %b %Y").to_string());
-            (ver, VersionNotes { lines, date })
+            (ver, VersionNotes { lines, date, uploaded: ts })
         })
         .collect()
 }
@@ -508,6 +513,7 @@ mod tests {
         assert_eq!(log["3.1.3"].lines, Vec::<String>::new());
         assert_eq!(log["3.1.2"].lines, vec!["Crash fix on enemy spawns.".to_string()]);
         assert_eq!(log["3.1.2"].date.as_deref(), Some("30 Aug 2026"));
+        assert_eq!(log["3.1.2"].uploaded, Some(1788110007));
     }
 
     #[test]

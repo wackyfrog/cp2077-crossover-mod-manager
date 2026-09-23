@@ -96,34 +96,37 @@ function Thumbnail({ src, alt }) {
 
 const normVersion = (v) => String(v ?? "").trim().replace(/^v/i, "");
 
-// Numeric collation orders "1.10" after "1.9"; the API's object keys arrive
-// sorted as plain strings, so their order can't be trusted.
+// Numeric collation ("1.10" after "1.9"); only breaks ties between uploads
+// that share a timestamp.
 const compareVersions = (a, b) =>
   normVersion(a).localeCompare(normVersion(b), undefined, { numeric: true });
 
-// A version counts as new when it's past the installed one but not past the
-// latest release NETRUN saw — authors sometimes write notes before uploading,
-// and those shouldn't claim an update the UPD badge doesn't show.
-const isNewVersion = (ver, installed, latest) =>
-  compareVersions(ver, installed) > 0 && (!latest || compareVersions(ver, latest) <= 0);
+// Seconds since epoch: the exact upload time when the cache has it, else the
+// day it shows (caches written before `uploaded` existed).
+const uploadedAt = (entry) =>
+  entry?.uploaded ?? (entry?.date ? Date.parse(entry.date) / 1000 : null);
 
-// Newest first, split around the installed version: what an update brings
-// stays open, the history below it folds away.
-function splitChangelog(changelog, installed, latest) {
+// Without the installed version to split at, this many stay open.
+const CHANGELOG_OPEN_WITHOUT_INSTALLED = 3;
+
+// Newest upload first. Version numbers on Nexus don't order reliably ("0.65"
+// comes after "0.7", "2.3.2b" may be a variant rather than a successor), so
+// nothing here says how far behind the install is: the installed version is
+// marked where it falls, and what sits above it was simply uploaded later.
+// It's found by the installed file's version, then the mod's.
+function readChangelog(changelog, mod) {
   const entries = Object.entries(changelog)
     .map(([ver, entry]) => ({
       ver,
       lines: entry?.lines ?? (Array.isArray(entry) ? entry : []),
       date: entry?.date,
+      at: uploadedAt(entry),
     }))
-    .sort((a, b) => compareVersions(b.ver, a.ver));
-  const ahead = entries.filter((e) => compareVersions(e.ver, installed) > 0);
-  const newer = ahead.filter((e) => isNewVersion(e.ver, installed, latest));
-  const rest = entries.slice(ahead.length);
-  const current = rest[0] && compareVersions(rest[0].ver, installed) === 0 ? rest[0] : null;
-  // Nothing newer and the installed version isn't listed: keep the latest open.
-  const head = current ? [current] : newer.length ? [] : rest.slice(0, 1);
-  return { ahead, newer, head, older: rest.slice(head.length) };
+    .sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || compareVersions(b.ver, a.ver));
+  const find = (v) => (v ? entries.find((e) => normVersion(e.ver) === normVersion(v)) : null);
+  const installed = find(mod.file_version) || find(mod.version) || null;
+  const split = installed ? entries.indexOf(installed) + 1 : CHANGELOG_OPEN_WITHOUT_INSTALLED;
+  return { installed, shown: entries.slice(0, split), older: entries.slice(split) };
 }
 
 function ChangelogVersion({ entry, kind }) {
@@ -145,24 +148,20 @@ function ChangelogVersion({ entry, kind }) {
   );
 }
 
-function ChangelogPanel({ changelog, installed, latest }) {
+function ChangelogPanel({ changelog, mod }) {
   const [olderOpen, setOlderOpen] = useState(false);
-  const { ahead, newer, head, older } = splitChangelog(changelog, installed, latest);
-  const isInstalled = (e) => compareVersions(e.ver, installed) === 0;
+  const { installed, shown, older } = readChangelog(changelog, mod);
   return (
     <div className="changelog-panel">
-      {ahead.map((e) => (
-        <ChangelogVersion key={e.ver} entry={e} kind={newer.includes(e) ? "new" : "old"} />
-      ))}
-      {head.map((e) => (
-        <ChangelogVersion key={e.ver} entry={e} kind={isInstalled(e) ? "installed" : "old"} />
+      {shown.map((e) => (
+        <ChangelogVersion key={e.ver} entry={e} kind={e === installed ? "installed" : "other"} />
       ))}
       {older.length > 0 && (olderOpen
-        ? older.map((e) => <ChangelogVersion key={e.ver} entry={e} kind="old" />)
+        ? older.map((e) => <ChangelogVersion key={e.ver} entry={e} kind="other" />)
         : (
           <button className="changelog-older-toggle" onClick={() => setOlderOpen(true)}>
             <span className="files-arrow">▶</span>
-            {older.length} older {older.length === 1 ? "version" : "versions"}
+            {older.length} earlier {older.length === 1 ? "version" : "versions"}
           </button>
         ))}
     </div>
@@ -170,18 +169,14 @@ function ChangelogPanel({ changelog, installed, latest }) {
 }
 
 // Toggle row + panel, placed right under the Version row in every view.
-// The count shows before expanding, like the Files row's.
+// Like the Files row, it states a count and nothing more.
 function ChangelogRow({ mod, state, onToggle, hint }) {
   const { status, data, open } = state;
   const count = data ? Object.keys(data).length : 0;
-  const newer = data
-    ? Object.keys(data).filter((v) => isNewVersion(v, mod.version, mod.latest_version)).length
-    : 0;
   const summary =
     status === "loading" ? "fetching from NexusMods…"
     : status === "error" ? "couldn't fetch — click to retry"
     : status === "ready" && count === 0 ? "none on NexusMods"
-    : status === "ready" && newer > 0 ? `${newer} newer`
     : status === "ready" ? `${count} ${count === 1 ? "version" : "versions"}`
     : null;
   const expanded = open && status === "ready" && count > 0;
@@ -202,7 +197,7 @@ function ChangelogRow({ mod, state, onToggle, hint }) {
           <span className="files-arrow">{expanded ? "▼" : "▶"}</span>
         </span>
       </div>
-      {expanded && <ChangelogPanel changelog={data} installed={mod.version} latest={mod.latest_version} />}
+      {expanded && <ChangelogPanel changelog={data} mod={mod} />}
     </>
   );
 }
