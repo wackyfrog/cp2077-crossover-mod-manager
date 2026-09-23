@@ -193,33 +193,47 @@ function ChangelogPanel({ changelog, mod }) {
   );
 }
 
-// Toggle row + panel, placed right under the Version row in every view.
-// Like the Files row, it states a count and nothing more.
-function ChangelogRow({ mod, state, onToggle, hint }) {
+// The Version row doubles as the changelog toggle: it already says how far
+// behind the install is (→ latest), and unfolding it shows what's in between.
+// The whole row is the target, with the arrow at its end, like Files.
+// `brief` is the flatlined view, which shows the version and nothing else.
+function VersionRow({ mod, state, onToggle, hint, brief = false }) {
   const { status, data, open } = state;
   const count = data ? Object.keys(data).length : 0;
-  const summary =
-    status === "loading" ? "fetching from NexusMods…"
-    : status === "error" ? "couldn't fetch — click to retry"
-    : status === "ready" && count === 0 ? "none on NexusMods"
-    : status === "ready" ? `${count} ${count === 1 ? "version" : "versions"}`
+  // No Nexus id, or Nexus has no history for it: a plain row
+  const toggles = !!mod.mod_id && !(status === "ready" && count === 0);
+  const expanded = toggles && open && status === "ready";
+  const note =
+    status === "loading" ? "fetching changelog…"
+    : status === "error" ? "couldn't fetch changelog — click to retry"
     : null;
-  const expanded = open && status === "ready" && count > 0;
   return (
     <>
       <div
-        className="detail-row files-toggle-row"
-        onClick={onToggle}
-        {...hint(
-          expanded ? "collapse changelog"
-          : status === "ready" ? "show what changed in each version"
-          : "fetch this mod's changelog and latest version from NexusMods"
-        )}
+        className={`detail-row ${toggles ? "files-toggle-row" : ""}`}
+        onClick={toggles ? onToggle : undefined}
+        {...(toggles
+          ? hint(
+              expanded ? "collapse changelog"
+              : status === "ready" ? "show what changed in each version"
+              : "fetch this mod's changelog and latest version from NexusMods"
+            )
+          : {})}
       >
-        <span className="label">Changelog</span>
+        <span className="label">Version</span>
         <span className="value files-toggle-value">
-          {summary}
-          <span className="files-arrow">{expanded ? "▼" : "▶"}</span>
+          {mod.version}
+          {!brief && mod.update_available && (
+            <>
+              <span className="version-arrow"> → </span>
+              <span className="version-update-badge">v{mod.latest_version}</span>
+            </>
+          )}
+          {!brief && mod.nexus_updated_at && (
+            <span className="version-date"> · {relativeDate(mod.nexus_updated_at)}</span>
+          )}
+          {note && <span className="version-date"> · {note}</span>}
+          {toggles && <span className="files-arrow">{expanded ? "▼" : "▶"}</span>}
         </span>
       </div>
       {expanded && <ChangelogPanel changelog={data} mod={mod} />}
@@ -272,9 +286,8 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
       });
   };
 
-  const changelogRow = mod?.mod_id ? (
-    <ChangelogRow mod={mod} state={changelog} onToggle={toggleChangelog} hint={hint} />
-  ) : null;
+  const versionRow = (props) =>
+    mod && <VersionRow mod={mod} state={changelog} onToggle={toggleChangelog} hint={hint} {...props} />;
 
   if (!mod) {
     return (
@@ -343,22 +356,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
           </div>
 
           <div className="detail-section">
-            <div className="detail-row">
-              <span className="label">Version</span>
-              <span className="value">
-                {mod.version}
-                {mod.update_available && (
-                  <>
-                    <span className="version-arrow"> → </span>
-                    <span className="version-update-badge">v{mod.latest_version}</span>
-                  </>
-                )}
-                {mod.nexus_updated_at && (
-                  <span className="version-date"> · {relativeDate(mod.nexus_updated_at)}</span>
-                )}
-              </span>
-            </div>
-            {changelogRow}
+            {versionRow()}
             <div className="detail-row">
               <span className="label">Author</span>
               <AuthorValue mod={mod} hint={hint} />
@@ -414,11 +412,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
           )}
 
           <div className="detail-section">
-            <div className="detail-row">
-              <span className="label">Version</span>
-              <span className="value">{mod.version}</span>
-            </div>
-            {changelogRow}
+            {versionRow({ brief: true })}
             <div className="detail-row">
               <span className="label">Author</span>
               <AuthorValue mod={mod} hint={hint} />
@@ -509,22 +503,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
         )}
 
         <div className="detail-section">
-          <div className="detail-row">
-            <span className="label">Version</span>
-            <span className="value">
-              {mod.version}
-              {mod.update_available && (
-                <>
-                  <span className="version-arrow"> → </span>
-                  <span className="version-update-badge">v{mod.latest_version}</span>
-                </>
-              )}
-              {mod.nexus_updated_at && (
-                <span className="version-date"> · {relativeDate(mod.nexus_updated_at)}</span>
-              )}
-            </span>
-          </div>
-          {changelogRow}
+          {versionRow()}
           <div className="detail-row">
             <span className="label">Author</span>
             <AuthorValue mod={mod} hint={hint} />
