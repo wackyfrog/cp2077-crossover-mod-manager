@@ -119,6 +119,28 @@ function AuthorValue({ mod, hint }) {
   );
 }
 
+// When a row unfolds below the visible part of the details pane, scroll just
+// enough to show what it opened — but never so far that the row itself goes
+// off the top. Nothing moves when it already fits.
+function useRevealOnOpen(open, rowRef, contentRef) {
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const row = rowRef.current;
+      const content = contentRef.current;
+      const pane = row?.closest(".mod-details-content");
+      if (!row || !content || !pane) return;
+      const view = pane.getBoundingClientRect();
+      const hidden = content.getBoundingClientRect().bottom - view.bottom;
+      if (hidden <= 0) return;
+      const headroom = row.getBoundingClientRect().top - view.top - 8;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      pane.scrollBy({ top: Math.min(hidden, headroom), behavior: reduce ? "auto" : "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+}
+
 const normVersion = (v) => String(v ?? "").trim().replace(/^v/i, "");
 
 // Numeric collation ("1.10" after "1.9"); only breaks ties between uploads
@@ -173,11 +195,11 @@ function ChangelogVersion({ entry, kind }) {
   );
 }
 
-function ChangelogPanel({ changelog, mod }) {
+function ChangelogPanel({ changelog, mod, ref }) {
   const [olderOpen, setOlderOpen] = useState(false);
   const { installed, shown, older } = readChangelog(changelog, mod);
   return (
-    <div className="changelog-panel">
+    <div className="changelog-panel" ref={ref}>
       {shown.map((e) => (
         <ChangelogVersion key={e.ver} entry={e} kind={e === installed ? "installed" : "other"} />
       ))}
@@ -203,6 +225,9 @@ function VersionRow({ mod, state, onToggle, hint, brief = false }) {
   // No Nexus id, or Nexus has no history for it: a plain row
   const toggles = !!mod.mod_id && !(status === "ready" && count === 0);
   const expanded = toggles && open && status === "ready";
+  const rowRef = useRef(null);
+  const panelRef = useRef(null);
+  useRevealOnOpen(expanded, rowRef, panelRef);
   const note =
     status === "loading" ? "fetching changelog…"
     : status === "error" ? "couldn't fetch changelog — click to retry"
@@ -210,6 +235,7 @@ function VersionRow({ mod, state, onToggle, hint, brief = false }) {
   return (
     <>
       <div
+        ref={rowRef}
         className={`detail-row ${toggles ? "files-toggle-row" : ""}`}
         onClick={toggles ? onToggle : undefined}
         {...(toggles
@@ -236,13 +262,16 @@ function VersionRow({ mod, state, onToggle, hint, brief = false }) {
           {toggles && <span className="files-arrow">{expanded ? "▼" : "▶"}</span>}
         </span>
       </div>
-      {expanded && <ChangelogPanel changelog={data} mod={mod} />}
+      {expanded && <ChangelogPanel changelog={data} mod={mod} ref={panelRef} />}
     </>
   );
 }
 
 function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
   const [filesOpen, setFilesOpen] = useState(false);
+  const filesRowRef = useRef(null);
+  const fileListRef = useRef(null);
+  useRevealOnOpen(filesOpen, filesRowRef, fileListRef);
   // Changelogs come from NETRUN's cache, so they match the UPD badge.
   // status: missing (never fetched) | ready | loading | error
   const [changelog, setChangelog] = useState({ status: "missing", data: null, open: false });
@@ -546,6 +575,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
 
           {/* Files row — inline toggle inside the info section */}
           <div
+            ref={filesRowRef}
             className="detail-row files-toggle-row"
             onClick={() => setFilesOpen(v => !v)}
             {...hint(filesOpen ? "collapse file list" : "show installed files")}
@@ -559,7 +589,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
         </div>
 
         {filesOpen && (
-          <div className="file-list">
+          <div className="file-list" ref={fileListRef}>
             {fileCount > 0 ? (
               mod.files.map((file, index) => (
                 <div key={index} className="file-item" title={file}>
