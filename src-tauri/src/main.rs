@@ -1015,7 +1015,26 @@ fn save_settings(mut settings: Settings, state: State<AppState>) -> Result<(), S
     // auto-detection on the next launch and silently overwrites the game path.
     // Preserve the persisted value instead.
     settings.first_run = app_settings.get_settings().first_run;
+    // Same for the one-time check flag: Config doesn't know about it
+    settings.same_file_updates_checked = app_settings.get_settings().same_file_updates_checked;
     app_settings.save_settings(settings)
+}
+
+/// Records that the one-time check for same-file "updates" is done, so its
+/// startup banner stops appearing.
+fn mark_same_file_updates_checked(state: &AppState) -> Result<(), String> {
+    let mut app_settings = state.settings.lock().map_err(|e| e.to_string())?;
+    let mut settings = app_settings.get_settings();
+    if settings.same_file_updates_checked {
+        return Ok(());
+    }
+    settings.same_file_updates_checked = true;
+    app_settings.save_settings(settings)
+}
+
+#[tauri::command]
+fn dismiss_same_file_updates_check(state: State<AppState>) -> Result<(), String> {
+    mark_same_file_updates_checked(&state)
 }
 
 #[tauri::command]
@@ -4026,6 +4045,9 @@ async fn install_mod_from_nxm_inner(
     // Check if this is a reinstall (existing record to update)
     let reinstall_id = state.reinstall_mod_id.lock().map_err(|e| e.to_string())?.take();
     let mut installed_mod_id: Option<String> = reinstall_id.clone();
+    // Set when an update reinstalled the file the mod already had
+    let mut same_file_version: Option<String> = None;
+    let mut recorded_version = mod_version.clone();
 
     if let Some(ref existing_id) = reinstall_id {
         // Reinstall/update: clean up stale files from old version, then update record
@@ -4064,6 +4086,19 @@ async fn install_mod_from_nxm_inner(
         let new_file_version = state.pending_file_version.lock().ok().and_then(|mut s| s.take());
         let new_file_description = state.pending_file_description.lock().ok().and_then(|mut s| s.take());
 
+        // Nexus can hand back the file already installed — the Update button
+        // used to ask for exactly that when authors put the version in the
+        // file name. The files get reinstalled, but it isn't an update.
+        {
+            let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            if let Some(old) = manager.get_installed_mods().into_iter().find(|m| m.id == *existing_id) {
+                if old.file_id.as_deref() == Some(file_id.as_str()) {
+                    same_file_version = Some(old.file_version.clone().unwrap_or_else(|| old.version.clone()));
+                    recorded_version = old.version.clone();
+                }
+            }
+        }
+
         let now_enabled = {
             let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
             manager.complete_reinstall(
@@ -4074,6 +4109,7 @@ async fn install_mod_from_nxm_inner(
                 new_file_name,
                 new_file_version,
                 new_file_description,
+                same_file_version.is_some(),
             )?
         };
 
@@ -4092,7 +4128,10 @@ async fn install_mod_from_nxm_inner(
         }
 
         add_log(
-            format!("🔄 Update complete: '{}' → v{}", mod_name, mod_version),
+            match &same_file_version {
+                Some(v) => format!("⚠ '{}': NexusMods sent the installed file again (v{}), not a newer one", mod_name, v),
+                None => format!("🔄 Update complete: '{}' → v{}", mod_name, mod_version),
+            },
             "info".to_string(),
             "installation".to_string(),
             state.clone(),
@@ -4205,7 +4244,13 @@ async fn install_mod_from_nxm_inner(
 
     emit_install_progress(&app, InstallProgress {
         stage: "done".into(),
-        message: format!("v{} · {} files installed", mod_version, installed_files.len()),
+        message: match &same_file_version {
+            Some(v) => format!(
+                "v{} reinstalled — NexusMods sent the file you already have. Pick the newer one on the mod's Files tab",
+                v
+            ),
+            None => format!("v{} · {} files installed", mod_version, installed_files.len()),
+        },
         mod_name: Some(mod_name.clone()),
         ..Default::default()
     });
@@ -4236,8 +4281,9 @@ async fn install_mod_from_nxm_inner(
         window.emit("mod-installed", serde_json::json!({
             "id": installed_mod_id,
             "name": mod_name,
-            "version": mod_version,
+            "version": recorded_version,
             "reinstall": reinstall_id.is_some(),
+            "same_file": same_file_version.is_some(),
         })).ok();
     } else {
         add_log(
@@ -5185,8 +5231,19 @@ fn apply_mod_snapshot(
             .into_iter()
             .filter(|m| m.mod_id.as_deref().map(str::trim) == Some(mod_id))
             .collect();
-        for record in records {
-            let update_available = is_newer_version(latest, &record.version);
+        for mut record in records {
+            let installed = nexus_sync::installed_state(
+                &snapshot.files,
+                record.file_id.as_deref(),
+                &record.version,
+                latest,
+                is_newer_version,
+            );
+            let update_available = installed.update_available;
+            if let Some(ref v) = installed.corrected_version {
+                println!("🩹 {}: recorded v{} but the installed file is v{}", record.name, record.version, v);
+                record.version = v.clone();
+            }
             manager.update_mod_sync_data(
                 &record.id,
                 snapshot.state.summary.clone(),
@@ -5195,6 +5252,7 @@ fn apply_mod_snapshot(
                 Some(latest.clone()),
                 snapshot.state.nexus_updated_at.clone(),
                 snapshot.state.uploader.clone(),
+                installed.corrected_version,
             )?;
             results.push((record, update_available));
         }
@@ -5419,6 +5477,11 @@ async fn sync_mod_data(
         }
     }
 
+    // A full pass has looked at every installed file, same-file updates included
+    if let Err(e) = mark_same_file_updates_checked(&state) {
+        add_log(e, "error".to_string(), "sync".to_string(), state.clone())?;
+    }
+
     let summary = format!(
         "Sync complete: {}/{} synced, {} updates available, {} errors",
         synced, total, updated_count, errors
@@ -5576,6 +5639,28 @@ fn check_startup_health(state: State<'_, AppState>) -> Result<serde_json::Value,
         let settings = settings_guard.get_settings();
         settings.nexusmods_api_key.clone()
     };
+
+    // 2a. Releases before 1.7 could "update" a mod by reinstalling the file it
+    // already had and then record it as up to date. Only NETRUN can tell which
+    // mods that hit — the tell is on Nexus — so ask for one, once. Pointless
+    // without an API key, since NETRUN can't run then.
+    let same_file_checked = {
+        let settings_guard = state.settings.lock().map_err(|e| e.to_string())?;
+        settings_guard.get_settings().same_file_updates_checked
+    };
+    if !same_file_checked && !api_key.is_empty() {
+        let has_nexus_mods = {
+            let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            manager.get_installed_mods().iter().any(|m| m.mod_id.is_some() && !m.removed)
+        };
+        if has_nexus_mods {
+            issues.push(serde_json::json!({
+                "type": "warning",
+                "code": "same_file_updates",
+                "message": "Earlier versions could update a mod by reinstalling its old file and then show it as up to date. Run NETRUN once to find those mods."
+            }));
+        }
+    }
 
     if api_key.is_empty() {
         issues.push(serde_json::json!({
@@ -5815,6 +5900,7 @@ fn main() {
             get_installed_mods,
             get_mod_changelog,
             refresh_mod,
+            dismiss_same_file_updates_check,
             set_force_reinstall,
             abort_reinstall,
             install_mod,

@@ -122,6 +122,46 @@ pub async fn fetch_batch(client: &reqwest::Client, api_key: &str, ids: &[u64]) -
     }
 }
 
+/// What NETRUN concludes about one installed record.
+#[derive(Debug, PartialEq)]
+pub struct InstalledState {
+    pub update_available: bool,
+    /// Set when the record's version must be replaced by the installed file's.
+    pub corrected_version: Option<String>,
+}
+
+/// Whether a record is out of date, from the mod's declared version and from
+/// the installed file itself.
+///
+/// When an author releases a new version they move the old file to
+/// OLD_VERSION (or ARCHIVED). A record whose installed file sits there is out
+/// of date whatever the version numbers say — authors often leave the mod's
+/// version behind. It also means the file, not the record, says what's on
+/// disk: earlier releases of this app recorded the mod's latest version after
+/// an update that had reinstalled the old file, so that version is corrected.
+/// Files still listed as MAIN or OPTIONAL are left alone — an optional part
+/// the author never touched legitimately carries an older version than the mod.
+pub fn installed_state(
+    files: &[NexusFile],
+    installed_file_id: Option<&str>,
+    recorded_version: &str,
+    latest_version: &str,
+    is_newer: impl Fn(&str, &str) -> bool,
+) -> InstalledState {
+    let installed = installed_file_id
+        .map(str::trim)
+        .and_then(|fid| files.iter().find(|f| f.file_id.to_string() == fid));
+    let retired = installed.is_some_and(|f| matches!(f.category.as_deref(), Some("OLD_VERSION" | "ARCHIVED")));
+    let corrected_version = installed
+        .filter(|_| retired)
+        .and_then(|f| f.version.as_deref())
+        .map(str::trim)
+        .filter(|v| !v.is_empty() && *v != recorded_version.trim())
+        .map(String::from);
+    let version = corrected_version.as_deref().unwrap_or(recorded_version);
+    InstalledState { update_available: retired || is_newer(latest_version, version), corrected_version }
+}
+
 // ── GraphQL ─────────────────────────────────────────────────────────────
 
 async fn graphql(
@@ -556,6 +596,26 @@ mod tests {
         }
     }
 
+    fn described(version: &str, uploaded: i64, lines: &[&str], description: &str) -> NexusFile {
+        NexusFile { description: Some(description.into()), ..file(version, "MAIN", uploaded, lines) }
+    }
+
+    #[test]
+    fn description_stands_in_only_where_notes_are_missing_and_not_repeated() {
+        let log = build_changelog(&[
+            described("1.0", 100, &[], "Extract to your Cyberpunk folder."),
+            described("1.1", 200, &[], "- Fixed a bug"),
+            described("1.2", 300, &[], "Extract to your  Cyberpunk folder."),
+            described("1.3", 400, &["Real notes"], "- Something else"),
+        ]);
+        assert_eq!(log["1.0"].description.as_deref(), Some("Extract to your Cyberpunk folder."));
+        assert_eq!(log["1.1"].description.as_deref(), Some("- Fixed a bug"));
+        // same text as 1.0 once whitespace is folded: static, dropped
+        assert_eq!(log["1.2"].description, None);
+        // has notes of its own
+        assert_eq!(log["1.3"].description, None);
+    }
+
     #[test]
     fn changelog_skips_silent_archived_files_but_keeps_listed_versions() {
         let log = build_changelog(&[
@@ -581,24 +641,42 @@ mod tests {
         assert_eq!(log["1.0"].date.as_deref(), Some("01 Jan 1970"));
     }
 
-    fn described(version: &str, uploaded: i64, lines: &[&str], description: &str) -> NexusFile {
-        NexusFile { description: Some(description.into()), ..file(version, "MAIN", uploaded, lines) }
+    fn state(category: &str, file_version: &str, recorded: &str, latest: &str) -> InstalledState {
+        let mut f = file(file_version, category, 1, &[]);
+        f.file_id = 7;
+        // stand-in for main.rs's is_newer_version: plain numeric-dot compare
+        let newer = |a: &str, b: &str| {
+            let p = |s: &str| s.split('.').map(|x| x.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+            p(a) > p(b)
+        };
+        installed_state(&[f], Some("7"), recorded, latest, newer)
     }
 
     #[test]
-    fn description_stands_in_only_where_notes_are_missing_and_not_repeated() {
-        let log = build_changelog(&[
-            described("1.0", 100, &[], "Extract to your Cyberpunk folder."),
-            described("1.1", 200, &[], "- Fixed a bug"),
-            described("1.2", 300, &[], "Extract to your  Cyberpunk folder."),
-            described("1.3", 400, &["Real notes"], "- Something else"),
-        ]);
-        assert_eq!(log["1.0"].description.as_deref(), Some("Extract to your Cyberpunk folder."));
-        assert_eq!(log["1.1"].description.as_deref(), Some("- Fixed a bug"));
-        // same text as 1.0 once whitespace is folded: static, dropped
-        assert_eq!(log["1.2"].description, None);
-        // has notes of its own
-        assert_eq!(log["1.3"].description, None);
+    fn a_retired_file_is_outdated_and_corrects_a_version_recorded_by_mistake() {
+        // Native Interactions Framework: 1.0.5a reinstalled, recorded as 1.1.3
+        let s = state("OLD_VERSION", "1.0.5a", "1.1.3", "1.1.3");
+        assert!(s.update_available);
+        assert_eq!(s.corrected_version.as_deref(), Some("1.0.5a"));
+    }
+
+    #[test]
+    fn a_retired_file_is_outdated_even_when_versions_agree() {
+        let s = state("ARCHIVED", "1.0.1", "1.0.1", "1.0.1");
+        assert_eq!(s, InstalledState { update_available: true, corrected_version: None });
+    }
+
+    #[test]
+    fn a_live_optional_part_with_an_older_version_is_left_alone() {
+        // Dynamic Appearances: part file 0.4.0 under mod version 0.7
+        let s = state("OPTIONAL", "0.4.0", "0.7", "0.7");
+        assert_eq!(s, InstalledState { update_available: false, corrected_version: None });
+    }
+
+    #[test]
+    fn a_live_file_follows_the_declared_version() {
+        assert!(state("MAIN", "2.0", "2.0", "2.1").update_available);
+        assert!(!state("MAIN", "2.1", "2.1", "2.1").update_available);
     }
 
     #[test]

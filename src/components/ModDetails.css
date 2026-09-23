@@ -129,6 +129,12 @@
   letter-spacing: 0.5px;
 }
 
+.version-update-note {
+  color: var(--cyber-yellow);
+  font-size: 0.86rem;
+  margin-left: 0.4rem;
+}
+
 .version-date {
   color: var(--cyber-text-dim);
   font-size: 0.86rem;

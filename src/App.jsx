@@ -241,7 +241,7 @@ function App() {
             const before = event.payload?.reinstall
               ? modsRef.current.find((m) => m.id === event.payload?.id)
               : null;
-            if (before?.update_available) {
+            if (before?.update_available && !event.payload?.same_file) {
               setJustUpdated((cur) => ({
                 ...cur,
                 [before.id]: { from: before.version, sortAt: cur[before.id]?.sortAt ?? before.installed_at },
@@ -498,8 +498,12 @@ function App() {
     const { mod } = jackInConfirm;
     setJackInConfirm(null);
 
-    // If we know the latest file_id for this file, open direct download URL
-    const targetFileId = mod.update_available && mod.latest_file_id
+    // If we know the latest file_id for this file, open direct download URL.
+    // latest_file_id is the newest file with the same name as the installed
+    // one; authors who put the version in the file name never have one, so it
+    // falls back to the installed file itself — asking for that just
+    // reinstalls it. Then the Files tab lets the newer file be picked.
+    const targetFileId = mod.update_available && mod.latest_file_id && mod.latest_file_id !== mod.file_id
       ? mod.latest_file_id
       : null;
 
@@ -674,6 +678,8 @@ function App() {
     try {
       await invoke("sync_mod_data");
       await loadMods();
+      // A full NETRUN settles the one-time same-file check; drop its banner
+      recheckHealth();
     } catch (error) {
       console.error("Sync failed:", error);
       setStatusMsg(`✗ netrun failed: ${error}`);
@@ -771,6 +777,14 @@ function App() {
   };
 
   const hasNxmIssue = healthIssues.some((i) => i.code?.startsWith("nxm"));
+  const needsSameFileCheck = healthIssues.some((i) => i.code === "same_file_updates");
+  // Issues fixed on the Config page itself. The rest carry their own button
+  // (Register, Repair, Run NETRUN), so Open Config would lead nowhere useful.
+  const CONFIG_ISSUES = new Set([
+    "no_game_path", "game_path_missing", "game_path_invalid", "game_path_readonly",
+    "no_api_key", "orphan_mod_dirs",
+  ]);
+  const needsConfig = healthIssues.some((i) => CONFIG_ISSUES.has(i.code));
   // Which Config scan owns each silent-breakage issue. Whichever the health
   // check reported first decides where Repair sends the user — the backend
   // lists them in the order it wants them dealt with.
@@ -826,6 +840,9 @@ function App() {
             {hasNxmIssue && (
               <button onClick={handleRegisterNxm}>Register NXM handler</button>
             )}
+            {needsSameFileCheck && (
+              <button onClick={handleSyncMods}>Run NETRUN</button>
+            )}
             {repairScan && (
               <button
                 onClick={() => {
@@ -836,8 +853,19 @@ function App() {
                 Repair mods
               </button>
             )}
-            <button onClick={() => setActiveTab("settings")}>Open Config</button>
-            <button className="health-banner-dismiss" onClick={() => setHealthIssues([])}>Dismiss</button>
+            {needsConfig && (
+              <button onClick={() => setActiveTab("settings")}>Open Config</button>
+            )}
+            <button
+              className="health-banner-dismiss"
+              onClick={() => {
+                // The same-file notice is one-time: dismissing it is final
+                if (needsSameFileCheck) invoke("dismiss_same_file_updates_check").catch(() => {});
+                setHealthIssues([]);
+              }}
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       )}

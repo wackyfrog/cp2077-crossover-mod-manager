@@ -548,6 +548,7 @@ impl ModManager {
         latest_version: Option<String>,
         nexus_updated_at: Option<String>,
         uploader: Option<(u64, String)>,
+        corrected_version: Option<String>,
     ) -> Result<(), String> {
         let mod_info = self
             .mods
@@ -555,6 +556,9 @@ impl ModManager {
             .find(|m| m.id == mod_id)
             .ok_or("Mod not found")?;
 
+        if let Some(v) = corrected_version {
+            mod_info.version = v;
+        }
         mod_info.summary = summary;
         mod_info.picture_url = picture_url;
         mod_info.update_available = Some(update_available);
@@ -762,6 +766,11 @@ impl ModManager {
     /// Update mod record after successful reinstall (new files, version, file_id, etc).
     /// Returns the final `enabled` state so the caller can sync the on-disk files
     /// (a mod that stays ghosted must have its freshly installed files re-disabled).
+    ///
+    /// `same_file` is a reinstall of the very file the record already had —
+    /// what an update turns into when Nexus hands back the installed file. The
+    /// files are refreshed, but the version and the update flag stay as they
+    /// were: nothing got newer.
     pub fn complete_reinstall(
         &mut self,
         mod_id: &str,
@@ -771,6 +780,7 @@ impl ModManager {
         new_file_name: Option<String>,
         new_file_version: Option<String>,
         new_file_description: Option<String>,
+        same_file: bool,
     ) -> Result<bool, String> {
         let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
         // Preserve the user's slot state across an update: an active mod keeps
@@ -778,7 +788,9 @@ impl ModManager {
         // (removed) mod re-slots it.
         let target_enabled = if mod_info.removed { true } else { mod_info.enabled };
         mod_info.files = new_files;
-        mod_info.version = new_version.to_string();
+        if !same_file {
+            mod_info.version = new_version.to_string();
+        }
         if let Some(fid) = new_file_id {
             mod_info.file_id = Some(fid.to_string());
         }
@@ -795,7 +807,9 @@ impl ModManager {
         mod_info.enabled = target_enabled;
         mod_info.removed = false;
         mod_info.removed_at = None;
-        mod_info.update_available = Some(false);
+        if !same_file {
+            mod_info.update_available = Some(false);
+        }
         mod_info.installed_at = Some(chrono::Utc::now().to_rfc3339());
         self.save_database()?;
         Ok(target_enabled)
@@ -1191,6 +1205,54 @@ mod tests {
             latest_file_id: None,
             reinstall_status: None,
         }
+    }
+
+    fn manager_with(tag: &str, mods: Vec<ModInfo>) -> (ModManager, PathBuf) {
+        let game = game_dir(tag);
+        let manager = ModManager {
+            database_path: game.join("mods.json"),
+            mods,
+            last_modified: None,
+        };
+        (manager, game)
+    }
+
+    #[test]
+    fn reinstalling_the_same_file_keeps_version_and_update_flag() {
+        let mut outdated = fixture("a", vec![]);
+        outdated.version = "2.30".into();
+        outdated.file_id = Some("42".into());
+        outdated.update_available = Some(true);
+        let (mut manager, game) = manager_with("samefile", vec![outdated]);
+
+        manager
+            .complete_reinstall("a", vec!["x".into()], "2.40", Some("42"), None, Some("2.30".into()), None, true)
+            .unwrap();
+
+        let m = &manager.mods[0];
+        assert_eq!(m.version, "2.30", "nothing newer was installed");
+        assert_eq!(m.update_available, Some(true), "the update is still pending");
+        assert_eq!(m.files, vec!["x".to_string()], "files are refreshed all the same");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_real_update_takes_the_new_version() {
+        let mut outdated = fixture("a", vec![]);
+        outdated.version = "2.30".into();
+        outdated.file_id = Some("42".into());
+        outdated.update_available = Some(true);
+        let (mut manager, game) = manager_with("newfile", vec![outdated]);
+
+        manager
+            .complete_reinstall("a", vec![], "2.40", Some("43"), None, Some("2.40".into()), None, false)
+            .unwrap();
+
+        let m = &manager.mods[0];
+        assert_eq!(m.version, "2.40");
+        assert_eq!(m.update_available, Some(false));
+        assert_eq!(m.file_id.as_deref(), Some("43"));
+        cleanup(&game);
     }
 
     #[test]

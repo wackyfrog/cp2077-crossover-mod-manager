@@ -12,6 +12,13 @@ pub struct Settings {
     pub nexusmods_api_key: String,
     #[serde(default = "default_true")]
     pub show_splash: bool,
+    /// Whether this install has been checked for mods an earlier release
+    /// "updated" by reinstalling the old file. Settings saved before 1.7 lack
+    /// the field and read as false, so those users get the one-time banner; a
+    /// fresh install starts at true, since nothing it installed can be affected.
+    /// Set by the first complete NETRUN or by dismissing the banner.
+    #[serde(default)]
+    pub same_file_updates_checked: bool,
 }
 
 fn default_true() -> bool {
@@ -38,6 +45,7 @@ impl Default for Settings {
             first_run: true,
             nexusmods_api_key: String::new(),
             show_splash: true,
+            same_file_updates_checked: true,
         }
     }
 }
