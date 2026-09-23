@@ -358,7 +358,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
                     openUrl(`https://www.nexusmods.com/cyberpunk2077/mods/${mod.mod_id}`);
                   }}
                 >
-                  nexusmods.com
+                  Open on NexusMods <span className="nexus-link-icon" aria-hidden="true">↗</span>
                 </a>
               </div>
             )}
@@ -426,7 +426,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
                     openUrl(`https://www.nexusmods.com/cyberpunk2077/mods/${mod.mod_id}`);
                   }}
                 >
-                  nexusmods.com
+                  Open on NexusMods <span className="nexus-link-icon" aria-hidden="true">↗</span>
                 </a>
               </div>
             )}
@@ -438,6 +438,14 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
         </div>
 
         <div className="mod-details-footer">
+          <button
+            className="forget-button"
+            onClick={() => onForget(mod.id, mod.name)}
+            disabled={loading}
+            {...hint("permanently delete this record from database")}
+          >
+            Forget
+          </button>
           {mod.mod_id && (
             <button
               className="jackin-detail-button"
@@ -448,14 +456,6 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
               Jack In
             </button>
           )}
-          <button
-            className="forget-button"
-            onClick={() => onForget(mod.id, mod.name)}
-            disabled={loading}
-            {...hint("permanently delete this record from database")}
-          >
-            Forget
-          </button>
         </div>
       </div>
     );
@@ -540,7 +540,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
                 }}
                 {...hint("open mod page on NexusMods in browser")}
               >
-                nexusmods.com
+                Open on NexusMods <span className="nexus-link-icon" aria-hidden="true">↗</span>
               </a>
             </div>
           )}
@@ -587,6 +587,14 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
       </div>
 
       <div className="mod-details-footer">
+        <button
+          className="remove-button"
+          onClick={() => onRemove(mod.id)}
+          disabled={loading}
+          {...hint("remove mod files from game directory")}
+        >
+          Flatline
+        </button>
         {mod.mod_id && (
           <button
             className="jackin-detail-button"
@@ -597,14 +605,6 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             {mod.update_available ? "Update" : "Reinstall"}
           </button>
         )}
-        <button
-          className="remove-button"
-          onClick={() => onRemove(mod.id)}
-          disabled={loading}
-          {...hint("remove mod files from game directory")}
-        >
-          Flatline
-        </button>
       </div>
     </div>
   )

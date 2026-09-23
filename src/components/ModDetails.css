@@ -387,6 +387,13 @@
   text-decoration: underline;
 }
 
+/* Leaves the app for the browser — say so before the click */
+.nexus-link-icon {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.85em;
+}
+
 .mod-details-content {
   flex: 1;
   overflow-y: auto;
