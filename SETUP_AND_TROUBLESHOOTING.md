@@ -213,8 +213,9 @@ row, the record is wrong.
 **How to fix.** Update to v1.7+ and run **NETRUN** once (a startup banner asks
 for it). It checks the installed file itself: if the author moved it to *Old
 versions* on NexusMods, the mod is marked **OUTDATED** and its recorded version
-is set back to the one on disk. Then press **Update** — for these mods it opens
-the **Files** tab on NexusMods, where you choose the newer file. If the author
+is set back to the one on disk. Then press **Update** — it asks NexusMods for the
+file that replaced yours (a newer one with the same name, or the single main
+file uploaded since), and opens the **Files** tab only when that isn't clear. If the author
 deleted the old file from NexusMods, the check can't see it; reinstall the mod
 from its Files tab by hand.
 

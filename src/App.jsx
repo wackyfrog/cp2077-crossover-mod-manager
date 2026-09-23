@@ -509,6 +509,9 @@ function App() {
 
     try {
       if (targetFileId) {
+        // Tell the backend which record this file updates: it may carry a new
+        // name, and would otherwise be installed as a new part beside the old
+        await invoke("expect_update", { recordId: mod.id, modId: mod.mod_id, fileId: targetFileId }).catch(() => {});
         await openUrl(`https://www.nexusmods.com/Core/Libs/Common/Widgets/ModRequirementsPopUp?id=${targetFileId}&game_id=3333&nmm=1`);
         setStatusMsg(`waiting for NXM link · download popup opened on nexusmods.com`);
       } else {

@@ -549,6 +549,7 @@ impl ModManager {
         nexus_updated_at: Option<String>,
         uploader: Option<(u64, String)>,
         corrected_version: Option<String>,
+        update_target: Option<String>,
     ) -> Result<(), String> {
         let mod_info = self
             .mods
@@ -559,6 +560,7 @@ impl ModManager {
         if let Some(v) = corrected_version {
             mod_info.version = v;
         }
+        mod_info.latest_file_id = update_target;
         mod_info.summary = summary;
         mod_info.picture_url = picture_url;
         mod_info.update_available = Some(update_available);

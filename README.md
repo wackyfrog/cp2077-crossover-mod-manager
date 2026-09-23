@@ -101,8 +101,10 @@ updates had done this.
    moved it to *Old versions*, the mod is marked **OUTDATED**, and its recorded
    version goes back to the one that is really on disk. Nothing is reinstalled
    or moved by the check.
-3. Press **Update** on those mods. For them it opens the mod's **Files** tab,
-   where you pick the newer file.
+3. Press **Update** on those mods. It downloads the file that replaced yours —
+   the newer one with the same name, or, if the author renamed it, the one
+   main file uploaded since. Only when that isn't clear does it open the mod's
+   **Files** tab for you to pick.
 
 The same check also flags updates the author never reflected in the mod's own
 version number. It can't see a mod whose old file the author has deleted from

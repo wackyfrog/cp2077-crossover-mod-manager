@@ -62,6 +62,17 @@ fn is_runtime_dropping(name: &str) -> bool {
     }
 }
 
+/// Whether an update must leave this old file alone even though the new
+/// version doesn't ship it. Inside a CET mod folder only the `.lua` files are
+/// the mod's code; the rest — `.json`, `db.sqlite3`, logs — is state CET and
+/// the mod write while running, the user's settings among it (SPLAT keeps
+/// `user_settings.json` there). Deleting it on update loses those settings.
+pub fn is_cet_mod_state(path: &str) -> bool {
+    let lower = path.replace('\\', "/").to_lowercase();
+    let lower = lower.strip_suffix(".disabled").unwrap_or(&lower);
+    lower.contains("/cyber_engine_tweaks/mods/") && !lower.ends_with(".lua")
+}
+
 /// Decide what a folder holds, from the names of the files inside it.
 ///
 /// Order matters: anything the user might want back outranks everything else,
@@ -187,6 +198,18 @@ pub fn delete_dirs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_update_keeps_cet_mod_state_but_not_code() {
+        let base = "/g/Cyberpunk 2077/bin/x64/plugins/cyber_engine_tweaks/mods/splat_native_settings";
+        assert!(is_cet_mod_state(&format!("{base}/user_settings.json")));
+        assert!(is_cet_mod_state(&format!("{base}/db.sqlite3")));
+        assert!(is_cet_mod_state(&format!("{base}/user_ui.json.disabled")));
+        assert!(!is_cet_mod_state(&format!("{base}/init.lua")));
+        assert!(!is_cet_mod_state(&format!("{base}/modules/ui.lua.disabled")));
+        assert!(!is_cet_mod_state("/g/Cyberpunk 2077/r6/scripts/new Splat/Fix.reds"));
+        assert!(!is_cet_mod_state("/g/Cyberpunk 2077/SPLAT_Settings_Field_Guide.pdf"));
+    }
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()

@@ -75,6 +75,34 @@ struct AppState {
     pending_file_description: Mutex<Option<String>>,
     /// Per-version changelogs by Nexus mod id, filled by NETRUN.
     changelogs: Mutex<nexus_sync::ChangelogCache>,
+    /// Set when Update sends the user to download a specific file for a
+    /// record. The file often has a new name (SPLAT: "Splat Physics" →
+    /// "SPLAT Physics Realistic Ragdoll Overhaul"), and matching by name then
+    /// took it for a new part and created a second record beside the old one.
+    pending_update: Mutex<Option<PendingUpdate>>,
+}
+
+struct PendingUpdate {
+    record_id: String,
+    mod_id: String,
+    file_id: String,
+    since: std::time::Instant,
+}
+
+/// How long an Update click stays valid; the download page can sit open a while.
+const PENDING_UPDATE_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// Remembers that Update is about to fetch `file_id` for the record, so the
+/// install that follows updates that record instead of adding a new one.
+#[tauri::command]
+fn expect_update(record_id: String, mod_id: String, file_id: String, state: State<AppState>) -> Result<(), String> {
+    *state.pending_update.lock().map_err(|e| e.to_string())? = Some(PendingUpdate {
+        record_id,
+        mod_id: mod_id.trim().to_string(),
+        file_id: file_id.trim().to_string(),
+        since: std::time::Instant::now(),
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -2634,16 +2662,34 @@ async fn install_mod_from_nxm_inner(
             }
         }
 
+        // The file Update asked for: it updates the record Update was pressed
+        // on, whatever the file is called now. Taken either way, so a stale
+        // expectation can't catch a later, unrelated install.
+        let already_targeted = state.reinstall_mod_id.lock().map(|s| s.is_some()).unwrap_or(false);
+        let expected = state
+            .pending_update
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+            .filter(|p| p.mod_id == mod_id && p.file_id == file_id && p.since.elapsed() < PENDING_UPDATE_TTL)
+            .and_then(|p| {
+                manager
+                    .get_installed_mods()
+                    .into_iter()
+                    .find(|m| m.id == p.record_id && !m.removed)
+            })
+            .filter(|_| !already_targeted);
+
         // Check if a different version of the same part is installed → auto-update
         // Match by mod_id + file_name (not just mod_id) to distinguish parts from updates
         let installing_file_name: Option<String> = state.pending_file_name.lock().ok().and_then(|s| s.clone());
-        let existing_same_part = manager.get_installed_mods().into_iter().find(|m| {
+        let existing_same_part = expected.or_else(|| manager.get_installed_mods().into_iter().find(|m| {
             m.mod_id.as_deref() == Some(&mod_id)
                 && !m.removed
                 && m.file_id.as_deref() != Some(&file_id)
                 && installing_file_name.is_some()
                 && m.file_name.as_deref() == installing_file_name.as_deref()
-        });
+        }));
         if let Some(existing_mod) = existing_same_part {
             let existing_id = existing_mod.id.clone();
             let existing_name = existing_mod.name.clone();
@@ -4051,14 +4097,33 @@ async fn install_mod_from_nxm_inner(
 
     if let Some(ref existing_id) = reinstall_id {
         // Reinstall/update: clean up stale files from old version, then update record
+        let mut kept_state_files: Vec<String> = Vec::new();
         {
             let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
             if let Some(old_mod) = manager.get_installed_mods().into_iter().find(|m| m.id == *existing_id) {
                 let new_files_lower: std::collections::HashSet<String> = installed_files.iter()
                     .map(|f| f.to_lowercase())
                     .collect();
+                // Paths other installed mods also claim: deleting one would
+                // take it from that mod too
+                let claimed_elsewhere: std::collections::HashSet<String> = manager
+                    .get_installed_mods()
+                    .iter()
+                    .filter(|m| m.id != *existing_id && !m.removed)
+                    .flat_map(|m| m.files.iter().map(|f| f.to_lowercase()))
+                    .collect();
                 for old_file in &old_mod.files {
                     if !new_files_lower.contains(&old_file.to_lowercase()) {
+                        if claimed_elsewhere.contains(&old_file.to_lowercase()) {
+                            println!("↔ Keeping {}: another installed mod claims it too", old_file);
+                            continue;
+                        }
+                        // Settings and other state a CET mod wrote while it
+                        // ran: keep it, and keep it tracked by the mod
+                        if orphan_cleanup::is_cet_mod_state(old_file) {
+                            kept_state_files.push(old_file.clone());
+                            continue;
+                        }
                         // Path safety: only delete files within game directory
                         if old_file.contains("..") || !old_file.to_lowercase().contains("cyberpunk 2077") {
                             eprintln!("⛔ Skipping unsafe stale path: {}", old_file);
@@ -4103,7 +4168,7 @@ async fn install_mod_from_nxm_inner(
             let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
             manager.complete_reinstall(
                 existing_id,
-                installed_files.clone(),
+                installed_files.iter().chain(&kept_state_files).cloned().collect(),
                 &mod_version,
                 Some(&file_id),
                 new_file_name,
@@ -5226,6 +5291,12 @@ fn apply_mod_snapshot(
     let mut results = Vec::new();
     {
         let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        // File names and descriptions first: the update target below
+        // replaces the name-only guess this makes at latest_file_id
+        let file_info = snapshot.file_info();
+        if !file_info.is_empty() {
+            manager.update_file_info(mod_id, &file_info)?;
+        }
         let records: Vec<ModInfo> = manager
             .get_installed_mods()
             .into_iter()
@@ -5253,12 +5324,9 @@ fn apply_mod_snapshot(
                 snapshot.state.nexus_updated_at.clone(),
                 snapshot.state.uploader.clone(),
                 installed.corrected_version,
+                nexus_sync::update_target(&snapshot.files, record.file_id.as_deref()),
             )?;
             results.push((record, update_available));
-        }
-        let file_info = snapshot.file_info();
-        if !file_info.is_empty() {
-            manager.update_file_info(mod_id, &file_info)?;
         }
     }
     state
@@ -5895,12 +5963,14 @@ fn main() {
             pending_file_version: Mutex::new(None),
             pending_file_description: Mutex::new(None),
             changelogs: Mutex::new(nexus_sync::ChangelogCache::load()),
+            pending_update: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_installed_mods,
             get_mod_changelog,
             refresh_mod,
             dismiss_same_file_updates_check,
+            expect_update,
             set_force_reinstall,
             abort_reinstall,
             install_mod,

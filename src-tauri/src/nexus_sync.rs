@@ -162,6 +162,38 @@ pub fn installed_state(
     InstalledState { update_available: retired || is_newer(latest_version, version), corrected_version }
 }
 
+/// The file Update should download for a record, if one is clear.
+///
+/// First choice: the newest live file with the installed file's name,
+/// uploaded after it. Authors who rename the file with each release (the
+/// version in the name, or a new name altogether — SPLAT went from "Splat
+/// Physics" to "SPLAT Physics Realistic Ragdoll Overhaul") never have one,
+/// and asking for the installed file just reinstalls it. Then, when exactly
+/// one MAIN file was uploaded after the installed one, that is the successor.
+/// Anything else is ambiguous (`None`), and Update opens the Files tab.
+pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>) -> Option<String> {
+    let installed = installed_file_id
+        .map(str::trim)
+        .and_then(|fid| files.iter().find(|f| f.file_id.to_string() == fid))?;
+    let since = installed.uploaded?;
+    let later: Vec<&NexusFile> = files
+        .iter()
+        .filter(|f| f.uploaded.is_some_and(|t| t > since))
+        .filter(|f| !matches!(f.category.as_deref(), Some("ARCHIVED" | "DELETED")))
+        .collect();
+    if let Some(same) = later
+        .iter()
+        .filter(|f| f.name.is_some() && f.name == installed.name)
+        .max_by_key(|f| f.uploaded)
+    {
+        return Some(same.file_id.to_string());
+    }
+    match later.iter().filter(|f| f.category.as_deref() == Some("MAIN")).collect::<Vec<_>>()[..] {
+        [only] => Some(only.file_id.to_string()),
+        _ => None,
+    }
+}
+
 // ── GraphQL ─────────────────────────────────────────────────────────────
 
 async fn graphql(
@@ -677,6 +709,44 @@ mod tests {
     fn a_live_file_follows_the_declared_version() {
         assert!(state("MAIN", "2.0", "2.0", "2.1").update_available);
         assert!(!state("MAIN", "2.1", "2.1", "2.1").update_available);
+    }
+
+    fn named(id: u64, name: &str, category: &str, uploaded: i64) -> NexusFile {
+        NexusFile { file_id: id, name: Some(name.into()), ..file("1", category, uploaded, &[]) }
+    }
+
+    #[test]
+    fn update_target_prefers_a_newer_file_with_the_same_name() {
+        let files = [
+            named(1, "Core", "OLD_VERSION", 100),
+            named(2, "Core", "MAIN", 200),
+            named(3, "Addon", "MAIN", 300),
+        ];
+        assert_eq!(update_target(&files, Some("1")).as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn update_target_follows_a_rename_when_one_main_file_came_after() {
+        // SPLAT: installed "Splat Physics", renamed later; one MAIN left
+        let files = [
+            named(152859, "Splat Physics", "OLD_VERSION", 100),
+            named(158554, "SPLAT Physics Realistic Ragdoll Overhaul", "ARCHIVED", 200),
+            named(158573, "SPLAT Physics Realistic Ragdoll Overhaul", "MAIN", 300),
+        ];
+        assert_eq!(update_target(&files, Some("152859")).as_deref(), Some("158573"));
+    }
+
+    #[test]
+    fn update_target_gives_up_when_the_successor_is_ambiguous() {
+        let files = [
+            named(1, "Mod 1.0", "OLD_VERSION", 100),
+            named(2, "Mod 2.0 Lite", "MAIN", 200),
+            named(3, "Mod 2.0 Full", "MAIN", 300),
+        ];
+        assert_eq!(update_target(&files, Some("1")), None);
+        // nothing after the installed file, or the file unknown
+        assert_eq!(update_target(&files, Some("3")), None);
+        assert_eq!(update_target(&files, Some("99")), None);
     }
 
     #[test]
