@@ -37,6 +37,13 @@ pub struct ModInfo {
     pub summary: Option<String>,
     #[serde(default)]
     pub nexus_updated_at: Option<String>, // ISO 8601 date string from Nexus updated_timestamp
+    /// The Nexus account that uploaded the mod. `author` is free text the
+    /// uploader types in and needn't match any account, so the profile link
+    /// is built from this member id instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uploader_id: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uploader_name: Option<String>,
 
     // Soft-delete: mod is removed from game files but record kept
     #[serde(default)]
@@ -512,6 +519,8 @@ impl ModManager {
             latest_version: None,
             summary: None,
             nexus_updated_at: None,
+            uploader_id: None,
+            uploader_name: None,
             removed: false,
             removed_at: None,
             file_name: None,
@@ -538,6 +547,7 @@ impl ModManager {
         update_available: bool,
         latest_version: Option<String>,
         nexus_updated_at: Option<String>,
+        uploader: Option<(u64, String)>,
     ) -> Result<(), String> {
         let mod_info = self
             .mods
@@ -550,6 +560,10 @@ impl ModManager {
         mod_info.update_available = Some(update_available);
         mod_info.latest_version = latest_version;
         mod_info.nexus_updated_at = nexus_updated_at;
+        if let Some((id, name)) = uploader {
+            mod_info.uploader_id = Some(id);
+            mod_info.uploader_name = Some(name);
+        }
 
         self.save_database()
     }
@@ -1167,6 +1181,8 @@ mod tests {
             latest_version: None,
             summary: None,
             nexus_updated_at: None,
+            uploader_id: None,
+            uploader_name: None,
             removed: false,
             removed_at: None,
             file_name: None,

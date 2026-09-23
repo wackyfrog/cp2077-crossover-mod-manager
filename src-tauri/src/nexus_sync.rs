@@ -32,6 +32,8 @@ pub struct ModState {
     pub picture_url: Option<String>,
     /// "D Mon YYYY", the format the UI already shows.
     pub nexus_updated_at: Option<String>,
+    /// (member id, account name) of whoever uploaded the mod.
+    pub uploader: Option<(u64, String)>,
 }
 
 pub struct NexusFile {
@@ -172,6 +174,13 @@ async fn fetch_batch_graphql(
         summary: Option<String>,
         picture_url: Option<String>,
         updated_at: Option<String>,
+        uploader: Option<Uploader>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Uploader {
+        member_id: u64,
+        name: String,
     }
     #[derive(Deserialize)]
     struct Nodes {
@@ -199,7 +208,7 @@ async fn fetch_batch_graphql(
         serde_json::json!({
             "query": "query($ids: [CompositeDomainWithIdInput!]!, $count: Int) { \
                 legacyModsByDomain(ids: $ids, count: $count) { \
-                  nodes { modId version summary pictureUrl updatedAt } } }",
+                  nodes { modId version summary pictureUrl updatedAt uploader { memberId name } } } }",
             "variables": { "ids": refs, "count": ids.len() },
         }),
     )
@@ -230,6 +239,7 @@ async fn fetch_batch_graphql(
                     summary: node.summary,
                     picture_url: node.picture_url,
                     nexus_updated_at: node.updated_at.as_deref().and_then(format_iso_date),
+                    uploader: node.uploader.map(|u| (u.member_id, u.name)),
                 },
                 files: gql_files
                     .into_iter()
@@ -329,6 +339,12 @@ async fn fetch_one_v1(
         summary: Option<String>,
         picture_url: Option<String>,
         updated_timestamp: Option<i64>,
+        user: Option<V1User>,
+    }
+    #[derive(Deserialize)]
+    struct V1User {
+        member_id: u64,
+        name: String,
     }
     #[derive(Deserialize)]
     struct V1File {
@@ -359,6 +375,7 @@ async fn fetch_one_v1(
                 summary: m.summary,
                 picture_url: m.picture_url,
                 nexus_updated_at: m.updated_timestamp.and_then(format_timestamp_day),
+                uploader: m.user.map(|u| (u.member_id, u.name)),
             },
             files: f
                 .files

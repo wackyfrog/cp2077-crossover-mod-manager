@@ -4143,6 +4143,8 @@ async fn install_mod_from_nxm_inner(
             latest_version: None,
             summary: None,
             nexus_updated_at: None,
+            uploader_id: None,
+            uploader_name: None,
             removed: false,
             removed_at: None,
             file_name: state.pending_file_name.lock().ok().and_then(|mut s| s.take()),
@@ -5192,6 +5194,7 @@ fn apply_mod_snapshot(
                 update_available,
                 Some(latest.clone()),
                 snapshot.state.nexus_updated_at.clone(),
+                snapshot.state.uploader.clone(),
             )?;
             results.push((record, update_available));
         }

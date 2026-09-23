@@ -94,6 +94,31 @@ function Thumbnail({ src, alt }) {
   );
 }
 
+// The profile link goes to the account that uploaded the mod: the author
+// field is free text and needn't name any account ("Gibbon" is uploaded by
+// "TheRealGibbon"), so when the two differ both are shown. Before NETRUN has
+// seen the mod there's no account to link, only the text.
+function AuthorValue({ mod, hint }) {
+  const author = mod.author || mod.uploader_name || "Unknown";
+  if (!mod.uploader_id) return <span className="value">{author}</span>;
+  const uploader = mod.uploader_name && mod.uploader_name !== author ? mod.uploader_name : null;
+  return (
+    <a
+      className="value nexus-link"
+      href="#"
+      onClick={(e) => {
+        e.preventDefault();
+        openUrl(`https://www.nexusmods.com/users/${mod.uploader_id}`);
+      }}
+      {...hint(`open ${mod.uploader_name || author}'s profile on NexusMods in browser`)}
+    >
+      {author}
+      {uploader && <span className="author-uploader"> · uploaded by {uploader}</span>}
+      <span className="nexus-link-icon" aria-hidden="true">↗</span>
+    </a>
+  );
+}
+
 const normVersion = (v) => String(v ?? "").trim().replace(/^v/i, "");
 
 // Numeric collation ("1.10" after "1.9"); only breaks ties between uploads
@@ -336,7 +361,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             {changelogRow}
             <div className="detail-row">
               <span className="label">Author</span>
-              <span className="value">{mod.author || 'Unknown'}</span>
+              <AuthorValue mod={mod} hint={hint} />
             </div>
             <div className="detail-row">
               <span className="label">Mod ID</span>
@@ -396,7 +421,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             {changelogRow}
             <div className="detail-row">
               <span className="label">Author</span>
-              <span className="value">{mod.author || 'Unknown'}</span>
+              <AuthorValue mod={mod} hint={hint} />
             </div>
             {mod.installed_at && (
               <div className="detail-row">
@@ -502,7 +527,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
           {changelogRow}
           <div className="detail-row">
             <span className="label">Author</span>
-            <span className="value">{mod.author || 'Unknown'}</span>
+            <AuthorValue mod={mod} hint={hint} />
           </div>
           <div className="detail-row">
             <span className="label">Mod ID</span>
