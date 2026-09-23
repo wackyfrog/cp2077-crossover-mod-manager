@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
-import useEscape from "../hooks/useEscape";
 import './ModDetails.css'
 
 function relativeDate(dateStr) {
@@ -95,34 +94,167 @@ function Thumbnail({ src, alt }) {
   );
 }
 
-function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, loading, hint = () => ({}) }) {
+const normVersion = (v) => String(v ?? "").trim().replace(/^v/i, "");
+
+// Numeric collation orders "1.10" after "1.9"; the API's object keys arrive
+// sorted as plain strings, so their order can't be trusted.
+const compareVersions = (a, b) =>
+  normVersion(a).localeCompare(normVersion(b), undefined, { numeric: true });
+
+// A version counts as new when it's past the installed one but not past the
+// latest release NETRUN saw — authors sometimes write notes before uploading,
+// and those shouldn't claim an update the UPD badge doesn't show.
+const isNewVersion = (ver, installed, latest) =>
+  compareVersions(ver, installed) > 0 && (!latest || compareVersions(ver, latest) <= 0);
+
+// Newest first, split around the installed version: what an update brings
+// stays open, the history below it folds away.
+function splitChangelog(changelog, installed, latest) {
+  const entries = Object.entries(changelog)
+    .map(([ver, entry]) => ({
+      ver,
+      lines: entry?.lines ?? (Array.isArray(entry) ? entry : []),
+      date: entry?.date,
+    }))
+    .sort((a, b) => compareVersions(b.ver, a.ver));
+  const ahead = entries.filter((e) => compareVersions(e.ver, installed) > 0);
+  const newer = ahead.filter((e) => isNewVersion(e.ver, installed, latest));
+  const rest = entries.slice(ahead.length);
+  const current = rest[0] && compareVersions(rest[0].ver, installed) === 0 ? rest[0] : null;
+  // Nothing newer and the installed version isn't listed: keep the latest open.
+  const head = current ? [current] : newer.length ? [] : rest.slice(0, 1);
+  return { ahead, newer, head, older: rest.slice(head.length) };
+}
+
+function ChangelogVersion({ entry, kind }) {
+  return (
+    <div className={`changelog-version changelog-version--${kind}`}>
+      <div className="changelog-ver-label">
+        v{normVersion(entry.ver)}
+        {kind === "installed" && <span className="changelog-installed-badge">installed</span>}
+        {entry.date && <span className="changelog-date">{entry.date}</span>}
+      </div>
+      {entry.lines.length > 0 && (
+        <div className="changelog-entries">
+          {entry.lines.map((line, i) => (
+            <div key={i} className="changelog-entry" dangerouslySetInnerHTML={{ __html: line }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChangelogPanel({ changelog, installed, latest }) {
+  const [olderOpen, setOlderOpen] = useState(false);
+  const { ahead, newer, head, older } = splitChangelog(changelog, installed, latest);
+  const isInstalled = (e) => compareVersions(e.ver, installed) === 0;
+  return (
+    <div className="changelog-panel">
+      {ahead.map((e) => (
+        <ChangelogVersion key={e.ver} entry={e} kind={newer.includes(e) ? "new" : "old"} />
+      ))}
+      {head.map((e) => (
+        <ChangelogVersion key={e.ver} entry={e} kind={isInstalled(e) ? "installed" : "old"} />
+      ))}
+      {older.length > 0 && (olderOpen
+        ? older.map((e) => <ChangelogVersion key={e.ver} entry={e} kind="old" />)
+        : (
+          <button className="changelog-older-toggle" onClick={() => setOlderOpen(true)}>
+            <span className="files-arrow">▶</span>
+            {older.length} older {older.length === 1 ? "version" : "versions"}
+          </button>
+        ))}
+    </div>
+  );
+}
+
+// Toggle row + panel, placed right under the Version row in every view.
+// The count shows before expanding, like the Files row's.
+function ChangelogRow({ mod, state, onToggle, hint }) {
+  const { status, data, open } = state;
+  const count = data ? Object.keys(data).length : 0;
+  const newer = data
+    ? Object.keys(data).filter((v) => isNewVersion(v, mod.version, mod.latest_version)).length
+    : 0;
+  const summary =
+    status === "loading" ? "fetching from NexusMods…"
+    : status === "error" ? "couldn't fetch — click to retry"
+    : status === "ready" && count === 0 ? "none on NexusMods"
+    : status === "ready" && newer > 0 ? `${newer} newer`
+    : status === "ready" ? `${count} ${count === 1 ? "version" : "versions"}`
+    : null;
+  const expanded = open && status === "ready" && count > 0;
+  return (
+    <>
+      <div
+        className="detail-row files-toggle-row"
+        onClick={onToggle}
+        {...hint(
+          expanded ? "collapse changelog"
+          : status === "ready" ? "show what changed in each version"
+          : "fetch this mod's changelog and latest version from NexusMods"
+        )}
+      >
+        <span className="label">Changelog</span>
+        <span className="value files-toggle-value">
+          {summary}
+          <span className="files-arrow">{expanded ? "▼" : "▶"}</span>
+        </span>
+      </div>
+      {expanded && <ChangelogPanel changelog={data} installed={mod.version} latest={mod.latest_version} />}
+    </>
+  );
+}
+
+function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
   const [filesOpen, setFilesOpen] = useState(false);
-  const [changelog, setChangelog] = useState(null);
-  const [changelogOpen, setChangelogOpen] = useState(false);
-  const hasChangelog = changelog && Object.keys(changelog).length > 0;
+  // Changelogs come from NETRUN's cache, so they match the UPD badge.
+  // status: missing (never fetched) | ready | loading | error
+  const [changelog, setChangelog] = useState({ status: "missing", data: null, open: false });
+  const changelogFor = useRef(null);
 
-  useEscape(changelogOpen, () => setChangelogOpen(false));
-
-  // Reset changelog when mod changes
+  // Cache lookup is local — no NexusMods request while browsing the list
   useEffect(() => {
-    setChangelog(null);
-    setChangelogOpen(false);
+    const modId = mod?.mod_id ?? null;
+    changelogFor.current = modId;
+    setChangelog({ status: "missing", data: null, open: false });
+    if (!modId) return;
+    invoke("get_mod_changelog", { modId })
+      .then((cached) => {
+        if (changelogFor.current !== modId || !cached) return;
+        setChangelog({ status: "ready", data: cached.versions, open: false });
+      })
+      .catch((err) => console.error("get_mod_changelog:", err));
   }, [mod?.id, mod?.mod_id]);
 
-  // Lazy load changelog on demand
-  const openChangelog = () => {
+  const toggleChangelog = () => {
     if (!mod?.mod_id) return;
-    if (changelog) {
-      setChangelogOpen(true);
+    if (changelog.status === "loading") return;
+    if (changelog.status === "ready") {
+      setChangelog((c) => ({ ...c, open: !c.open }));
       return;
     }
-    invoke("get_mod_changelog", { modId: mod.mod_id })
-      .then((data) => {
-        setChangelog(data);
-        if (data && Object.keys(data).length > 0) setChangelogOpen(true);
+    // Not fetched yet: refresh this one mod the way NETRUN would, so its
+    // version and UPD badge update together with the changelog.
+    const modId = mod.mod_id;
+    setChangelog({ status: "loading", data: null, open: true });
+    invoke("refresh_mod", { modId })
+      .then((cached) => {
+        if (changelogFor.current !== modId) return;
+        setChangelog({ status: "ready", data: cached?.versions ?? {}, open: true });
+        onModsChanged?.();
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (changelogFor.current !== modId) return;
+        console.error("refresh_mod:", err);
+        setChangelog({ status: "error", data: null, open: false, error: String(err) });
+      });
   };
+
+  const changelogRow = mod?.mod_id ? (
+    <ChangelogRow mod={mod} state={changelog} onToggle={toggleChangelog} hint={hint} />
+  ) : null;
 
   if (!mod) {
     return (
@@ -194,23 +326,11 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             <div className="detail-row">
               <span className="label">Version</span>
               <span className="value">
-                <span
-                  className={mod.mod_id ? "version-clickable" : ""}
-                  onClick={() => mod.mod_id && openChangelog()}
-                  title={mod.mod_id ? "Click to view changelog" : ""}
-                >
-                  {mod.version}
-                </span>
+                {mod.version}
                 {mod.update_available && (
                   <>
                     <span className="version-arrow"> → </span>
-                    <span
-                      className={`version-update-badge ${mod.mod_id ? "version-clickable" : ""}`}
-                      onClick={() => mod.mod_id && openChangelog()}
-                      title={mod.mod_id ? "View changelog" : `v${mod.latest_version} available`}
-                    >
-                      v{mod.latest_version}
-                    </span>
+                    <span className="version-update-badge">v{mod.latest_version}</span>
                   </>
                 )}
                 {mod.nexus_updated_at && (
@@ -218,6 +338,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
                 )}
               </span>
             </div>
+            {changelogRow}
             <div className="detail-row">
               <span className="label">Author</span>
               <span className="value">{mod.author || 'Unknown'}</span>
@@ -242,39 +363,6 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
               </div>
             )}
           </div>
-
-          {/* Changelog modal */}
-          {changelogOpen && hasChangelog && (
-            <div className="changelog-backdrop" onClick={() => setChangelogOpen(false)}>
-              <div className="changelog-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="changelog-header">
-                  <span className="changelog-title">Changelog — {mod.name}</span>
-                  <button className="changelog-close" onClick={() => setChangelogOpen(false)}>✕</button>
-                </div>
-                <div className="changelog-body">
-                  {Object.entries(changelog).reverse().map(([ver, entry]) => {
-                    const isCurrent = ver === mod.version;
-                    const lines = entry?.lines ?? (Array.isArray(entry) ? entry : []);
-                    const date = entry?.date;
-                    return (
-                    <div key={ver} className={`changelog-version ${isCurrent ? "changelog-current" : ""}`}>
-                      <div className="changelog-ver-label">
-                        v{ver}
-                        {date && <span className="changelog-date">{date}</span>}
-                        {isCurrent && <span className="changelog-installed-badge">installed</span>}
-                      </div>
-                      <div className="changelog-entries">
-                        {(Array.isArray(lines) ? lines : []).map((line, i) => (
-                          <div key={i} className="changelog-entry" dangerouslySetInnerHTML={{ __html: line }} />
-                        ))}
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="mod-details-footer">
@@ -310,6 +398,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
               <span className="label">Version</span>
               <span className="value">{mod.version}</span>
             </div>
+            {changelogRow}
             <div className="detail-row">
               <span className="label">Author</span>
               <span className="value">{mod.author || 'Unknown'}</span>
@@ -403,23 +492,11 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
           <div className="detail-row">
             <span className="label">Version</span>
             <span className="value">
-              <span
-                className={mod.mod_id ? "version-clickable" : ""}
-                onClick={() => mod.mod_id && openChangelog()}
-                {...(mod.mod_id ? hint("click to view version changelog") : {})}
-              >
-                {mod.version}
-              </span>
+              {mod.version}
               {mod.update_available && (
                 <>
                   <span className="version-arrow"> → </span>
-                  <span
-                    className={`version-update-badge ${mod.mod_id ? "version-clickable" : ""}`}
-                    onClick={() => mod.mod_id && openChangelog()}
-                    title={mod.mod_id ? "View changelog" : `v${mod.latest_version} available`}
-                  >
-                    v{mod.latest_version}
-                  </span>
+                  <span className="version-update-badge">v{mod.latest_version}</span>
                 </>
               )}
               {mod.nexus_updated_at && (
@@ -427,6 +504,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
               )}
             </span>
           </div>
+          {changelogRow}
           <div className="detail-row">
             <span className="label">Author</span>
             <span className="value">{mod.author || 'Unknown'}</span>
@@ -504,33 +582,6 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
             ) : (
               <p className="no-files">No file information available</p>
             )}
-          </div>
-        )}
-
-        {/* Changelog modal */}
-        {changelogOpen && hasChangelog && (
-          <div className="changelog-backdrop" onClick={() => setChangelogOpen(false)}>
-            <div className="changelog-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="changelog-header">
-                <span className="changelog-title">Changelog — {mod.name}</span>
-                <button className="changelog-close" onClick={() => setChangelogOpen(false)}>✕</button>
-              </div>
-              <div className="changelog-body">
-                {Object.entries(changelog).reverse().map(([ver, lines]) => {
-                  const isCurrent = ver === mod.version;
-                  return (
-                  <div key={ver} className={`changelog-version ${isCurrent ? "changelog-current" : ""}`}>
-                    <div className="changelog-ver-label">v{ver}{isCurrent && <span className="changelog-installed-badge">installed</span>}</div>
-                    <div className="changelog-entries">
-                      {(Array.isArray(lines) ? lines : []).map((line, i) => (
-                        <div key={i} className="changelog-entry" dangerouslySetInnerHTML={{ __html: line }} />
-                      ))}
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         )}
       </div>

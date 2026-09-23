@@ -5,7 +5,6 @@ import useEscape from "../hooks/useEscape";
 import "./SyncOverlay.css";
 
 export default function SyncOverlay({ open, syncProgress, mods, onStart, onCancel, onClose, syncSummary }) {
-  const prevModName = useRef(null);
   const terminalRef = useRef(null); // { addRealLine, reset }
 
   const phase = syncSummary ? "done" : syncProgress ? "syncing" : "info";
@@ -29,13 +28,11 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
       if (!p.mod_name) return;
 
       const isError = !!p.error;
-      // Deduplicate only non-errors with same name
-      if (!isError && p.mod_name === prevModName.current) return;
-      prevModName.current = p.mod_name;
-
       const cur = p.current || 0;
       const total = p.total || 1;
-      const ver = p.version ? ` v${p.version}` : "";
+      // A multi-part mod arrives as one event; `cur` already counts every part
+      const parts = p.parts > 1 ? ` · ${p.parts} parts` : "";
+      const ver = (p.version ? ` v${p.version}` : "") + parts;
       const hasUpdate = p.update_available;
 
       if (isError) {
@@ -67,6 +64,8 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
       t.addRealLine(`> ✗ ${syncSummary.errors} error${syncSummary.errors > 1 ? "s" : ""}`, "sum-error");
     if (syncSummary.cancelled)
       t.addRealLine("> ⚠ cancelled before completion", "sum-warn");
+    if (syncSummary.stopped)
+      t.addRealLine(`> ⚠ stopped: ${syncSummary.stopped} · the rest keep their previous data`, "sum-warn");
     t.addRealLine("> netrun complete", "sum-ok");
     setTimeout(() => {
       const el = document.querySelector(".sync-terminal");
@@ -77,7 +76,6 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
   // Reset terminal on open
   useEffect(() => {
     if (open) {
-      prevModName.current = null;
       terminalRef.current?.reset();
     }
   }, [open]);
@@ -111,7 +109,7 @@ export default function SyncOverlay({ open, syncProgress, mods, onStart, onCance
             <div className="sync-info-line dim">&gt; querying nexus mod registry ...</div>
             <div className="sync-info-line">&gt; <span className="glow-green">{syncable}</span> modules with Nexus ID queued for sync</div>
             {skipped > 0 && <div className="sync-info-line dim">&gt; {skipped} modules without Nexus ID — skipped</div>}
-            <div className="sync-info-line dim">&gt; fetching per module: <span className="glow-cyan">description</span> · <span className="glow-cyan">thumbnail</span> · <span className="glow-cyan">version</span> · <span className="glow-cyan">file names</span></div>
+            <div className="sync-info-line dim">&gt; fetching per module: <span className="glow-cyan">description</span> · <span className="glow-cyan">thumbnail</span> · <span className="glow-cyan">version</span> · <span className="glow-cyan">file names</span> · <span className="glow-cyan">changelog</span></div>
             <div className="sync-info-line dim">&gt; update check: compares installed vs <span className="glow-yellow">latest on Nexus</span></div>
             <div className="sync-info-line dim">&gt; requires API key in Config</div>
             <div className="sync-info-line">&gt; awaiting command <span className="sync-cursor" /></div>

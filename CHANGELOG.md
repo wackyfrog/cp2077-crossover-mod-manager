@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The changelog shows what changed, not just version numbers** — clicking a mod's version (or the `→ vX` update badge) opened a list of bare versions with nothing under them. NexusMods does send the text for every version, and the multi-part view already rendered it, but the single-mod view kept an older copy of the window that expected a different shape of data and silently dropped every line along with the upload dates
+
+### Changed
+
+- **The changelog opens from its own row instead of the version number** — the Version row carried two dotted links that did the same thing, and nothing else hinted that a changelog was there. It now has a **Changelog** row of its own right under Version, which unfolds in place like **Files** does, with no window over the details. The row says how many versions you're behind ("2 newer") before you open it. Inside, those versions come first, open and marked in the update badge's yellow, so what an update brings sits right above the Update button; your installed version is marked as before, and everything older folds into one "N older versions" line. Flatlined mods get the row too
+- **NETRUN fetches the changelogs, so they always agree with the UPD badge** — the changelog used to be fetched live when opened, while the UPD badge and the `→ vX` version came from the last NETRUN, so a mod could list versions newer than yours without saying an update was available. Now NETRUN brings the changelog along with everything else and keeps it in `~/.crossover-mod-manager/changelogs.json`: opening it is instant, works offline, and shows exactly what the badge was based on. A mod NETRUN hasn't reached yet (or one you open before your first NETRUN) is fetched on its own when you unfold the row, and its UPD badge refreshes with it; a freshly installed mod gets its changelog during install
+- **NETRUN makes about ten requests instead of two per mod** — it now asks NexusMods' GraphQL API about 50 mods at a time, versions and changelogs included, rather than making separate requests for each mod's details and files. With a few hundred mods that is roughly 10 requests instead of ~600, and it leaves the hourly API quota for downloads. Mods split into several parts are fetched once, not once per part, and get one line in the NETRUN log ("· 4 parts") instead of a first line followed by a silent jump in the counter. The counter shows the full count from the start, and while a batch is on its way the header says which mods it is asking for. If the GraphQL API fails, that batch falls back to the old per-mod requests
+- **NETRUN stops at the NexusMods request limit instead of failing every remaining mod** — hitting the limit used to mark each mod after that point as an error, one by one, while leaving half the list refreshed and half not with no way to tell which. NETRUN now stops there, says when the limit resets, and leaves the unfinished mods exactly as they were. Each mod's version, files and changelog are saved together or not at all
+
 ### Documentation
 
 - **The project describes itself in its own words again** — `package.json` and `Cargo.toml` both carried the description of an unrelated project with a near-identical name, word for word, which left search engines treating this repository as a duplicate of it and showing the other one instead. Both now say what this app actually does, and `Cargo.toml` points at its own repository rather than an empty string

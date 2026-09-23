@@ -6,6 +6,7 @@ mod backslash_repair;
 mod local_archive;
 mod mod_manager;
 mod mod_repair;
+mod nexus_sync;
 mod nexusmods_api;
 mod orphan_cleanup;
 mod settings;
@@ -72,6 +73,8 @@ struct AppState {
     pending_file_name: Mutex<Option<String>>,
     pending_file_version: Mutex<Option<String>>,
     pending_file_description: Mutex<Option<String>>,
+    /// Per-version changelogs by Nexus mod id, filled by NETRUN.
+    changelogs: Mutex<nexus_sync::ChangelogCache>,
 }
 
 #[tauri::command]
@@ -2283,94 +2286,6 @@ fn try_relay(nxm_url: String) -> bool {
 
 /// Returns true when running via `tauri dev` (not a bundled release).
 #[tauri::command]
-async fn get_mod_changelog(
-    mod_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    let api_key = {
-        let settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.get_settings().nexusmods_api_key.clone()
-    };
-    if api_key.is_empty() {
-        return Ok(serde_json::json!({}));
-    }
-
-    let client = reqwest::Client::new();
-
-    // Fetch changelog
-    let changelog_url = format!(
-        "https://api.nexusmods.com/v1/games/cyberpunk2077/mods/{}/changelogs.json",
-        mod_id
-    );
-    let changelog_resp = client
-        .get(&changelog_url)
-        .header("apikey", &api_key)
-        .header("User-Agent", "CrossoverModManager/2.0")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
-
-    if !changelog_resp.status().is_success() {
-        return Ok(serde_json::json!({}));
-    }
-
-    let changelog: serde_json::Value = changelog_resp
-        .json()
-        .await
-        .map_err(|_| "Failed to parse changelog".to_string())?;
-
-    // Fetch files to get version → date mapping
-    let files_url = format!(
-        "https://api.nexusmods.com/v1/games/cyberpunk2077/mods/{}/files.json",
-        mod_id
-    );
-    let mut version_dates: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-
-    if let Ok(files_resp) = client
-        .get(&files_url)
-        .header("apikey", &api_key)
-        .header("User-Agent", "CrossoverModManager/2.0")
-        .send()
-        .await
-    {
-        if files_resp.status().is_success() {
-            #[derive(serde::Deserialize)]
-            struct FilesResp { files: Vec<FileEntry> }
-            #[derive(serde::Deserialize)]
-            struct FileEntry { version: Option<String>, uploaded_timestamp: Option<i64> }
-
-            if let Ok(data) = files_resp.json::<FilesResp>().await {
-                for f in data.files {
-                    if let (Some(ver), Some(ts)) = (f.version, f.uploaded_timestamp) {
-                        // Keep the latest timestamp per version
-                        let date = chrono::DateTime::from_timestamp(ts, 0)
-                            .map(|dt| dt.format("%d %b %Y").to_string())
-                            .unwrap_or_default();
-                        if !date.is_empty() {
-                            version_dates.entry(ver).or_insert(date);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Merge: return { "version": { "lines": [...], "date": "..." } }
-    if let Some(obj) = changelog.as_object() {
-        let mut result = serde_json::Map::new();
-        for (ver, lines) in obj {
-            result.insert(ver.clone(), serde_json::json!({
-                "lines": lines,
-                "date": version_dates.get(ver).cloned()
-            }));
-        }
-        Ok(serde_json::Value::Object(result))
-    } else {
-        Ok(changelog)
-    }
-}
-
-#[tauri::command]
 fn is_dev_build() -> bool {
     tauri::is_dev() || cfg!(debug_assertions)
 }
@@ -4293,37 +4208,17 @@ async fn install_mod_from_nxm_inner(
         ..Default::default()
     });
 
-    // Step 7: Quick sync metadata for installed mod (picture, summary, file descriptions)
+    // Step 7: Quick sync for the installed mod — the same fetch NETRUN does, so
+    // picture, summary, file descriptions and changelog arrive together
     {
         let api_key = {
             let settings = state.settings.lock().map_err(|e| e.to_string())?;
             settings.get_settings().nexusmods_api_key.clone()
         };
-        if !api_key.is_empty() {
-            match nexusmods_api::get_mod_details("cyberpunk2077", &mod_id, &api_key).await {
-            Ok(details) => {
-                println!("📡 Mini-sync: got details for mod {}, picture: {:?}", mod_id, details.picture_url.is_some());
-                let file_names = nexusmods_api::get_file_names("cyberpunk2077", &mod_id, &api_key)
-                    .await.unwrap_or_default();
-
-                if let Some(ref mid) = installed_mod_id {
-                    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
-                    manager.update_mod_sync_data(
-                        mid,
-                        details.summary,
-                        details.picture_url,
-                        false,
-                        Some(details.version),
-                        details.nexus_updated_at,
-                    )?;
-                    if !file_names.is_empty() {
-                        manager.update_file_info(&mod_id, &file_names)?;
-                    }
-                }
-            }
-            Err(e) => {
-                println!("📡 Mini-sync failed: {}", e);
-            }
+        if !api_key.is_empty() && installed_mod_id.is_some() {
+            match refresh_one_mod(&state, &api_key, &mod_id).await {
+                Ok(()) => println!("📡 Mini-sync: refreshed mod {}", mod_id),
+                Err(e) => println!("📡 Mini-sync failed: {}", e),
             }
         }
     }
@@ -5259,6 +5154,107 @@ fn is_installing(state: State<'_, AppState>) -> bool {
     state.install_busy.load(Ordering::Relaxed) || state.installing.load(Ordering::Relaxed)
 }
 
+/// How a record shows up in NETRUN's log: its file name tells parts apart.
+fn sync_display_name(m: &ModInfo) -> String {
+    if let Some(ref fname) = m.file_name {
+        format!("{} ({})", m.name, fname)
+    } else if let Some(ref fid) = m.file_id {
+        format!("{} [file:{}]", m.name, fid)
+    } else {
+        m.name.clone()
+    }
+}
+
+/// Writes one Nexus mod's fresh data to every record that shares its id, and
+/// its changelog to the cache (saved by the caller). Version, files and
+/// changelog always come from the same fetch, so the UPD badge and the
+/// changelog can't disagree. Returns each record with its update flag.
+fn apply_mod_snapshot(
+    state: &AppState,
+    mod_id: &str,
+    snapshot: &nexus_sync::ModSnapshot,
+) -> Result<Vec<(ModInfo, bool)>, String> {
+    let latest = &snapshot.state.version;
+    let mut results = Vec::new();
+    {
+        let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        let records: Vec<ModInfo> = manager
+            .get_installed_mods()
+            .into_iter()
+            .filter(|m| m.mod_id.as_deref().map(str::trim) == Some(mod_id))
+            .collect();
+        for record in records {
+            let update_available = is_newer_version(latest, &record.version);
+            manager.update_mod_sync_data(
+                &record.id,
+                snapshot.state.summary.clone(),
+                snapshot.state.picture_url.clone(),
+                update_available,
+                Some(latest.clone()),
+                snapshot.state.nexus_updated_at.clone(),
+            )?;
+            results.push((record, update_available));
+        }
+        let file_info = snapshot.file_info();
+        if !file_info.is_empty() {
+            manager.update_file_info(mod_id, &file_info)?;
+        }
+    }
+    state
+        .changelogs
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(mod_id, snapshot.changelog());
+    Ok(results)
+}
+
+/// NETRUN for a single mod: same requests and same write as the full run.
+async fn refresh_one_mod(state: &AppState, api_key: &str, mod_id: &str) -> Result<(), String> {
+    let id: u64 = mod_id.trim().parse().map_err(|_| format!("Not a NexusMods id: {}", mod_id))?;
+    let client = reqwest::Client::new();
+    let batch = nexus_sync::fetch_batch(&client, api_key, &[id]).await;
+    let Some(snapshot) = batch.snapshots.get(&id) else {
+        return Err(batch
+            .errors
+            .get(&id)
+            .cloned()
+            .or_else(|| batch.stop.as_ref().map(|s| s.message()))
+            .unwrap_or_else(|| "NexusMods returned nothing for this mod".to_string()));
+    };
+    apply_mod_snapshot(state, &id.to_string(), snapshot)?;
+    state.changelogs.lock().map_err(|e| e.to_string())?.save()
+}
+
+/// Cached changelog only — never touches the network. `None` until NETRUN (or
+/// a single-mod refresh) has fetched this mod.
+#[tauri::command]
+fn get_mod_changelog(
+    mod_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<nexus_sync::CachedChangelog>, String> {
+    let cache = state.changelogs.lock().map_err(|e| e.to_string())?;
+    Ok(cache.get(mod_id.trim()).cloned())
+}
+
+/// Fetches one mod the way NETRUN does (version, files, changelog) and returns
+/// its fresh changelog. Used when a changelog is opened before any NETRUN.
+#[tauri::command]
+async fn refresh_mod(
+    mod_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<nexus_sync::CachedChangelog>, String> {
+    let api_key = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.get_settings().nexusmods_api_key.clone()
+    };
+    if api_key.is_empty() {
+        return Err("NexusMods API key not configured".to_string());
+    }
+    refresh_one_mod(&state, &api_key, &mod_id).await?;
+    let cache = state.changelogs.lock().map_err(|e| e.to_string())?;
+    Ok(cache.get(mod_id.trim()).cloned())
+}
+
 #[tauri::command]
 async fn sync_mod_data(
     state: State<'_, AppState>,
@@ -5298,7 +5294,29 @@ async fn sync_mod_data(
         "info".to_string(), "sync".to_string(), state.clone(),
     )?;
 
-    for mod_info in &syncable {
+    // One set of requests per Nexus mod, however many parts share its id.
+    let mut ids: Vec<u64> = Vec::new();
+    for m in &syncable {
+        match m.mod_id.as_deref().map(str::trim).and_then(|s| s.parse::<u64>().ok()) {
+            Some(id) => {
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            None => {
+                errors += 1;
+                app_handle.emit("sync-progress", serde_json::json!({
+                    "current": synced + errors, "total": total,
+                    "mod_name": sync_display_name(m),
+                    "error": "not a NexusMods id",
+                })).ok();
+            }
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let mut done_ids = 0;
+    for chunk in ids.chunks(nexus_sync::BATCH_SIZE) {
         if cancel.load(Ordering::Relaxed) {
             add_log(
                 format!("Sync cancelled: processed {}/{} mods", synced + errors, total),
@@ -5311,83 +5329,91 @@ async fn sync_mod_data(
             return Ok(format!("Sync cancelled after {}/{} mods", synced + errors, total));
         }
 
-        let mod_id = mod_info.mod_id.as_deref().unwrap();
+        // A batch takes a few seconds; say what's happening meanwhile. No
+        // mod_name, so the terminal doesn't log it as a module line.
+        let first = done_ids + 1;
+        done_ids += chunk.len();
+        app_handle.emit("sync-progress", serde_json::json!({
+            "current": synced + errors, "total": total,
+            "status": format!("requesting mods {}–{} of {} from NexusMods…", first, done_ids, ids.len()),
+        })).ok();
 
-        let details = nexusmods_api::get_mod_details("cyberpunk2077", mod_id, &api_key).await;
+        let batch = nexus_sync::fetch_batch(&client, &api_key, chunk).await;
+        if let Some(ref reason) = batch.used_fallback {
+            add_log(
+                format!("GraphQL unavailable ({}), fetching {} mods one by one", reason, chunk.len()),
+                "warning".to_string(), "sync".to_string(), state.clone(),
+            )?;
+        }
 
-        match details {
-            Err(e) => {
-                add_log(
-                    format!("Sync error: {} — {}", mod_info.name, e),
-                    "error".to_string(), "sync".to_string(), state.clone(),
-                )?;
-                errors += 1;
-
-                let display_name = if let Some(ref fname) = mod_info.file_name {
-                    format!("{} ({})", mod_info.name, fname)
-                } else if let Some(ref fid) = mod_info.file_id {
-                    format!("{} [file:{}]", mod_info.name, fid)
-                } else {
-                    mod_info.name.clone()
-                };
-                app_handle.emit("sync-progress", serde_json::json!({
-                    "current": synced + errors,
-                    "total": total,
-                    "mod_name": display_name,
-                    "error": format!("{}", e),
-                })).ok();
-            }
-            Ok(d) => {
-                // Use mod-level version from Nexus (not file-level)
-                let latest = Some(d.version.clone());
-                let update_available = is_newer_version(&d.version, &mod_info.version);
-
-                if update_available {
-                    updated_count += 1;
-                }
-
-                // Fetch file names (for sub-mod display)
-                let file_names = nexusmods_api::get_file_names("cyberpunk2077", mod_id, &api_key)
-                    .await.unwrap_or_default();
-
-                {
-                    let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
-                    manager.update_mod_sync_data(
-                        &mod_info.id,
-                        d.summary,
-                        d.picture_url,
-                        update_available,
-                        latest,
-                        d.nexus_updated_at,
-                    )?;
-
-                    // Update file_name for this mod and all parts with same mod_id
-                    if !file_names.is_empty() {
-                        manager.update_file_info(mod_id, &file_names)?;
+        for id in chunk {
+            let key = id.to_string();
+            let records: Vec<&ModInfo> = syncable
+                .iter()
+                .filter(|m| m.mod_id.as_deref().map(str::trim) == Some(key.as_str()))
+                .collect();
+            let applied = match batch.snapshots.get(id) {
+                Some(snapshot) => apply_mod_snapshot(&state, &key, snapshot),
+                None => Err(batch.errors.get(id).cloned().unwrap_or_else(|| "no data".to_string())),
+            };
+            match applied {
+                Ok(results) => {
+                    // One line per mod, however many parts it has: they were
+                    // fetched together, and the counter jumps past all of them.
+                    for (_, update_available) in &results {
+                        synced += 1;
+                        if *update_available {
+                            updated_count += 1;
+                        }
+                    }
+                    if let Some((first, _)) = results.first() {
+                        app_handle.emit("sync-progress", serde_json::json!({
+                            "current": synced + errors,
+                            "total": total,
+                            "mod_name": first.name,
+                            "version": first.version,
+                            "update_available": results.iter().any(|(_, u)| *u),
+                            "parts": results.len(),
+                        })).ok();
                     }
                 }
-
-                synced += 1;
+                Err(e) => {
+                    for record in records {
+                        errors += 1;
+                        add_log(
+                            format!("Sync error: {} — {}", record.name, e),
+                            "error".to_string(), "sync".to_string(), state.clone(),
+                        )?;
+                        app_handle.emit("sync-progress", serde_json::json!({
+                            "current": synced + errors,
+                            "total": total,
+                            "mod_name": sync_display_name(record),
+                            "error": e,
+                        })).ok();
+                    }
+                }
             }
         }
 
-        // Get latest update status for this mod
-        let (mod_ver, has_update) = {
-            let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
-            let m = manager.get_installed_mods().into_iter().find(|m| m.id == mod_info.id);
-            (
-                m.as_ref().map(|m| m.version.clone()).unwrap_or_default(),
-                m.and_then(|m| m.update_available).unwrap_or(false),
-            )
-        };
+        if let Err(e) = state.changelogs.lock().map_err(|e| e.to_string())?.save() {
+            add_log(e, "error".to_string(), "sync".to_string(), state.clone())?;
+        }
 
-        app_handle.emit("sync-progress", serde_json::json!({
-            "current": synced + errors,
-            "total": total,
-            "mod_name": mod_info.name,
-            "version": mod_ver,
-            "update_available": has_update,
-        })).ok();
+        // Rate limit: stop here instead of failing every remaining mod. What
+        // was fetched is saved; the rest keep their previous data untouched.
+        if let Some(stop) = batch.stop {
+            let reason = stop.message();
+            add_log(
+                format!("Sync stopped: {} — {}/{} mods refreshed", reason, synced, total),
+                "warning".to_string(), "sync".to_string(), state.clone(),
+            )?;
+            app_handle.emit("sync-complete", serde_json::json!({
+                "synced": synced, "total": total,
+                "updated": updated_count, "errors": errors,
+                "cancelled": false, "stopped": reason,
+            })).ok();
+            return Ok(format!("Sync stopped: {}", reason));
+        }
     }
 
     let summary = format!(
@@ -5780,10 +5806,12 @@ fn main() {
             pending_file_name: Mutex::new(None),
             pending_file_version: Mutex::new(None),
             pending_file_description: Mutex::new(None),
+            changelogs: Mutex::new(nexus_sync::ChangelogCache::load()),
         })
         .invoke_handler(tauri::generate_handler![
             get_installed_mods,
             get_mod_changelog,
+            refresh_mod,
             set_force_reinstall,
             abort_reinstall,
             install_mod,

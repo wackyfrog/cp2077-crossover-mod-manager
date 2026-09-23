@@ -629,7 +629,10 @@ function App() {
   };
 
   const startSync = async () => {
-    setSyncProgress({ current: 0, total: 0, modName: "" });
+    // Same records the backend queues, so the counter is right before the
+    // first batch answers
+    const queued = mods.filter((m) => m.mod_id).length;
+    setSyncProgress({ current: 0, total: queued, modName: "connecting to NexusMods…" });
 
     const { listen } = await import("@tauri-apps/api/event");
 
@@ -637,7 +640,8 @@ function App() {
       setSyncProgress({
         current: event.payload.current,
         total: event.payload.total,
-        modName: event.payload.mod_name,
+        // Between batches the backend reports a status instead of a mod
+        modName: event.payload.mod_name || event.payload.status,
         error: event.payload.error || null,
         version: event.payload.version || null,
         updateAvailable: event.payload.update_available || false,
@@ -881,6 +885,7 @@ function App() {
                 onForget={handleForgetMod}
                 onToggle={handleToggleMod}
                 onJackIn={handleJackInMod}
+                onModsChanged={loadMods}
                 loading={loading}
                 hint={hint}
               />
