@@ -403,11 +403,6 @@
   text-decoration: underline;
 }
 
-.author-uploader {
-  color: var(--cyber-text-dim);
-  font-size: 0.9em;
-}
-
 /* Leaves the app for the browser — say so before the click */
 .nexus-link-icon {
   display: inline-block;

@@ -112,26 +112,29 @@ function Thumbnail({ src, alt }) {
   );
 }
 
-// The profile link goes to the account that uploaded the mod: the author
-// field is free text and needn't name any account ("Gibbon" is uploaded by
-// "TheRealGibbon"), so when the two differ both are shown. Before NETRUN has
-// seen the mod there's no account to link, only the text.
+// Shows the NexusMods account that uploaded the mod, linked to its mods list.
+// The mod's own "author" field is free text that needn't match any account
+// (Native Interactions Framework credits "keanuWheeze", uploaded by
+// "NexusGuy999"), so it only appears in the hint when it differs. Before
+// NETRUN has seen the mod there's no account yet, only that text.
 function AuthorValue({ mod, hint }) {
-  const author = mod.author || mod.uploader_name || "Unknown";
-  if (!mod.uploader_id) return <span className="value">{author}</span>;
-  const uploader = mod.uploader_name && mod.uploader_name !== author ? mod.uploader_name : null;
+  if (!mod.uploader_id) return <span className="value">{mod.author || "Unknown"}</span>;
+  const account = mod.uploader_name || mod.author || "Unknown";
+  const credited = mod.author && mod.author !== account ? ` · credited as ${mod.author}` : "";
   return (
     <a
       className="value nexus-link"
       href="#"
       onClick={(e) => {
         e.preventDefault();
-        openUrl(`https://www.nexusmods.com/users/${mod.uploader_id}`);
+        // The uploader's mods list; the bare member-id URL is only a fallback
+        openUrl(mod.uploader_name
+          ? `https://www.nexusmods.com/profile/${encodeURIComponent(mod.uploader_name)}/mods`
+          : `https://www.nexusmods.com/users/${mod.uploader_id}`);
       }}
-      {...hint(`open ${mod.uploader_name || author}'s profile on NexusMods in browser`)}
+      {...hint(`open ${account}'s mods on NexusMods in browser${credited}`)}
     >
-      {author}
-      {uploader && <span className="author-uploader"> · uploaded by {uploader}</span>}
+      {account}
       <span className="nexus-link-icon" aria-hidden="true">↗</span>
     </a>
   );

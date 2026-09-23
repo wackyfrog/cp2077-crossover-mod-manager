@@ -50,6 +50,7 @@ function ModList({
         (m) =>
           m.name?.toLowerCase().includes(q) ||
           m.author?.toLowerCase().includes(q) ||
+          m.uploader_name?.toLowerCase().includes(q) ||
           m.version?.toLowerCase().includes(q)
       );
     }
