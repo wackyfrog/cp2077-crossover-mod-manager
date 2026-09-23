@@ -215,11 +215,20 @@ function ChangelogPanel({ changelog, mod, ref }) {
   );
 }
 
+// OUTDATED while Nexus has something newer; LATEST once it was updated this
+// session. For a multi-part mod, any part decides.
+function DetailsStatusBadge({ mod, justUpdated, siblings = [] }) {
+  const members = mod._isGroup ? siblings : [mod];
+  if (mod.update_available) return <span className="details-upd-badge">OUTDATED</span>;
+  if (members.some((m) => justUpdated[m.id])) return <span className="details-upd-badge details-latest-badge">LATEST</span>;
+  return null;
+}
+
 // The Version row doubles as the changelog toggle: it already says how far
 // behind the install is (→ latest), and unfolding it shows what's in between.
 // The whole row is the target, with the arrow at its end, like Files.
 // `brief` is the flatlined view, which shows the version and nothing else.
-function VersionRow({ mod, state, onToggle, hint, brief = false }) {
+function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) {
   const { status, data, open } = state;
   const count = data ? Object.keys(data).length : 0;
   // No Nexus id, or Nexus has no history for it: a plain row
@@ -249,6 +258,9 @@ function VersionRow({ mod, state, onToggle, hint, brief = false }) {
         <span className="label">Version</span>
         <span className="value files-toggle-value">
           {mod.version}
+          {!brief && !mod.update_available && updatedFrom && updatedFrom !== mod.version && (
+            <span className="version-updated-from"> · updated from {updatedFrom}</span>
+          )}
           {!brief && mod.update_available && (
             <>
               <span className="version-arrow"> → </span>
@@ -267,7 +279,7 @@ function VersionRow({ mod, state, onToggle, hint, brief = false }) {
   );
 }
 
-function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
+function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
   const [filesOpen, setFilesOpen] = useState(false);
   const filesRowRef = useRef(null);
   const fileListRef = useRef(null);
@@ -316,7 +328,12 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
   };
 
   const versionRow = (props) =>
-    mod && <VersionRow mod={mod} state={changelog} onToggle={toggleChangelog} hint={hint} {...props} />;
+    mod && (
+      <VersionRow
+        mod={mod} state={changelog} onToggle={toggleChangelog} hint={hint}
+        updatedFrom={justUpdated[mod.id]?.from} {...props}
+      />
+    );
 
   if (!mod) {
     return (
@@ -350,7 +367,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
     return (
       <div className="mod-details">
         <div className="mod-details-header">
-          <h2>{mod.update_available && <span className="details-upd-badge">UPD</span>}{mod.name}</h2>
+          <h2><DetailsStatusBadge mod={mod} justUpdated={justUpdated} siblings={parts} />{mod.name}</h2>
           <span className="group-badge">{parts.length} parts</span>
         </div>
 
@@ -507,7 +524,7 @@ function ModDetails({ mod, siblings = [], onSelectMod, onRemove, onForget, onTog
   return (
     <div className="mod-details">
       <div className="mod-details-header">
-        <h2>{mod.update_available && <span className="details-upd-badge">UPD</span>}{mod.name}</h2>
+        <h2><DetailsStatusBadge mod={mod} justUpdated={justUpdated} />{mod.name}</h2>
         <label className={`cyber-toggle ${loading ? 'cyber-toggle--disabled' : ''}`} {...hint(mod.enabled ? 'disable this mod without removing files' : 'enable this mod')}>
           <input
             type="checkbox"

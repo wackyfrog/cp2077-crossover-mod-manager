@@ -649,6 +649,18 @@
   font-family: 'Play', sans-serif;
 }
 
+.details-latest-badge {
+  color: var(--cyber-green);
+  border-color: rgba(0, 255, 136, 0.35);
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.version-updated-from {
+  color: var(--cyber-green);
+  font-size: 0.86rem;
+  margin-left: 0.4rem;
+}
+
 .group-badge {
   flex-shrink: 0;
   font-family: 'Play', sans-serif;

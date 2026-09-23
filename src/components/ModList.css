@@ -73,6 +73,13 @@
   background: rgba(255, 200, 0, 0.08);
 }
 
+/* Same green as SLOTTED and INSTALLED: done, nothing to do here */
+.mod-badge-latest {
+  color: var(--cyber-green);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  background: rgba(0, 255, 136, 0.08);
+}
+
 .mod-badge-flatlined {
   color: #666;
   border: 1px solid #444;

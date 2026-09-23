@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import "./ModList.css";
 
 function groupMods(mods) {
@@ -20,10 +20,19 @@ function groupMods(mods) {
   ];
 }
 
+// OUTDATED: Nexus has a newer version. LATEST: updated this session, so the
+// row that just lost OUTDATED says why instead of looking unchanged.
+function StatusBadge({ outdated, latest, title }) {
+  if (outdated) return <span className="mod-badge mod-badge-update" title={title}>OUTDATED</span>;
+  if (latest) return <span className="mod-badge mod-badge-latest" title="Updated to the latest version this session">LATEST</span>;
+  return null;
+}
+
 function ModList({
-  mods, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
+  mods, justUpdated = {}, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
   loading, dragActive = false,
 }) {
+  const contentRef = useRef(null);
   const filtered = useMemo(() => {
     let result = mods;
 
@@ -32,7 +41,8 @@ function ModList({
 
     if (filter === "enabled")        result = result.filter((m) => m.enabled);
     else if (filter === "disabled")  result = result.filter((m) => !m.enabled && !m.removed);
-    else if (filter === "updates")   result = result.filter((m) => m.update_available && !m.removed);
+    // Mods updated this session stay, so the list doesn't shift under you
+    else if (filter === "updates")   result = result.filter((m) => (m.update_available || justUpdated[m.id]) && !m.removed);
 
     const q = searchQuery.trim().toLowerCase();
     if (q) {
@@ -48,13 +58,21 @@ function ModList({
       if (sort === "name") {
         return (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" });
       }
-      const ta = a.installed_at ? new Date(a.installed_at).getTime() : 0;
-      const tb = b.installed_at ? new Date(b.installed_at).getTime() : 0;
+      // An update resets installed_at; this session it sorts by the old one
+      const at = (m) => justUpdated[m.id]?.sortAt ?? m.installed_at;
+      const ta = at(a) ? new Date(at(a)).getTime() : 0;
+      const tb = at(b) ? new Date(at(b)).getTime() : 0;
       return tb - ta;
     });
 
     return result;
-  }, [mods, searchQuery, filter, sort]);
+  }, [mods, justUpdated, searchQuery, filter, sort]);
+
+  // Keep the selection on screen — after an update it's picked for you
+  useEffect(() => {
+    const el = contentRef.current?.querySelector(".mod-item.selected, .mod-group-header.selected");
+    el?.scrollIntoView({ block: "nearest" });
+  }, [selectedMod?.id, selectedMod?.mod_id, filter]);
 
   const groups = useMemo(() => groupMods(filtered), [filtered]);
 
@@ -71,7 +89,7 @@ function ModList({
             <span className="mod-badge mod-badge-ghosted">GHOSTED</span>
           )}
           {mod.removed && <span className="mod-badge mod-badge-flatlined">FLATLINED</span>}
-          {!mod.removed && mod.update_available && <span className="mod-badge mod-badge-update" title={`Update available: v${mod.latest_version}`}>UPD</span>}
+          {!mod.removed && <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title={`v${mod.latest_version} available`} />}
           v{mod.version}
         </p>
       </div>
@@ -88,7 +106,7 @@ function ModList({
         <p className="mod-part-name">{mod.file_name || `File #${mod.file_id || "?"}`}</p>
         <p className="mod-part-meta">
           {!mod.enabled && <span className="mod-badge mod-badge-ghosted">GHOSTED</span>}
-          {mod.update_available && <span className="mod-badge mod-badge-update" title={`Update available: v${mod.latest_version}`}>UPD</span>}
+          <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title={`v${mod.latest_version} available`} />
           {mod.files?.length || 0} files
         </p>
       </div>
@@ -97,7 +115,7 @@ function ModList({
 
   return (
     <div className={`mod-list ${dragActive ? "drag-active" : ""}`}>
-      <div className="mod-list-content">
+      <div className="mod-list-content" ref={contentRef}>
         {mods.length === 0 ? (
           <div className="empty-state">
             <p className="empty-title">{dragActive ? "Drop to sideload" : "No chrome installed"}</p>
@@ -129,6 +147,7 @@ function ModList({
             const allEnabled  = items.every((m) => m.enabled);
             const anyEnabled  = items.some((m) => m.enabled);
             const anyUpdate   = items.some((m) => m.update_available);
+            const anyJust     = items.some((m) => justUpdated[m.id]);
             const label       = items[0].name;
 
             const isGroupSelected = selectedMod?._isGroup && selectedMod?.mod_id === modId;
@@ -162,7 +181,7 @@ function ModList({
                           {anyEnabled ? "PARTIAL" : "GHOSTED"}
                         </span>
                       )}
-                      {anyUpdate && <span className="mod-badge mod-badge-update" title="Update available">UPD</span>}
+                      <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />
                       v{items[0].version} · {items.length} parts
                     </p>
                   </div>

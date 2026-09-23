@@ -35,6 +35,14 @@ function shortenTurnedAway(detail) {
 
 function App() {
   const [mods, setMods] = useState([]);
+  // The event listeners below are set up once; they read the list through this
+  const modsRef = useRef(mods);
+  modsRef.current = mods;
+  // Mods updated this session, by record id: { from, sortAt } — the version
+  // before the update and the install time it sorted by. Marks them LATEST and
+  // keeps them where they were in the Updates list, so working down it one
+  // mod at a time doesn't lose your place. Not persisted.
+  const [justUpdated, setJustUpdated] = useState({});
   const [selectedMod, setSelectedMod] = useState(null);
   const [activeTab, setActiveTab] = useState("mods");
   const [loading, setLoading] = useState(false);
@@ -229,6 +237,16 @@ function App() {
           if (modInstalledTimer) clearTimeout(modInstalledTimer);
           modInstalledTimer = setTimeout(async () => {
             console.log("🎉 Mod installed event received:", event.payload);
+            // An update keeps the record's id; note what it was before reloading
+            const before = event.payload?.reinstall
+              ? modsRef.current.find((m) => m.id === event.payload?.id)
+              : null;
+            if (before?.update_available) {
+              setJustUpdated((cur) => ({
+                ...cur,
+                [before.id]: { from: before.version, sortAt: cur[before.id]?.sortAt ?? before.installed_at },
+              }));
+            }
             const modList = await loadMods();
             // Select the mod that was just installed/updated
             const installedId = event.payload?.id;
@@ -867,6 +885,7 @@ function App() {
             <div className="mod-list-pane">
               <ModList
                 mods={mods}
+                justUpdated={justUpdated}
                 selectedMod={selectedMod}
                 onSelectMod={setSelectedMod}
                 searchQuery={searchQuery}
@@ -879,6 +898,7 @@ function App() {
             <div className="mod-details-pane">
               <ModDetails
                 mod={selectedMod}
+                justUpdated={justUpdated}
                 siblings={selectedMod?._siblings || (selectedMod?.mod_id ? mods.filter(m => m.mod_id === selectedMod.mod_id && !m.removed) : [])}
                 onSelectMod={setSelectedMod}
                 onRemove={handleRemoveMod}
