@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import './ModDetails.css'
 
@@ -52,6 +53,23 @@ function stripMarkup(raw) {
     .replace(/<[^>]+>/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** A file description as plain text with its line breaks kept: BBCode and
+ *  HTML dropped, images removed, entities decoded. Rendered as text, never
+ *  as HTML — it's whatever markup the author typed. */
+function descriptionText(raw) {
+  if (!raw) return null;
+  const text = decodeEntities(
+    raw
+      .replace(/\[img\].*?\[\/img\]/gi, '')
+      .replace(/\[url=.*?\](.*?)\[\/url\]/gi, '$1')
+      .replace(/\[\/?\w+(=[^\]]*)?\]/gi, '')
+      // authors often end a line both ways ("…\n<br />"): one break, not two
+      .replace(/\r?\n?<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+  );
+  return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() || null;
 }
 
 /** Parse Nexus BBCode file description: extract first image URL and clean text */
@@ -168,6 +186,7 @@ function readChangelog(changelog, mod) {
       lines: entry?.lines ?? (Array.isArray(entry) ? entry : []),
       date: entry?.date,
       at: uploadedAt(entry),
+      description: descriptionText(entry?.description),
     }))
     .sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || compareVersions(b.ver, a.ver));
   const find = (v) => (v ? entries.find((e) => normVersion(e.ver) === normVersion(v)) : null);
@@ -189,6 +208,14 @@ function ChangelogVersion({ entry, kind }) {
           {entry.lines.map((line, i) => (
             <div key={i} className="changelog-entry" dangerouslySetInnerHTML={{ __html: line }} />
           ))}
+        </div>
+      )}
+      {/* No notes for this version: the author's file description stands in,
+          set apart because it's as often install steps as it is changes */}
+      {entry.lines.length === 0 && entry.description && (
+        <div className="changelog-file-description">
+          <span className="changelog-file-description-label">file description</span>
+          <div className="changelog-file-description-text">{entry.description}</div>
         </div>
       )}
     </div>
@@ -289,19 +316,32 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
   const [changelog, setChangelog] = useState({ status: "missing", data: null, open: false });
   const changelogFor = useRef(null);
 
-  // Cache lookup is local — no NexusMods request while browsing the list
+  // Cache lookup is local — no NexusMods request while browsing the list.
+  // Keeps the panel open or closed as it was.
+  const readCachedChangelog = (modId) =>
+    invoke("get_mod_changelog", { modId })
+      .then((cached) => {
+        if (changelogFor.current !== modId || !cached) return;
+        setChangelog((c) => ({ status: "ready", data: cached.versions, open: c.open }));
+      })
+      .catch((err) => console.error("get_mod_changelog:", err));
+
   useEffect(() => {
     const modId = mod?.mod_id ?? null;
     changelogFor.current = modId;
     setChangelog({ status: "missing", data: null, open: false });
-    if (!modId) return;
-    invoke("get_mod_changelog", { modId })
-      .then((cached) => {
-        if (changelogFor.current !== modId || !cached) return;
-        setChangelog({ status: "ready", data: cached.versions, open: false });
-      })
-      .catch((err) => console.error("get_mod_changelog:", err));
+    if (modId) readCachedChangelog(modId);
   }, [mod?.id, mod?.mod_id]);
+
+  // NETRUN and installs rewrite the cache while the same mod stays selected
+  useEffect(() => {
+    const unlisteners = ["sync-complete", "mod-installed"].map((name) =>
+      listen(name, () => {
+        if (changelogFor.current) readCachedChangelog(changelogFor.current);
+      })
+    );
+    return () => unlisteners.forEach((p) => p.then((unlisten) => unlisten()));
+  }, []);
 
   const toggleChangelog = () => {
     if (!mod?.mod_id) return;

@@ -198,6 +198,28 @@
 
 
 
+.changelog-file-description {
+  margin-top: 0.3rem;
+  max-width: 72ch;
+}
+
+.changelog-file-description-label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--cyber-text-dim);
+  opacity: 0.8;
+}
+
+.changelog-file-description-text {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--cyber-text-dim);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .changelog-older-toggle {
   display: block;
   background: transparent;

@@ -406,34 +406,71 @@ pub struct VersionNotes {
     /// caches written before it existed, until the next NETRUN.
     #[serde(default)]
     pub uploaded: Option<i64>,
+    /// The file's description, only when there are no `lines` and it isn't a
+    /// repeat of an older version's (see `build_changelog`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// One entry per version, from the files that carry it. Archived and deleted
 /// files are hidden on Nexus; they only count when their author wrote notes.
+///
+/// Some authors never fill in the changelog and describe each upload in the
+/// file's description instead, so a version without notes carries its file
+/// description — shown apart, since about half of such descriptions are
+/// install instructions or image links rather than notes. A description that
+/// repeats one already seen on an older version is static text and is left
+/// out.
 fn build_changelog(files: &[NexusFile]) -> BTreeMap<String, VersionNotes> {
-    let mut by_version: BTreeMap<String, (Option<i64>, Vec<String>)> = BTreeMap::new();
-    for f in files {
+    #[derive(Default)]
+    struct Acc {
+        uploaded: Option<i64>,
+        lines: Vec<String>,
+        description: Option<String>,
+    }
+    let mut ordered: Vec<&NexusFile> = files.iter().collect();
+    ordered.sort_by_key(|f| f.uploaded.unwrap_or(i64::MAX));
+
+    let mut by_version: BTreeMap<String, Acc> = BTreeMap::new();
+    for f in ordered {
         let Some(ver) = f.version.as_deref().map(str::trim).filter(|v| !v.is_empty()) else { continue };
         let hidden = matches!(f.category.as_deref(), Some("ARCHIVED" | "DELETED"));
         if hidden && f.changelog.is_empty() {
             continue;
         }
-        let entry = by_version.entry(ver.to_string()).or_insert((None, Vec::new()));
-        // Several files can share a version (multi-part mods): first upload
-        // dates it, the first one with notes speaks for it.
-        entry.0 = match (entry.0, f.uploaded) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
-        if entry.1.is_empty() {
-            entry.1 = f.changelog.clone();
+        let entry = by_version.entry(ver.to_string()).or_default();
+        // Several files can share a version (multi-part mods): the first
+        // upload dates it, the first one with notes speaks for it.
+        entry.uploaded = entry.uploaded.or(f.uploaded);
+        if entry.lines.is_empty() {
+            entry.lines = f.changelog.clone();
+        }
+        if entry.description.is_none() {
+            entry.description = f.description.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(String::from);
         }
     }
+
+    // Oldest first, so a repeated description stays on the version that
+    // introduced it
+    let mut chronological: Vec<(&String, &mut Acc)> = by_version.iter_mut().collect();
+    chronological.sort_by_key(|(_, acc)| acc.uploaded.unwrap_or(i64::MAX));
+    let mut seen = std::collections::HashSet::new();
+    for (_, acc) in chronological {
+        let Some(desc) = acc.description.take() else { continue };
+        let key = desc.split_whitespace().collect::<Vec<_>>().join(" ");
+        if seen.insert(key) && acc.lines.is_empty() {
+            acc.description = Some(desc);
+        }
+    }
+
     by_version
         .into_iter()
-        .map(|(ver, (ts, lines))| {
-            let date = ts.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map(|d| d.format("%d %b %Y").to_string());
-            (ver, VersionNotes { lines, date, uploaded: ts })
+        .map(|(ver, acc)| {
+            let date = acc
+                .uploaded
+                .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                .map(|d| d.format("%d %b %Y").to_string());
+            (ver, VersionNotes { lines: acc.lines, date, uploaded: acc.uploaded, description: acc.description })
         })
         .collect()
 }
@@ -542,6 +579,26 @@ mod tests {
         assert_eq!(log.len(), 1);
         assert_eq!(log["1.0"].lines, vec!["notes".to_string()]);
         assert_eq!(log["1.0"].date.as_deref(), Some("01 Jan 1970"));
+    }
+
+    fn described(version: &str, uploaded: i64, lines: &[&str], description: &str) -> NexusFile {
+        NexusFile { description: Some(description.into()), ..file(version, "MAIN", uploaded, lines) }
+    }
+
+    #[test]
+    fn description_stands_in_only_where_notes_are_missing_and_not_repeated() {
+        let log = build_changelog(&[
+            described("1.0", 100, &[], "Extract to your Cyberpunk folder."),
+            described("1.1", 200, &[], "- Fixed a bug"),
+            described("1.2", 300, &[], "Extract to your  Cyberpunk folder."),
+            described("1.3", 400, &["Real notes"], "- Something else"),
+        ]);
+        assert_eq!(log["1.0"].description.as_deref(), Some("Extract to your Cyberpunk folder."));
+        assert_eq!(log["1.1"].description.as_deref(), Some("- Fixed a bug"));
+        // same text as 1.0 once whitespace is folded: static, dropped
+        assert_eq!(log["1.2"].description, None);
+        // has notes of its own
+        assert_eq!(log["1.3"].description, None);
     }
 
     #[test]
