@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.7.0] - 2026-09-24
 
 ### Upgrading from an earlier version
 
@@ -36,6 +36,7 @@ Updating a mod in an earlier version could quietly reinstall the file you alread
 
 ### Documentation
 
+- **Future plans in the README** — names the one known gap left: ghosting or flatlining a mod can still take a file another enabled mod shares
 - **Problems of 1.4 and earlier moved out of the README** — archives packed on Windows, leftovers of deleted mods and wrapper folders now live in [OLDER-VERSIONS.md](OLDER-VERSIONS.md); the README keeps the 1.6 update problem and a link. Every screenshot is shown at once, without a spoiler
 - **The project describes itself in its own words again** — `package.json` and `Cargo.toml` both carried the description of an unrelated project with a near-identical name, word for word, which left search engines treating this repository as a duplicate of it and showing the other one instead. Both now say what this app actually does, and `Cargo.toml` points at its own repository rather than an empty string
 - **The landing page and the README no longer open on a false claim** — both led with the idea that Cyberpunk 2077 has no Mac release. It has had a native macOS build since July 2025; what's missing there is the modding stack, since the Mac build loads no CET, RED4ext, ArchiveXL or TweakXL ([the modding wiki](https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-users/users-modding-cyberpunk-2077/modding-on-macos) lists redscript alone as unofficially supported). That, not the absence of a port, is why a modded playthrough runs the Windows build inside a bottle — and the Requirements now say **Windows build** rather than leaving the reader to guess. The dismissal of running a Windows mod manager inside the bottle is gone too: people do get that working. What is left is the honest reason this app exists — it is native, and it is a pet project dressed for Night City

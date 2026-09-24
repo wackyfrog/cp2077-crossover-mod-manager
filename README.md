@@ -26,6 +26,7 @@ Enjoy Night City, choom!
 - [Screenshots](#screenshots)
 - [What's new in 1.7](#whats-new)
 - [Upgrading from an earlier version](#upgrading) — what earlier releases got wrong, and what to do about it
+- [Future plans](#future-plans)
 - [Requirements](#requirements) · [Download](#download) · [Quick start](#quick-start)
 - [Building from source](#building-from-source) · [Tech stack](#tech-stack) · [Data storage](#data-storage)
 
@@ -190,6 +191,17 @@ long fixed and described, with what to do, in [OLDER-VERSIONS.md](OLDER-VERSIONS
 - **Error handling** — verbose logging, conflict detection, detailed status messages
 
 </details>
+
+<a id="future-plans"></a>
+## Future plans
+
+- **Files that several mods share.** Two mods sometimes ship the same file —
+  a patch replacing one of its parent's scripts, or two tweak mods writing the
+  same YAML. Updating a mod no longer deletes such a file. Ghosting or
+  flatlining one of them still can: it renames or deletes the shared file
+  even when another enabled mod still needs it. Planned: list which files each
+  mod shares with which, and check before ghosting or flatlining a mod whether
+  another enabled mod claims its files.
 
 ## Requirements
 
