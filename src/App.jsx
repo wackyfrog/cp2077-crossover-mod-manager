@@ -1105,7 +1105,7 @@ function App() {
         />
       )}
 
-      <AppFooter version={__APP_VERSION__} build={__BUILD_ID__} status={statusMsg} hoverHint={hoverHint} />
+      <AppFooter version={__APP_VERSION__} build={__BUILD_ID__} commit={__GIT_COMMIT__} status={statusMsg} hoverHint={hoverHint} />
 
     </div>
   );

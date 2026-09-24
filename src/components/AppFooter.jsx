@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Logs from "./Logs";
 import "./AppFooter.css";
 
-export default function AppFooter({ version, build, status, hoverHint }) {
+export default function AppFooter({ version, build, commit, status, hoverHint }) {
   const [glitch, setGlitch] = useState(false);
   const [isDev, setIsDev] = useState(false);
   const [buildTs, setBuildTs] = useState("");
@@ -91,8 +91,8 @@ export default function AppFooter({ version, build, status, hoverHint }) {
             ) : displayStatus ? displayStatus : <span className="app-footer-idle">·</span>}
           </span>
         </div>
-        <div className={`app-footer-version ${glitch ? "glitch" : ""}`}>
-          v{version}{build && <span className="app-footer-build"> #{build}</span>}{isDev && <span className="app-footer-dev"> DEV</span>}
+        <div className={`app-footer-version ${glitch ? "glitch" : ""}`} title={build ? `Built ${build}` : undefined}>
+          v{version}{commit && <span className="app-footer-build"> ({commit})</span>}{isDev && <span className="app-footer-dev"> DEV</span>}
         </div>
       </footer>
     </>
