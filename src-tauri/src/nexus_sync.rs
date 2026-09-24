@@ -169,9 +169,16 @@ pub fn installed_state(
 /// version in the name, or a new name altogether — SPLAT went from "Splat
 /// Physics" to "SPLAT Physics Realistic Ragdoll Overhaul") never have one,
 /// and asking for the installed file just reinstalls it. Then, when exactly
-/// one MAIN file was uploaded after the installed one, that is the successor.
+/// one MAIN file was uploaded after the installed one, that is the successor
+/// — but only for a mod installed as a single record (`sole_record`): with
+/// several parts installed, a renamed part can't be told from the core
+/// (LUT Switcher's "Nova LUT Pack" would get the core "LUTSwitcher" file).
 /// Anything else is ambiguous (`None`), and Update opens the Files tab.
-pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>) -> Option<String> {
+///
+/// Files the author retired (OLD_VERSION, ARCHIVED, DELETED) are never a
+/// target: installing one leaves the mod OUTDATED, and Update would point
+/// at it again (Nova LUT uploaded its 4.0.0s switcher pack as OLD_VERSION).
+pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>, sole_record: bool) -> Option<String> {
     let installed = installed_file_id
         .map(str::trim)
         .and_then(|fid| files.iter().find(|f| f.file_id.to_string() == fid))?;
@@ -179,7 +186,7 @@ pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>) -> Op
     let later: Vec<&NexusFile> = files
         .iter()
         .filter(|f| f.uploaded.is_some_and(|t| t > since))
-        .filter(|f| !matches!(f.category.as_deref(), Some("ARCHIVED" | "DELETED")))
+        .filter(|f| !matches!(f.category.as_deref(), Some("OLD_VERSION" | "ARCHIVED" | "DELETED")))
         .collect();
     if let Some(same) = later
         .iter()
@@ -189,7 +196,7 @@ pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>) -> Op
         return Some(same.file_id.to_string());
     }
     match later.iter().filter(|f| f.category.as_deref() == Some("MAIN")).collect::<Vec<_>>()[..] {
-        [only] => Some(only.file_id.to_string()),
+        [only] if sole_record => Some(only.file_id.to_string()),
         _ => None,
     }
 }
@@ -722,7 +729,7 @@ mod tests {
             named(2, "Core", "MAIN", 200),
             named(3, "Addon", "MAIN", 300),
         ];
-        assert_eq!(update_target(&files, Some("1")).as_deref(), Some("2"));
+        assert_eq!(update_target(&files, Some("1"), true).as_deref(), Some("2"));
     }
 
     #[test]
@@ -733,7 +740,7 @@ mod tests {
             named(158554, "SPLAT Physics Realistic Ragdoll Overhaul", "ARCHIVED", 200),
             named(158573, "SPLAT Physics Realistic Ragdoll Overhaul", "MAIN", 300),
         ];
-        assert_eq!(update_target(&files, Some("152859")).as_deref(), Some("158573"));
+        assert_eq!(update_target(&files, Some("152859"), true).as_deref(), Some("158573"));
     }
 
     #[test]
@@ -743,10 +750,36 @@ mod tests {
             named(2, "Mod 2.0 Lite", "MAIN", 200),
             named(3, "Mod 2.0 Full", "MAIN", 300),
         ];
-        assert_eq!(update_target(&files, Some("1")), None);
+        assert_eq!(update_target(&files, Some("1"), true), None);
         // nothing after the installed file, or the file unknown
-        assert_eq!(update_target(&files, Some("3")), None);
-        assert_eq!(update_target(&files, Some("99")), None);
+        assert_eq!(update_target(&files, Some("3"), true), None);
+        assert_eq!(update_target(&files, Some("99"), true), None);
+    }
+
+    #[test]
+    fn update_target_skips_files_the_author_retired() {
+        // Nova LUT: the 4.0.0s switcher pack went up as OLD_VERSION
+        let files = [
+            named(105480, "Nova LUT - LUT Switcher Pack", "OLD_VERSION", 100),
+            named(144813, "Nova LUT 4", "MAIN", 200),
+            named(144850, "Nova LUT - LUT Switcher Pack", "OLD_VERSION", 201),
+        ];
+        assert_eq!(update_target(&files, Some("105480"), true).as_deref(), Some("144813"));
+        assert_eq!(update_target(&files, Some("105480"), false), None);
+    }
+
+    #[test]
+    fn update_target_follows_a_rename_only_when_the_mod_has_one_record() {
+        // LUT Switcher: a pack renamed later must not get the core file
+        let files = [
+            named(144848, "LUT Switcher - Nova LUT Pack", "OLD_VERSION", 100),
+            named(146114, "LUT Switcher 2 - Core", "OLD_VERSION", 200),
+            named(154976, "LUT Pack - Nova LUT", "OPTIONAL", 300),
+            named(157888, "LUTSwitcher", "MAIN", 400),
+        ];
+        assert_eq!(update_target(&files, Some("144848"), false), None);
+        assert_eq!(update_target(&files, Some("146114"), false), None);
+        assert_eq!(update_target(&files, Some("146114"), true).as_deref(), Some("157888"));
     }
 
     #[test]

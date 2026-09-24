@@ -5302,6 +5302,8 @@ fn apply_mod_snapshot(
             .into_iter()
             .filter(|m| m.mod_id.as_deref().map(str::trim) == Some(mod_id))
             .collect();
+        // A flatlined part doesn't make the mod multi-part
+        let sole_record = records.iter().filter(|m| !m.removed).count() <= 1;
         for mut record in records {
             let installed = nexus_sync::installed_state(
                 &snapshot.files,
@@ -5324,7 +5326,7 @@ fn apply_mod_snapshot(
                 snapshot.state.nexus_updated_at.clone(),
                 snapshot.state.uploader.clone(),
                 installed.corrected_version,
-                nexus_sync::update_target(&snapshot.files, record.file_id.as_deref()),
+                nexus_sync::update_target(&snapshot.files, record.file_id.as_deref(), sole_record),
             )?;
             results.push((record, update_available));
         }
