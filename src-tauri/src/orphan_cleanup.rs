@@ -73,6 +73,48 @@ pub fn is_cet_mod_state(path: &str) -> bool {
     lower.contains("/cyber_engine_tweaks/mods/") && !lower.ends_with(".lua")
 }
 
+/// What an update does with a file the old version had and the new one doesn't.
+#[derive(Debug, PartialEq, Eq)]
+pub enum StaleFile {
+    /// Nothing else needs it: delete it (and its `.disabled` twin).
+    Delete,
+    /// Another installed mod claims the same path; deleting it would take it
+    /// from that mod too.
+    Shared,
+    /// State a CET mod wrote while running (see `is_cet_mod_state`): keep it,
+    /// still tracked by the mod.
+    CetState,
+    /// Outside the game directory or climbing out of it: never touch.
+    Unsafe,
+}
+
+/// Sorts the old version's files the new version no longer ships.
+/// `claimed_elsewhere` holds the lowercased paths of every other live record.
+/// Paths compare case-insensitively, as on the APFS volume the game lives on.
+pub fn stale_files<'a>(
+    old_files: &'a [String],
+    new_files: &[String],
+    claimed_elsewhere: &HashSet<String>,
+) -> Vec<(&'a str, StaleFile)> {
+    let new_lower: HashSet<String> = new_files.iter().map(|f| f.to_lowercase()).collect();
+    old_files
+        .iter()
+        .filter(|f| !new_lower.contains(&f.to_lowercase()))
+        .map(|f| {
+            let fate = if claimed_elsewhere.contains(&f.to_lowercase()) {
+                StaleFile::Shared
+            } else if is_cet_mod_state(f) {
+                StaleFile::CetState
+            } else if f.contains("..") || !f.to_lowercase().contains("cyberpunk 2077") {
+                StaleFile::Unsafe
+            } else {
+                StaleFile::Delete
+            };
+            (f.as_str(), fate)
+        })
+        .collect()
+}
+
 /// Decide what a folder holds, from the names of the files inside it.
 ///
 /// Order matters: anything the user might want back outranks everything else,
@@ -209,6 +251,42 @@ mod tests {
         assert!(!is_cet_mod_state(&format!("{base}/modules/ui.lua.disabled")));
         assert!(!is_cet_mod_state("/g/Cyberpunk 2077/r6/scripts/new Splat/Fix.reds"));
         assert!(!is_cet_mod_state("/g/Cyberpunk 2077/SPLAT_Settings_Field_Guide.pdf"));
+    }
+
+    #[test]
+    fn an_update_leaves_files_another_mod_claims() {
+        // Nova LUT's switcher pack v4 drops the files LUT Switcher 2 also holds
+        let g = "/g/Cyberpunk 2077";
+        let old = names(&[
+            &format!("{g}/archive/pc/mod/###-LUTSwitcher-Addon-Nova.archive"),
+            &format!("{g}/bin/x64/plugins/cyber_engine_tweaks/mods/LUTSwitcher/custom/novalut.json"),
+            &format!("{g}/archive/pc/mod/#####-NovaLUT-3.archive"),
+            &format!("{g}/archive/pc/mod/kept.archive"),
+        ]);
+        let new = names(&[&format!("{g}/archive/pc/mod/KEPT.archive")]);
+        let claimed: HashSet<String> = [
+            format!("{g}/archive/pc/mod/###-lutswitcher-addon-nova.archive"),
+            format!("{g}/bin/x64/plugins/cyber_engine_tweaks/mods/lutswitcher/custom/novalut.json"),
+        ]
+        .into_iter()
+        .map(|p| p.to_lowercase())
+        .collect();
+        let fates: Vec<StaleFile> = stale_files(&old, &new, &claimed).into_iter().map(|(_, f)| f).collect();
+        // shipped again (case aside) → not stale; claimed → shared, even CET state
+        assert_eq!(fates, [StaleFile::Shared, StaleFile::Shared, StaleFile::Delete]);
+    }
+
+    #[test]
+    fn an_update_keeps_cet_state_and_never_leaves_the_game() {
+        let cet = "/g/Cyberpunk 2077/bin/x64/plugins/cyber_engine_tweaks/mods/BetterLootMarkers";
+        let old = names(&[
+            &format!("{cet}/config.json"),
+            &format!("{cet}/Modules/Old.lua"),
+            "/Users/x/Documents/notes.txt",
+            "/g/Cyberpunk 2077/../escape.dll",
+        ]);
+        let fates: Vec<StaleFile> = stale_files(&old, &[], &HashSet::new()).into_iter().map(|(_, f)| f).collect();
+        assert_eq!(fates, [StaleFile::CetState, StaleFile::Delete, StaleFile::Unsafe, StaleFile::Unsafe]);
     }
 
     fn names(list: &[&str]) -> Vec<String> {

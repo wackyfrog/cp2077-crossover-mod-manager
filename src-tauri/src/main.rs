@@ -4101,45 +4101,32 @@ async fn install_mod_from_nxm_inner(
         {
             let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
             if let Some(old_mod) = manager.get_installed_mods().into_iter().find(|m| m.id == *existing_id) {
-                let new_files_lower: std::collections::HashSet<String> = installed_files.iter()
-                    .map(|f| f.to_lowercase())
-                    .collect();
-                // Paths other installed mods also claim: deleting one would
-                // take it from that mod too
                 let claimed_elsewhere: std::collections::HashSet<String> = manager
                     .get_installed_mods()
                     .iter()
                     .filter(|m| m.id != *existing_id && !m.removed)
                     .flat_map(|m| m.files.iter().map(|f| f.to_lowercase()))
                     .collect();
-                for old_file in &old_mod.files {
-                    if !new_files_lower.contains(&old_file.to_lowercase()) {
-                        if claimed_elsewhere.contains(&old_file.to_lowercase()) {
+                for (old_file, fate) in orphan_cleanup::stale_files(&old_mod.files, &installed_files, &claimed_elsewhere) {
+                    match fate {
+                        orphan_cleanup::StaleFile::Shared => {
                             println!("↔ Keeping {}: another installed mod claims it too", old_file);
-                            continue;
                         }
-                        // Settings and other state a CET mod wrote while it
-                        // ran: keep it, and keep it tracked by the mod
-                        if orphan_cleanup::is_cet_mod_state(old_file) {
-                            kept_state_files.push(old_file.clone());
-                            continue;
-                        }
-                        // Path safety: only delete files within game directory
-                        if old_file.contains("..") || !old_file.to_lowercase().contains("cyberpunk 2077") {
-                            eprintln!("⛔ Skipping unsafe stale path: {}", old_file);
-                            continue;
-                        }
-                        // A ghosted mod's files live on disk with a .disabled
-                        // suffix, so clean up both the active and disabled variant.
-                        if std::path::Path::new(old_file).exists() {
-                            if let Err(e) = std::fs::remove_file(old_file) {
-                                eprintln!("Failed to remove stale file {}: {}", old_file, e);
+                        orphan_cleanup::StaleFile::CetState => kept_state_files.push(old_file.to_string()),
+                        orphan_cleanup::StaleFile::Unsafe => eprintln!("⛔ Skipping unsafe stale path: {}", old_file),
+                        orphan_cleanup::StaleFile::Delete => {
+                            // A ghosted mod's files live on disk with a .disabled
+                            // suffix, so clean up both the active and disabled variant.
+                            if std::path::Path::new(old_file).exists() {
+                                if let Err(e) = std::fs::remove_file(old_file) {
+                                    eprintln!("Failed to remove stale file {}: {}", old_file, e);
+                                }
                             }
-                        }
-                        let old_disabled = format!("{}.disabled", old_file);
-                        if std::path::Path::new(&old_disabled).exists() {
-                            if let Err(e) = std::fs::remove_file(&old_disabled) {
-                                eprintln!("Failed to remove stale file {}: {}", old_disabled, e);
+                            let old_disabled = format!("{}.disabled", old_file);
+                            if std::path::Path::new(&old_disabled).exists() {
+                                if let Err(e) = std::fs::remove_file(&old_disabled) {
+                                    eprintln!("Failed to remove stale file {}: {}", old_disabled, e);
+                                }
                             }
                         }
                     }
