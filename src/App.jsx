@@ -241,6 +241,12 @@ function App() {
             const before = event.payload?.reinstall
               ? modsRef.current.find((m) => m.id === event.payload?.id)
               : null;
+            // What the LATEST mark was decided on, for bug reports
+            invoke("add_log_entry", {
+              message: `Frontend: mod-installed id=${event.payload?.id} reinstall=${!!event.payload?.reinstall} same_file=${!!event.payload?.same_file} · record before: ${before ? `v${before.version} update_available=${!!before.update_available}` : "not found"}`,
+              level: "info",
+              category: "installation",
+            }).catch(() => {});
             if (before?.update_available && !event.payload?.same_file) {
               setJustUpdated((cur) => ({
                 ...cur,
