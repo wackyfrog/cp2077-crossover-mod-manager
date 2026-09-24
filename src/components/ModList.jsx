@@ -150,6 +150,10 @@ function ModList({
             const anyUpdate   = items.some((m) => m.update_available);
             const anyJust     = items.some((m) => justUpdated[m.id]);
             const label       = items[0].name;
+            // Parts are separate files with versions of their own ("3.0.0" and
+            // "3.0.0s"); a version for the whole mod only when they all agree,
+            // never whichever part the current sort put first
+            const sharedVersion = items.every((m) => m.version === items[0].version) ? items[0].version : null;
 
             const isGroupSelected = selectedMod?._isGroup && selectedMod?.mod_id === modId;
             const anyChildSelected = items.some((m) => m.id === selectedMod?.id);
@@ -163,7 +167,7 @@ function ModList({
                     _isGroup: true,
                     mod_id: modId,
                     name: label,
-                    version: items[0].version,
+                    version: sharedVersion,
                     author: items[0].author,
                     summary: items[0].summary,
                     picture_url: items[0].picture_url,
@@ -183,7 +187,7 @@ function ModList({
                         </span>
                       )}
                       <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />
-                      v{items[0].version} · {items.length} parts
+                      {sharedVersion && `v${sharedVersion} · `}{items.length} parts
                     </p>
                   </div>
                 </div>

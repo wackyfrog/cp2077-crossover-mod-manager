@@ -287,11 +287,15 @@ function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) 
       >
         <span className="label">Version</span>
         <span className="value files-toggle-value">
-          {mod.version}
+          {mod.version ?? <span className="version-date">parts differ</span>}
           {!brief && !mod.update_available && updatedFrom && updatedFrom !== mod.version && (
             <span className="version-updated-from"> · updated from {updatedFrom}</span>
           )}
-          {!brief && mod.update_available && (
+          {!brief && mod.update_available && mod.version == null && mod.latest_version && (
+            // A group whose parts disagree: nothing to point an arrow from
+            <span className="version-date"> · <span className="version-update-badge">v{mod.latest_version}</span> on Nexus</span>
+          )}
+          {!brief && mod.update_available && mod.version != null && (
             // The arrow only when the declared version really is newer. A mod
             // can be OUTDATED because its author retired the installed file
             // while the mod's own version stayed put ("1.0.1 → v1.0.1") or
