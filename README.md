@@ -48,19 +48,15 @@ Enjoy Night City, choom!
 <td><b>Jack In</b> — paste an NXM link, or sideload an archive from disk</td>
 <td><b>Splash</b> — click anywhere to skip</td>
 </tr>
-</table>
-
-<details>
-<summary><b>Jack In, while it works</b> — download progress and the finished install</summary>
-
-<table>
 <tr>
-<td width="50%"><img src="docs/screenshots/jack-in2.png" alt="Jack In — downloading"></td>
-<td width="50%"><img src="docs/screenshots/jack-in3.png" alt="Jack In — install complete"></td>
+<td><img src="docs/screenshots/jack-in2.png" alt="Jack In — downloading"></td>
+<td><img src="docs/screenshots/jack-in3.png" alt="Jack In — install complete"></td>
+</tr>
+<tr>
+<td><b>Jack In, while it works</b> — download progress</td>
+<td><b>Jack In, done</b> — the finished install</td>
 </tr>
 </table>
-
-</details>
 
 <a id="whats-new"></a>
 ## What's New in 1.7
