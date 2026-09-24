@@ -108,7 +108,7 @@ function ModList({
         <p className="mod-part-meta">
           {!mod.enabled && <span className="mod-badge mod-badge-ghosted">GHOSTED</span>}
           <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title={`v${mod.latest_version} available`} />
-          {mod.files?.length || 0} files
+          {mod.version && `v${mod.version} · `}{mod.files?.length || 0} files
         </p>
       </div>
     </div>
