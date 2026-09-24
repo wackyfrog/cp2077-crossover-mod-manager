@@ -1026,15 +1026,18 @@ impl ModManager {
 
     /// Check for file conflicts with already installed mods
     /// Returns a map of file paths to conflicting mod info
+    /// Files other records already hold. `updating` is the record an update
+    /// is replacing: its own files coming back are not a conflict.
     pub fn check_file_conflicts(
         &self,
         files_to_install: &[String],
+        updating: Option<&str>,
     ) -> HashMap<String, Vec<ConflictDetails>> {
         let mut conflicts: HashMap<String, Vec<ConflictDetails>> = HashMap::new();
 
         for file_path in files_to_install {
             // Check if this file is already installed by another mod
-            for existing_mod in &self.mods {
+            for existing_mod in self.mods.iter().filter(|m| Some(m.id.as_str()) != updating) {
                 if existing_mod.files.contains(file_path) {
                     conflicts
                         .entry(file_path.clone())
@@ -1217,6 +1220,22 @@ mod tests {
             last_modified: None,
         };
         (manager, game)
+    }
+
+    #[test]
+    fn an_update_does_not_conflict_with_the_record_it_replaces() {
+        let shared = "/g/Cyberpunk 2077/r6/scripts/Sleeves.reds".to_string();
+        let own = "/g/Cyberpunk 2077/archive/pc/mod/sleeves.archive".to_string();
+        let (manager, game) = manager_with(
+            "conflicts",
+            vec![fixture("sleeves", vec![shared.clone(), own.clone()]), fixture("other", vec![shared.clone()])],
+        );
+        let conflicts = manager.check_file_conflicts(&[shared.clone(), own.clone()], Some("sleeves"));
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[&shared].iter().map(|c| c.mod_id.as_str()).collect::<Vec<_>>(), ["other"]);
+        // a fresh install still sees every holder
+        assert_eq!(manager.check_file_conflicts(&[own], None).len(), 1);
+        cleanup(&game);
     }
 
     #[test]

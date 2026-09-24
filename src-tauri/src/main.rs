@@ -3523,7 +3523,8 @@ async fn install_mod_from_nxm_inner(
     // Check for file conflicts with other installed mods
     {
         let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
-        let conflicts = manager.check_file_conflicts(&installed_files);
+        let updating = state.reinstall_mod_id.lock().ok().and_then(|s| s.clone());
+        let conflicts = manager.check_file_conflicts(&installed_files, updating.as_deref());
 
         if !conflicts.is_empty() {
             add_log(
