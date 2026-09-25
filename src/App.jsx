@@ -33,6 +33,35 @@ function shortenTurnedAway(detail) {
   return detail.split("/").pop() || null;
 }
 
+/** Rows of the Flatline dialog: what goes, what stays for other mods. */
+function removeConfirmItems(confirm) {
+  const shared = confirm?.shared ?? [];
+  const deleted = (confirm?.total ?? 0) - shared.length;
+  const rows = [
+    {
+      icon: "✗",
+      label: shared.length
+        ? `Deletes ${deleted} of ${confirm.total} game file${confirm.total === 1 ? "" : "s"} from disk`
+        : "Deletes game files from disk",
+    },
+  ];
+  const liveFor = [...new Set(shared.filter((s) => s.holders.some((h) => h.enabled)).flatMap((s) => s.holders.filter((h) => h.enabled).map((h) => h.mod_name)))];
+  const liveCount = shared.filter((s) => s.holders.some((h) => h.enabled)).length;
+  if (liveCount) {
+    rows.push({ icon: "◆", label: `Keeps ${liveCount} shared file${liveCount === 1 ? "" : "s"} — still used by ${liveFor.join(", ")}` });
+  }
+  const ghostCount = shared.length - liveCount;
+  if (ghostCount) {
+    const ghostFor = [...new Set(shared.filter((s) => !s.holders.some((h) => h.enabled)).flatMap((s) => s.holders.map((h) => h.mod_name)))];
+    rows.push({ icon: "◇", label: `Ghosts ${ghostCount} shared file${ghostCount === 1 ? "" : "s"} instead of deleting — kept for ${ghostFor.join(", ")} (unslotted)` });
+  }
+  rows.push(
+    { icon: "◈", label: "Keeps metadata record (Flatlined filter)" },
+    { icon: "⚿", label: "Cannot be undone" },
+  );
+  return rows;
+}
+
 function App() {
   const [mods, setMods] = useState([]);
   // The event listeners below are set up once; they read the list through this
@@ -716,9 +745,17 @@ function App() {
     );
   };
 
-  const handleRemoveMod = (modId) => {
-    const modName = mods.find((m) => m.id === modId)?.name ?? "this mod";
-    setRemoveConfirm({ modId, modName });
+  const handleRemoveMod = async (modId) => {
+    const mod = mods.find((m) => m.id === modId);
+    // Parts of one mod share its name; the file name tells them apart
+    const hasSiblings = mod?.mod_id && mods.some((m) => m.id !== modId && m.mod_id === mod.mod_id && !m.removed);
+    const modName = `${mod?.name ?? "this mod"}${hasSiblings && mod.file_name ? ` · ${mod.file_name}` : ""}`;
+    // Files other live mods hold stay on disk — the dialog says which
+    const shared = await invoke("get_shared_files", { modId }).catch((err) => {
+      console.error("get_shared_files:", err);
+      return [];
+    });
+    setRemoveConfirm({ modId, modName, total: mod?.files?.length ?? 0, shared });
   };
 
   const doRemoveMod = async () => {
@@ -994,12 +1031,10 @@ function App() {
       <ConfirmDialog
         open={!!removeConfirm}
         title="Flatline Mod"
-        message={`All game files for "${removeConfirm?.modName}" will be deleted from disk. The record stays in your library under Flatlined.`}
-        items={[
-          { icon: "✗", label: "Deletes game files from disk" },
-          { icon: "◈", label: "Keeps metadata record (Flatlined filter)" },
-          { icon: "⚿", label: "Cannot be undone" },
-        ]}
+        message={removeConfirm?.shared?.length
+          ? `The game files of "${removeConfirm.modName}" will be deleted from disk, except those another mod also uses. The record stays in your library under Flatlined.`
+          : `All game files for "${removeConfirm?.modName}" will be deleted from disk. The record stays in your library under Flatlined.`}
+        items={removeConfirmItems(removeConfirm)}
         confirmText="Flatline"
         cancelText="Cancel"
         danger
