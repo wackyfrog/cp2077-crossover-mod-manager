@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Logs from "./Logs";
 import "./AppFooter.css";
 
-export default function AppFooter({ version, build, commit, status, hoverHint }) {
+export default function AppFooter({ version, build, commit, status, hoverHint, openLogs = 0 }) {
   const [glitch, setGlitch] = useState(false);
   const [isDev, setIsDev] = useState(false);
   const [buildTs, setBuildTs] = useState("");
@@ -29,6 +29,11 @@ export default function AppFooter({ version, build, commit, status, hoverHint })
     let timerRef = schedule();
     return () => clearTimeout(timerRef);
   }, []);
+
+  // A result window's "Show log" opens the panel from outside
+  useEffect(() => {
+    if (openLogs > 0) setLogsState("open");
+  }, [openLogs]);
 
   const toggleLogs = () => {
     if (logsState === "closed") setLogsState("open");

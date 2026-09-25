@@ -207,7 +207,7 @@ fn remove_mod(
     mod_id: String,
     state: State<AppState>,
     app: tauri::AppHandle,
-) -> Result<String, String> {
+) -> Result<serde_json::Value, String> {
     add_log(
         format!("🗑️ Starting removal of mod with ID: {}", mod_id),
         "info".to_string(),
@@ -341,7 +341,15 @@ fn remove_mod(
         window.emit("mod-removed", &mod_id).ok();
     }
 
-    Ok(result_message)
+    // The UI shows what happened in a result window: counts, and which
+    // files stayed for which mod.
+    Ok(serde_json::json!({
+        "message": result_message,
+        "mod_name": mod_name,
+        "removed": removed_files.len(),
+        "failed": failed_files,
+        "kept": kept,
+    }))
 }
 
 #[tauri::command]

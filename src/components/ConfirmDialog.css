@@ -178,3 +178,21 @@
   box-shadow: 0 0 10px rgba(255, 0, 64, 0.3);
   color: var(--cyber-red-bright);
 }
+
+/* File paths listed under the items (e.g. files a Flatline kept) */
+.cdlg-files {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--cyber-border-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: var(--cyber-text-dim);
+  max-height: 10rem;
+  overflow-y: auto;
+}
+
+.cdlg-files li {
+  word-break: break-all;
+  padding: 0.15rem 0;
+}

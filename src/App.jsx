@@ -33,6 +33,28 @@ function shortenTurnedAway(detail) {
   return detail.split("/").pop() || null;
 }
 
+/** Rows of the Flatline result: what went, what stayed and for whom. */
+function removeResultItems(result) {
+  if (!result) return [];
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const kept = result.kept ?? [];
+  const rows = [{ icon: "✓", label: `Deleted ${plural(result.removed, "file")} from disk` }];
+  const live = kept.filter((k) => k.holders.some((h) => h.enabled));
+  if (live.length) {
+    const names = [...new Set(live.flatMap((k) => k.holders.filter((h) => h.enabled).map((h) => h.mod_name)))];
+    rows.push({ icon: "◆", label: `Kept ${plural(live.length, "shared file")} on disk — still used by ${names.join(", ")}` });
+  }
+  const ghosted = kept.length - live.length;
+  if (ghosted) {
+    const names = [...new Set(kept.filter((k) => !k.holders.some((h) => h.enabled)).flatMap((k) => k.holders.map((h) => h.mod_name)))];
+    rows.push({ icon: "◇", label: `Ghosted ${plural(ghosted, "shared file")} instead of deleting — kept for ${names.join(", ")}` });
+  }
+  if (result.failed?.length) {
+    rows.push({ icon: "✗", label: `${plural(result.failed.length, "file")} could not be deleted — see the log` });
+  }
+  return rows;
+}
+
 /** Rows of the Flatline dialog: what goes, what stays for other mods. */
 function removeConfirmItems(confirm) {
   const shared = confirm?.shared ?? [];
@@ -82,6 +104,8 @@ function App() {
   const [syncProgress, setSyncProgress] = useState(null); // { current, total, modName }
   const [syncSummary, setSyncSummary] = useState(null); // { synced, total, updated, errors, cancelled }
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
+  const [removeResult, setRemoveResult] = useState(null); // remove_mod report + modName
+  const [openLogs, setOpenLogs] = useState(0); // bumped to open the footer log
   const [forgetConfirm, setForgetConfirm] = useState(null); // { modId, modName }
   const [installProgress, setInstallProgress] = useState(null);
   const [busyNotice, setBusyNotice] = useState(null); // { text, seq } — a turned-away request
@@ -774,15 +798,15 @@ function App() {
           // Files survived the removal (locked, no permission), so the record
           // stays live — don't send the user to the flatlined list for a mod
           // that isn't there.
-          setStatusMsg(report);
+          setStatusMsg(report.message);
         } else {
           setModFilter("removed");
-          // Files another live mod holds stay on disk; the report names them
-          const kept = report.split(" Kept ")[1];
-          setStatusMsg(`flatlined: ${modName}${kept ? ` · kept ${kept}` : ""}`);
+          setStatusMsg(`flatlined: ${modName}`);
         }
         return cur;
       });
+      // The list alone doesn't say what happened on disk
+      setRemoveResult({ ...report, modName });
     } catch (error) {
       console.error("Failed to remove mod:", error);
       alert("Failed to remove mod: " + error);
@@ -1043,6 +1067,29 @@ function App() {
       />
 
       <ConfirmDialog
+        open={!!removeResult}
+        title={removeResult?.failed?.length ? "Partially Flatlined" : "Flatlined"}
+        message={removeResult?.failed?.length
+          ? `Some files of "${removeResult.modName}" could not be deleted; the mod stays slotted so you can retry.`
+          : `"${removeResult?.modName}" is flatlined.`}
+        items={removeResultItems(removeResult)}
+        confirmText="OK"
+        cancelText=""
+        auxText="Show log"
+        onAux={() => { setRemoveResult(null); setOpenLogs((n) => n + 1); }}
+        onConfirm={() => setRemoveResult(null)}
+        onCancel={() => setRemoveResult(null)}
+      >
+        {removeResult?.kept?.length > 0 && (
+          <ul className="cdlg-files">
+            {removeResult.kept.map((k) => (
+              <li key={k.path} title={k.path}>{k.path.replace(/^.*?Cyberpunk 2077\//, "")}</li>
+            ))}
+          </ul>
+        )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
         open={!!forgetConfirm}
         title="Purge Record"
         message={`Permanently delete all metadata for "${forgetConfirm?.modName}" from your library. This cannot be undone.`}
@@ -1155,7 +1202,7 @@ function App() {
         />
       )}
 
-      <AppFooter version={__APP_VERSION__} build={__BUILD_ID__} commit={__GIT_COMMIT__} status={statusMsg} hoverHint={hoverHint} />
+      <AppFooter version={__APP_VERSION__} build={__BUILD_ID__} commit={__GIT_COMMIT__} status={statusMsg} hoverHint={hoverHint} openLogs={openLogs} />
 
     </div>
   );
