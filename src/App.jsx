@@ -684,7 +684,10 @@ function App() {
       // Stopped to ask about requirements: the overlay already shows the question
       if (String(error).includes(REQUIREMENTS_PAUSE)) return;
       console.error("Failed to process NXM URL:", error);
-      setStatusMsg(`✗ jack in failed: ${error}`);
+      // "Already installed" waits on Reinstall or Cancel; it didn't fail
+      setStatusMsg(String(error).includes("already installed")
+        ? "already jacked in · reinstall or cancel"
+        : `✗ jack in failed: ${error}`);
       setInstallProgress({
         stage: "error",
         message: String(error),

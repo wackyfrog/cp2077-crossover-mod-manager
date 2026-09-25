@@ -373,6 +373,19 @@
   margin-left: -0.7rem;
 }
 
+/* A question, not a failure ("already installed") */
+.jackin-stage.stage-warning {
+  color: #ffcc00;
+  text-shadow: 0 0 6px rgba(255, 204, 0, 0.4);
+}
+
+.jackin-line-warning {
+  color: #ffcc00;
+  border-left: 2px solid rgba(255, 204, 0, 0.4);
+  padding-left: 0.6rem;
+  margin-left: -0.7rem;
+}
+
 .jackin-line-error {
   color: var(--cyber-red);
   text-shadow: 0 0 4px rgba(255, 0, 64, 0.4);

@@ -2174,9 +2174,12 @@ async fn handle_nxm_url(
                 )?;
             }
             Err(e) => {
+                // "Already installed" is a question for the user (Reinstall or
+                // Cancel), not a failure
+                let already = e.contains("already installed");
                 add_log(
-                    format!("❌ Installation failed: {}", e),
-                    "error".to_string(),
+                    if already { format!("⚠ Not installed: {}", e) } else { format!("❌ Installation failed: {}", e) },
+                    if already { "warning" } else { "error" }.to_string(),
                     "installation".to_string(),
                     state.clone(),
                 )?;

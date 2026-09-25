@@ -333,8 +333,10 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
 
     flushTyping();
 
-    const type = stage === "error" ? "error" : stage === "done" ? "done" : "stage";
-    const newText = `[${STAGE_LABELS[stage] || stage}] ${message}`;
+    // "Already installed" arrives as an error stage but asks a question
+    const asks = stage === "error" && friendlyError(message)?.type === "conflict";
+    const type = asks ? "warning" : stage === "error" ? "error" : stage === "done" ? "done" : "stage";
+    const newText = `[${asks ? "WARNING" : STAGE_LABELS[stage] || stage}] ${message}`;
 
     setLines((prev) => {
       // For downloading/installing updates, replace last stage line of same type to avoid spam
@@ -608,7 +610,7 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
         <span className="jackin-chrome-sys">CROSSOVER MOD MANAGER v{__APP_VERSION__}</span>
         <span className="jackin-chrome-divider" />
         <span className="jackin-chrome-status">
-          {phase === "input" ? "AWAITING INPUT" : phase === "working" ? "TRANSFER IN PROGRESS" : phase === "done" ? "COMPLETE" : phase === "requirements" ? "AWAITING DECISION" : "FAULT DETECTED"}
+          {phase === "input" ? "AWAITING INPUT" : phase === "working" ? "TRANSFER IN PROGRESS" : phase === "done" ? "COMPLETE" : phase === "requirements" || errorInfo?.type === "conflict" ? "AWAITING DECISION" : "FAULT DETECTED"}
         </span>
       </div>
 
@@ -671,8 +673,8 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
           </div>
         ) : (
           <div className="jackin-progress-area">
-            <div className={`jackin-stage stage-${stage}`}>
-              {STAGE_LABELS[stage] || stage || "CONNECTING"}
+            <div className={`jackin-stage stage-${errorInfo?.type === "conflict" ? "warning" : stage}`}>
+              {errorInfo?.type === "conflict" ? "WARNING" : STAGE_LABELS[stage] || stage || "CONNECTING"}
               {(mod_name || modLabel) && <span className="jackin-mod-name"> — {mod_name || modLabel}</span>}
               {fileLabel && <span className="jackin-file-name"> · {fileLabel}</span>}
             </div>
