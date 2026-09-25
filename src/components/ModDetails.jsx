@@ -510,7 +510,10 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
                     {s.enabled ? "◆" : "◇"}
                   </span>
                   <span className="submod-item-content">
-                    <span className="submod-item-name">{s.file_name || `File #${s.file_id || "?"}`}</span>
+                    <span className="submod-item-name">
+                      {s.file_name || `File #${s.file_id || "?"}`}
+                      {s.update_available && <span className="submod-outdated">OUTDATED</span>}
+                    </span>
                     {showDesc && <span className="submod-item-desc">{p.text}</span>}
                   </span>
                 </span>
@@ -546,17 +549,15 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
           </div>
         </div>
 
-        <div className="mod-details-footer">
-          {mod.mod_id && mod.update_available && (
-            <button
-              className="jackin-detail-button"
-              onClick={() => onJackIn?.(mod)}
-              disabled={loading}
-            >
-              Update
-            </button>
-          )}
-        </div>
+        {/* No Update for the whole group: each part is its own file on Nexus,
+            fetched with its own click there, and a group has no file to ask
+            for — it opened the Files tab and the pick could land as a new
+            part beside the old one. Parts are updated from their own row. */}
+        {mod.update_available && (
+          <div className="mod-details-footer">
+            <span className="group-update-note">Update each OUTDATED part from its own row</span>
+          </div>
+        )}
       </div>
     );
   }

@@ -917,3 +917,19 @@
   0%, 100% { opacity: 0.4; }
   50%      { opacity: 0.8; }
 }
+
+/* Group view: which parts need updating, and where to do it */
+.submod-outdated {
+  margin-left: 0.6rem;
+  font-size: 0.72rem;
+  letter-spacing: 1px;
+  color: var(--cyber-yellow);
+  border: 1px solid rgba(255, 255, 0, 0.4);
+  padding: 0 0.3rem;
+}
+
+.group-update-note {
+  color: var(--cyber-text-dim);
+  font-size: 0.9rem;
+  letter-spacing: 0.5px;
+}
