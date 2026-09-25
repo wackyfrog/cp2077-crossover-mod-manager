@@ -126,15 +126,17 @@ function ModList({
   const renderPartMod = (mod, siblings) => (
     <div
       key={mod.id}
-      className={`mod-item mod-item-part ${selectedMod?.id === mod.id ? "selected" : ""} ${!mod.enabled ? "mod-item-disabled" : ""}`}
+      className={`mod-item mod-item-part ${selectedMod?.id === mod.id ? "selected" : ""} ${mod.removed ? "mod-item-removed" : !mod.enabled ? "mod-item-disabled" : ""}`}
       onClick={() => onSelectMod({ ...mod, _siblings: siblings })}
     >
       <div className="mod-info">
         <p className="mod-part-name">{mod.file_name || `File #${mod.file_id || "?"}`}</p>
         <p className="mod-part-meta">
-          {!mod.enabled && <span className="mod-badge mod-badge-ghosted">GHOSTED</span>}
+          {/* A flatlined part is neither ghosted nor outdated — it's gone */}
+          {mod.removed && <span className="mod-badge mod-badge-flatlined">FLATLINED</span>}
+          {!mod.removed && !mod.enabled && <span className="mod-badge mod-badge-ghosted">GHOSTED</span>}
           {/* The mod's version is its core's; a part's own newer file may be numbered apart */}
-          <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title="newer file on NexusMods" />
+          {!mod.removed && <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title="newer file on NexusMods" />}
           {mod.version && `v${mod.version} · `}{mod.files?.length || 0} files
         </p>
       </div>
@@ -149,6 +151,8 @@ function ModList({
     const anyEnabled  = items.some((m) => m.enabled);
     const anyUpdate   = items.some((m) => m.update_available);
     const anyJust     = items.some((m) => justUpdated[m.id]);
+    // The Flatlined filter lists only removed records, so a group there is all flatlined
+    const allRemoved  = items.every((m) => m.removed);
     const label       = items[0].name;
     // Parts are separate files with versions of their own ("3.0.0" and
     // "3.0.0s"); a version for the whole mod only when they all agree,
@@ -172,7 +176,8 @@ function ModList({
             summary: items[0].summary,
             picture_url: items[0].picture_url,
             nexus_updated_at: items[0].nexus_updated_at,
-            update_available: anyUpdate,
+            update_available: anyUpdate && !allRemoved,
+            removed: allRemoved,
             latest_version: items.find(m => m.update_available)?.latest_version,
             enabled: allEnabled,
             former_names: [...new Set(items.flatMap((m) => m.former_names ?? []))],
@@ -182,12 +187,13 @@ function ModList({
           <div className="mod-info">
             <h3 title={formerly(items.flatMap((m) => m.former_names ?? []))}>{label}</h3>
             <p className="mod-version mod-group-meta">
-              {!allEnabled && (
+              {allRemoved && <span className="mod-badge mod-badge-flatlined">FLATLINED</span>}
+              {!allRemoved && !allEnabled && (
                 <span className={`mod-badge ${anyEnabled ? "mod-badge-partial" : "mod-badge-ghosted"}`}>
                   {anyEnabled ? "PARTIAL" : "GHOSTED"}
                 </span>
               )}
-              <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />
+              {!allRemoved && <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />}
               {sharedVersion && `v${sharedVersion} · `}{items.length} parts
             </p>
           </div>
