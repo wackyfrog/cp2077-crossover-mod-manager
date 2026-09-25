@@ -24,7 +24,7 @@ Enjoy Night City, choom!
 ## Contents
 
 - [Screenshots](#screenshots)
-- [What's new in 1.7](#whats-new)
+- [What's new in 1.8](#whats-new)
 - [Upgrading from an earlier version](#upgrading) — what earlier releases got wrong, and what to do about it
 - [Future plans](#future-plans)
 - [Requirements](#requirements) · [Download](#download) · [Quick start](#quick-start)
@@ -60,13 +60,16 @@ Enjoy Night City, choom!
 </table>
 
 <a id="whats-new"></a>
-## What's New in 1.7
+## What's New in 1.8
 
-- **The changelog unfolds from the Version row** — click `2.2.10 → v2.2.11 · 1 month ago ▶` and the mod's history opens in place: newest upload first, your installed version marked where it falls, older ones folded away. Versions whose author never wrote notes show the file's description instead, labelled as such
-- **NETRUN is quicker and brings the changelogs** — it asks NexusMods about 50 mods at a time, so a few hundred mods take about ten requests instead of hundreds, and the changelog it fetches always matches the update badge. It stops cleanly at the NexusMods request limit instead of failing every remaining mod
-- **OUTDATED and LATEST instead of UPD** — a mod with a newer version on Nexus says **OUTDATED**; one you've just updated says **LATEST** and names the version it came from. Working down the **Updates** filter no longer loses your place: an updated mod stays where it was until you quit
-- **Updates actually update** — Update could reinstall the file you already had and then call the mod up to date. Fixed, and NETRUN finds the mods it already happened to; see [below](#updates-that-didnt-update)
-- **Smaller things** — the Author row names the NexusMods account and opens its mods; the Mod Page link says *Open on NexusMods ↗*; **Flatline** moved left of **Update/Reinstall**, so the button on the right is never the one that deletes; unfolding Version or Files scrolls what opened into view
+- **Requirements, checked before you install** — a mod's NexusMods page lists what it needs; the app now reads that list and checks it against your install. Before anything is downloaded, Jack In says which required items the game won't load (not installed, ghosted or flatlined) and, apart from them, optional ones you don't have, with a link to each one's download page — then waits for **Install anyway** or **Cancel**. The details show a **Requires** row, and mods missing a required item are marked **REQ** in the list. NexusMods gives no versions, so only presence is checked
+- **Ghost and Flatline leave other mods' files alone** — when two mods ship the same file (a patch replacing its parent's script), switching one off or flatlining it no longer renames or deletes the file the other still uses. The Flatline confirmation says beforehand what stays and for whom, and a result window afterwards says what was deleted and what was kept. Updating a switched-off mod no longer overwrites an enabled mod's copy of such a file
+- **Names and versions that match NexusMods** — a mod takes the title its page has now (the old one still finds it in search), and a part of a mod installed as several shows its own file's version, not the mod's
+- **A part's changelog is its own file's history** — a core and its add-on packs no longer mix their versions; the other files' versions fold into one row, and a pack's update arrow points at its own newest version
+- **Updates keeps what's left on top** — mods still OUTDATED come first; the ones updated this session fold into an *Updated this session* row
+- **Smaller things** — Jack In names the file it installs and keeps its real steps on screen; "already installed" is a warning, not an error; a multi-part mod is updated part by part (the group's Update button is gone); search finds a part by its file name; the log wraps or scrolls long lines; the Flatlined list is no longer faded
+
+After upgrading, **run NETRUN once** — it fills in the requirements, current names and changelog lines ([why](#upgrading)).
 
 Full history in the [CHANGELOG](CHANGELOG.md).
 
@@ -122,7 +125,15 @@ long fixed and described, with what to do, in [OLDER-VERSIONS.md](OLDER-VERSIONS
 ## Earlier releases
 
 <details>
-<summary><b>1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0</b> — newest first</summary>
+<summary><b>1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0</b> — newest first</summary>
+
+### What's New in 1.7
+
+- **The changelog unfolds from the Version row** — click `2.2.10 → v2.2.11 · 1 month ago ▶` and the mod's history opens in place: newest upload first, your installed version marked where it falls, older ones folded away. Versions whose author never wrote notes show the file's description instead, labelled as such
+- **NETRUN is quicker and brings the changelogs** — it asks NexusMods about 50 mods at a time, so a few hundred mods take about ten requests instead of hundreds, and the changelog it fetches always matches the update badge. It stops cleanly at the NexusMods request limit instead of failing every remaining mod
+- **OUTDATED and LATEST instead of UPD** — a mod with a newer version on Nexus says **OUTDATED**; one you've just updated says **LATEST** and names the version it came from. Working down the **Updates** filter no longer loses your place: an updated mod stays where it was until you quit
+- **Updates actually update** — Update could reinstall the file you already had and then call the mod up to date. Fixed, and NETRUN finds the mods it already happened to; see [below](#updates-that-didnt-update)
+- **Smaller things** — the Author row names the NexusMods account and opens its mods; the Mod Page link says *Open on NexusMods ↗*; **Flatline** moved left of **Update/Reinstall**, so the button on the right is never the one that deletes; unfolding Version or Files scrolls what opened into view
 
 ### What's New in 1.6
 
@@ -202,13 +213,15 @@ long fixed and described, with what to do, in [OLDER-VERSIONS.md](OLDER-VERSIONS
 <a id="future-plans"></a>
 ## Future plans
 
-- **Files that several mods share.** Two mods sometimes ship the same file —
-  a patch replacing one of its parent's scripts, or two tweak mods writing the
-  same YAML. Updating a mod no longer deletes such a file. Ghosting or
-  flatlining one of them still can: it renames or deletes the shared file
-  even when another enabled mod still needs it. Planned: list which files each
-  mod shares with which, and check before ghosting or flatlining a mod whether
-  another enabled mod claims its files.
+- **Two versions of one shared file.** Since 1.8, Ghost, Flatline and Update
+  leave a file alone when another enabled mod still uses it. What the app
+  can't do yet is keep *both* mods' versions of such a file: there is one
+  switched-off copy per path, so switching one of the pair off can overwrite
+  the other's switched-off version, and switching it back on keeps the other
+  mod's copy active. Planned: a switched-off copy per mod, with the active one
+  following which mod was switched on last.
+- **All shared files in one place** — the details show a mod's shared files;
+  a Maintenance view listing them across every mod is planned.
 
 ## Requirements
 
