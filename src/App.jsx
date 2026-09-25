@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import ModList from "./components/ModList";
+import ModList, { filterMods, isShown } from "./components/ModList";
 import ModDetails from "./components/ModDetails";
 import DevRelayOverlay from "./components/DevRelayOverlay";
 import Settings from "./components/Settings";
@@ -874,6 +874,10 @@ function App() {
   };
   const repairScan = REPAIR_SCAN[healthIssues.find((i) => REPAIR_SCAN[i.code])?.code];
 
+  // A selection the search or filter hides leaves the details pane empty,
+  // rather than showing a mod the list doesn't; it comes back with the list.
+  const selectedShown = isShown(selectedMod, filterMods(mods, { filter: modFilter, searchQuery, justUpdated }));
+
   return (
     <div className="app">
       {booting && <SplashScreen onDone={() => setBooting(false)} />}
@@ -1004,7 +1008,7 @@ function App() {
             </div>
             <div className="mod-details-pane">
               <ModDetails
-                mod={selectedMod}
+                mod={selectedShown ? selectedMod : null}
                 justUpdated={justUpdated}
                 siblings={selectedMod?._siblings || (selectedMod?.mod_id ? mods.filter(m => m.mod_id === selectedMod.mod_id && !m.removed) : [])}
                 onSelectMod={setSelectedMod}

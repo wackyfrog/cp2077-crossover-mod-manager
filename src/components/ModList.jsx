@@ -34,34 +34,52 @@ export const formerly = (names) => {
   return unique.length ? `formerly: ${unique.join(" · ")}` : undefined;
 };
 
+/**
+ * The mods the list shows for a filter and search, unsorted. App uses it too:
+ * a selection the list hides isn't kept on the details pane.
+ */
+export function filterMods(mods, { filter = "all", searchQuery = "", justUpdated = {} }) {
+  let result = mods;
+
+  if (filter === "removed")        result = result.filter((m) => m.removed);
+  else                             result = result.filter((m) => !m.removed);
+
+  if (filter === "enabled")        result = result.filter((m) => m.enabled);
+  else if (filter === "disabled")  result = result.filter((m) => !m.enabled && !m.removed);
+  // Mods updated this session stay, so the list doesn't shift under you
+  else if (filter === "updates")   result = result.filter((m) => (m.update_available || justUpdated[m.id]) && !m.removed);
+
+  const q = searchQuery.trim().toLowerCase();
+  if (q) {
+    result = result.filter(
+      (m) =>
+        m.name?.toLowerCase().includes(q) ||
+        // A part of a multi-part mod is known by its file's name
+        m.file_name?.toLowerCase().includes(q) ||
+        // The name it was installed under, before the author renamed it
+        m.former_names?.some((n) => n.toLowerCase().includes(q)) ||
+        m.author?.toLowerCase().includes(q) ||
+        m.uploader_name?.toLowerCase().includes(q) ||
+        m.version?.toLowerCase().includes(q)
+    );
+  }
+  return result;
+}
+
+/** Whether the list shows this selection: a mod, a part, or a group of parts. */
+export function isShown(selected, shown) {
+  if (!selected) return false;
+  if (selected._isGroup) return shown.some((m) => m.mod_id === selected.mod_id);
+  return shown.some((m) => m.id === selected.id);
+}
+
 function ModList({
   mods, justUpdated = {}, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
   loading, dragActive = false,
 }) {
   const contentRef = useRef(null);
   const filtered = useMemo(() => {
-    let result = mods;
-
-    if (filter === "removed")        result = result.filter((m) => m.removed);
-    else                             result = result.filter((m) => !m.removed);
-
-    if (filter === "enabled")        result = result.filter((m) => m.enabled);
-    else if (filter === "disabled")  result = result.filter((m) => !m.enabled && !m.removed);
-    // Mods updated this session stay, so the list doesn't shift under you
-    else if (filter === "updates")   result = result.filter((m) => (m.update_available || justUpdated[m.id]) && !m.removed);
-
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      result = result.filter(
-        (m) =>
-          m.name?.toLowerCase().includes(q) ||
-          // The name it was installed under, before the author renamed it
-          m.former_names?.some((n) => n.toLowerCase().includes(q)) ||
-          m.author?.toLowerCase().includes(q) ||
-          m.uploader_name?.toLowerCase().includes(q) ||
-          m.version?.toLowerCase().includes(q)
-      );
-    }
+    let result = filterMods(mods, { filter, searchQuery, justUpdated });
 
     result = [...result].sort((a, b) => {
       if (sort === "name") {
