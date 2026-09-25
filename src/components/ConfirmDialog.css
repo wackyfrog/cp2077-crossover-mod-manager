@@ -196,3 +196,16 @@
   word-break: break-all;
   padding: 0.15rem 0;
 }
+
+/* A second, quieter group of items (e.g. optional requirements) */
+.cdlg-subhead {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--cyber-text-dim);
+}
+
+.cdlg-items-optional {
+  opacity: 0.75;
+}

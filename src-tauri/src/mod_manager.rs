@@ -146,8 +146,12 @@ impl RequirementCheck {
     /// A requirement the mod may not work without: not optional, and not
     /// loaded by the game (missing, ghosted or flatlined).
     pub fn is_problem(&self) -> bool {
-        !self.optional
-            && matches!(self.state, RequirementState::Ghosted | RequirementState::Flatlined | RequirementState::Missing)
+        !self.optional && self.not_loaded()
+    }
+
+    /// Missing, ghosted or flatlined — whatever the author's note says.
+    pub fn not_loaded(&self) -> bool {
+        matches!(self.state, RequirementState::Ghosted | RequirementState::Flatlined | RequirementState::Missing)
     }
 }
 

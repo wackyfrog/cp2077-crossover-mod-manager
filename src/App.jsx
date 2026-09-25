@@ -33,6 +33,15 @@ function shortenTurnedAway(detail) {
   return detail.split("/").pop() || null;
 }
 
+/** A requirement the game won't load, as a dialog row. */
+function requirementItem(r) {
+  return {
+    icon: r.state === "ghosted" ? "◇" : "✗",
+    label: `${r.name}${r.dlc ? " (DLC)" : ""} — ${r.state === "ghosted" ? "installed but ghosted" : r.state === "flatlined" ? "flatlined" : "not installed"}`,
+    value: r.notes ?? undefined,
+  };
+}
+
 /** Rows of the Flatline result: what went, what stayed and for whom. */
 function removeResultItems(result) {
   if (!result) return [];
@@ -310,8 +319,14 @@ function App() {
                 [before.id]: { from: before.version, sortAt: cur[before.id]?.sortAt ?? before.installed_at },
               }));
             }
-            const missing = event.payload?.missing_requirements ?? [];
-            if (missing.length > 0) setInstallReqs({ name: event.payload?.name, missing });
+            const notLoaded = event.payload?.missing_requirements ?? [];
+            if (notLoaded.length > 0) {
+              setInstallReqs({
+                name: event.payload?.name,
+                missing: notLoaded.filter((r) => !r.optional),
+                optional: notLoaded.filter((r) => r.optional),
+              });
+            }
             const modList = await loadMods();
             // Select the mod that was just installed/updated
             const installedId = event.payload?.id;
@@ -1106,20 +1121,36 @@ function App() {
 
       <ConfirmDialog
         open={!!installReqs}
-        title="Missing requirements"
-        message={`"${installReqs?.name}" is installed. Its NexusMods page lists requirements the game won't load:`}
-        items={(installReqs?.missing ?? []).map((r) => ({
-          icon: r.state === "ghosted" ? "◇" : "✗",
-          label: `${r.name}${r.dlc ? " (DLC)" : ""} — ${r.state === "ghosted" ? "installed but ghosted" : r.state === "flatlined" ? "flatlined" : "not installed"}`,
-          value: r.notes ?? undefined,
-        }))}
+        title={installReqs?.missing?.length ? "Missing requirements" : "Optional requirements"}
+        message={installReqs?.missing?.length
+          ? `"${installReqs?.name}" is installed. Its NexusMods page lists requirements the game won't load:`
+          : `"${installReqs?.name}" is installed. Its NexusMods page also lists optional items you don't have:`}
+        items={(installReqs?.missing ?? []).map(requirementItem)}
         confirmText="OK"
         cancelText=""
         auxText="Show log"
         onAux={() => { setInstallReqs(null); setOpenLogs((n) => n + 1); }}
         onConfirm={() => setInstallReqs(null)}
         onCancel={() => setInstallReqs(null)}
-      />
+      >
+        {installReqs?.missing?.length > 0 && installReqs?.optional?.length > 0 && (
+          <p className="cdlg-subhead">Optional, not installed</p>
+        )}
+        {installReqs?.optional?.length > 0 && (
+          <ul className="cdlg-items cdlg-items-optional">
+            {installReqs.optional.map((r, i) => {
+              const it = requirementItem(r);
+              return (
+                <li key={i} className="cdlg-item">
+                  <span className="cdlg-item-icon">{it.icon}</span>
+                  <span className="cdlg-item-label">{it.label}</span>
+                  {it.value != null && <span className="cdlg-item-value">{it.value}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={!!forgetConfirm}

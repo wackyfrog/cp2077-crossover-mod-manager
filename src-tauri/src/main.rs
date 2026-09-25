@@ -4465,7 +4465,8 @@ async fn install_mod_from_nxm_inner(
             manager
                 .check_requirements(id, std::path::Path::new(&game_path))
                 .into_iter()
-                .filter(|c| c.is_problem())
+                // Optional ones too: the UI lists them apart, as information
+                .filter(|c| c.not_loaded())
                 .collect()
         }
         None => Vec::new(),
@@ -4478,12 +4479,13 @@ async fn install_mod_from_nxm_inner(
         };
         add_log(
             format!(
-                "⚠ Requirement {}: {}{}",
+                "{} {}: {}{}",
+                if req.optional { "· Optional requirement" } else { "⚠ Requirement" },
                 how,
                 req.name,
                 req.notes.as_deref().map(|n| format!(" ({})", n)).unwrap_or_default()
             ),
-            "warning".to_string(),
+            if req.optional { "info" } else { "warning" }.to_string(),
             "installation".to_string(),
             state.clone(),
         )?;
