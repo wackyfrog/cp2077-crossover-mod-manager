@@ -323,7 +323,7 @@ function App() {
               }));
             }
             const notLoaded = event.payload?.missing_requirements ?? [];
-            if (notLoaded.length > 0) {
+            if (notLoaded.length > 0 && !requirementsAcceptedRef.current) {
               setInstallReqs({
                 name: event.payload?.name,
                 missing: notLoaded.filter((r) => !r.optional),
@@ -396,6 +396,8 @@ function App() {
     const setupInstallProgressListener = async () => {
       try {
         return await listen("install-progress", (event) => {
+          // A fresh question (any link, the browser's included) resets the answer
+          if (event.payload?.stage === "requirements") setRequirementsAccepted(false);
           setInstallProgress(event.payload);
         });
       } catch (e) {
@@ -607,11 +609,15 @@ function App() {
   };
 
   // The user saw what the mod needs and goes on: the same link again, told
-  // not to ask a second time
+  // not to ask a second time in this run. Remembered only until the Jack In
+  // screen closes — every new attempt is asked again.
+  const [requirementsAccepted, setRequirementsAccepted] = useState(false);
+  // Read by the mod-installed listener, which is set up once
+  const requirementsAcceptedRef = useRef(false);
+  useEffect(() => { requirementsAcceptedRef.current = requirementsAccepted; }, [requirementsAccepted]);
   const handleAcceptRequirements = async (nxmUrl) => {
-    const m = nxmUrl.match(/\/mods\/(\d+)\/files\/(\d+)/);
-    if (m) await invoke("accept_requirements", { modId: m[1], fileId: m[2] }).catch(() => {});
-    await handleInstallUrl(nxmUrl);
+    setRequirementsAccepted(true);
+    await handleInstallUrl(nxmUrl, true);
   };
 
   const handleReinstall = async (nxmUrl) => {
@@ -619,7 +625,7 @@ function App() {
     setStatusMsg("reinstalling...");
     try {
       await invoke("set_force_reinstall");
-      await invoke("handle_nxm_url", { nxmUrl });
+      await invoke("handle_nxm_url", { nxmUrl, skipRequirements: requirementsAccepted });
     } catch (error) {
       if (String(error).includes(REQUIREMENTS_PAUSE)) return;
       console.error("Reinstall failed:", error);
@@ -667,10 +673,12 @@ function App() {
   // overwrote its result with a fabricated "no response" error (docs/bugs.md
   // B11). An unparseable link is an Err from `handle_nxm_url`, like any other
   // failure, so nothing here has to infer anything from a lack of events.
-  const handleInstallUrl = async (url) => {
+  const handleInstallUrl = async (url, skipRequirements = false) => {
+    // A new attempt, not the continuation of one: it is asked again
+    if (!skipRequirements) setRequirementsAccepted(false);
     setStatusMsg("jacking in · processing NXM URL...");
     try {
-      await invoke("handle_nxm_url", { nxmUrl: url });
+      await invoke("handle_nxm_url", { nxmUrl: url, skipRequirements });
     } catch (error) {
       // Stopped to ask about requirements: the overlay already shows the question
       if (String(error).includes(REQUIREMENTS_PAUSE)) return;
@@ -1230,6 +1238,7 @@ function App() {
         onDismiss={(reason) => {
           // The overlay showed them; no dialog after it closes
           setInstallReqs(null);
+          setRequirementsAccepted(false);
           const wasSuccess = installProgress?.stage === "done";
           const modName = installProgress?.mod_name;
           setNxmInput(false);

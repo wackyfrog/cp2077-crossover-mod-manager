@@ -73,9 +73,6 @@ struct AppState {
     install_busy: Arc<AtomicBool>,
     startup_nxm_url: Mutex<Option<String>>,
     force_reinstall: AtomicBool,
-    /// (mod id, file id) the user chose to install despite its requirements:
-    /// the retry — and a Reinstall after it — doesn't ask again.
-    accepted_requirements: Mutex<Option<(String, String)>>,
     reinstall_mod_id: Mutex<Option<String>>,
     pending_file_name: Mutex<Option<String>>,
     pending_file_version: Mutex<Option<String>>,
@@ -1626,7 +1623,7 @@ fn list_downloaded_mods(state: State<AppState>) -> Result<Vec<String>, String> {
 #[allow(dead_code)] // Used in deep link event handler
 async fn handle_nxm_url_internal(nxm_url: String, app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let result = handle_nxm_url(nxm_url, state.clone(), app.clone()).await;
+    let result = handle_nxm_url(nxm_url, None, state.clone(), app.clone()).await;
 
     // If install failed and we were doing a reinstall, abort it gracefully
     if result.is_err() {
@@ -1690,6 +1687,9 @@ fn redact_nxm_url(url: &str) -> String {
 #[tauri::command]
 async fn handle_nxm_url(
     nxm_url: String,
+    // The user already saw this mod's requirements in this Jack In run and
+    // chose to go on. Every new attempt leaves it unset and is asked again.
+    skip_requirements: Option<bool>,
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -1900,12 +1900,7 @@ async fn handle_nxm_url(
         // Before anything is downloaded: what the mod's page lists that the
         // game won't load. The user decides whether to go on; the retry with
         // their answer skips this.
-        let accepted = state
-            .accepted_requirements
-            .lock()
-            .map(|a| a.as_ref() == Some(&(mod_id.to_string(), file_id.to_string())))
-            .unwrap_or(false);
-        if !accepted {
+        if !skip_requirements.unwrap_or(false) {
             let not_loaded = requirements_not_loaded(&state, &api_key, mod_id).await;
             match not_loaded {
                 Ok(list) if !list.is_empty() => {
@@ -2522,13 +2517,6 @@ fn try_relay(nxm_url: String) -> bool {
 #[tauri::command]
 fn is_dev_build() -> bool {
     tauri::is_dev() || cfg!(debug_assertions)
-}
-
-/// The user saw what the mod needs and installs it anyway.
-#[tauri::command]
-fn accept_requirements(mod_id: String, file_id: String, state: State<AppState>) -> Result<(), String> {
-    *state.accepted_requirements.lock().map_err(|e| e.to_string())? = Some((mod_id, file_id));
-    Ok(())
 }
 
 #[tauri::command]
@@ -4548,15 +4536,7 @@ async fn install_mod_from_nxm_inner(
 
     // Step 8: requirements the author lists that the game won't load — known
     // now that the mini-sync fetched them. Logged and passed to the UI.
-    // Already shown before the download and accepted: not asked again.
-    let acknowledged = state
-        .accepted_requirements
-        .lock()
-        .ok()
-        .and_then(|mut a| a.take())
-        .is_some_and(|(m, f)| m == mod_id && f == file_id);
     let missing_requirements: Vec<mod_manager::RequirementCheck> = match &installed_mod_id {
-        Some(_) if acknowledged => Vec::new(),
         Some(id) => {
             let game_path = {
                 let settings = state.settings.lock().map_err(|e| e.to_string())?;
@@ -6270,7 +6250,6 @@ fn main() {
             install_busy: Arc::new(AtomicBool::new(false)),
             startup_nxm_url: Mutex::new(None),
             force_reinstall: AtomicBool::new(false),
-            accepted_requirements: Mutex::new(None),
             reinstall_mod_id: Mutex::new(None),
             pending_file_name: Mutex::new(None),
             pending_file_version: Mutex::new(None),
@@ -6285,7 +6264,6 @@ fn main() {
             dismiss_same_file_updates_check,
             expect_update,
             set_force_reinstall,
-            accept_requirements,
             abort_reinstall,
             install_mod,
             remove_mod,
