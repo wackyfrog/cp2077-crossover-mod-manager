@@ -87,16 +87,17 @@ function cleanSummary(raw) {
   return decodeEntities(stripMarkup(raw)) || null;
 }
 
+// Load state belongs to a src, not to the component: resetting it in an
+// effect when src changed could run after a cached image had already fired
+// onLoad, and left the placeholder up for good (seen after an update swapped
+// the file-description image for the mod's picture; reselecting the mod
+// brought it back).
 function Thumbnail({ src, alt }) {
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState(false);
+  const [loadedSrc, setLoadedSrc] = useState(null);
+  const [failedSrc, setFailedSrc] = useState(null);
 
-  useEffect(() => {
-    setLoaded(false);
-    setError(false);
-  }, [src]);
-
-  if (!src || error) return null;
+  if (!src || failedSrc === src) return null;
+  const loaded = loadedSrc === src;
 
   return (
     <div className={`mod-thumbnail ${loaded ? '' : 'mod-thumbnail-loading'}`}>
@@ -104,8 +105,8 @@ function Thumbnail({ src, alt }) {
       <img
         src={src}
         alt={alt}
-        onLoad={() => setLoaded(true)}
-        onError={() => setError(true)}
+        onLoad={() => setLoadedSrc(src)}
+        onError={() => setFailedSrc(src)}
         style={{ display: loaded ? 'block' : 'none' }}
       />
     </div>
