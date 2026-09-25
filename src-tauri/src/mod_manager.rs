@@ -111,7 +111,7 @@ pub struct DlcRequirement {
 }
 
 /// Where a requirement stands in this install.
-#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RequirementState {
     /// A live, switched-on record of that mod.
@@ -128,7 +128,7 @@ pub enum RequirementState {
     Unchecked,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequirementCheck {
     pub name: String,
     pub mod_id: Option<String>,
@@ -806,7 +806,14 @@ impl ModManager {
         let Some(reqs) = &record.requirements else {
             return Vec::new();
         };
-        let own = record.mod_id.as_deref().map(str::trim);
+        self.check_requirement_list(reqs, record.mod_id.as_deref(), game_dir)
+    }
+
+    /// `reqs` against this install — also before a mod is installed, when
+    /// there is no record yet. `own` is the mod's Nexus id: it doesn't
+    /// require itself.
+    pub fn check_requirement_list(&self, reqs: &Requirements, own: Option<&str>, game_dir: &Path) -> Vec<RequirementCheck> {
+        let own = own.map(str::trim);
         let mut out = Vec::new();
 
         for r in &reqs.mods {

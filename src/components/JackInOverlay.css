@@ -570,3 +570,36 @@
   70%  { transform: skewX(0.1deg); filter: none; opacity: 0.95; }
   100% { transform: none; filter: none; opacity: 1; }
 }
+
+/* Requirements the finished install's mod lists and the game won't load */
+.jackin-reqs {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 2px solid #ffcc00;
+  background: rgba(255, 204, 0, 0.05);
+}
+
+.jackin-reqs-title {
+  font-size: 0.8rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin: 0.4rem 0 0.2rem;
+}
+
+.jackin-reqs-title:first-child { margin-top: 0; }
+.jackin-reqs-required { color: #ffcc00; opacity: 1; }
+
+.jackin-req { padding: 0.1rem 0; }
+.jackin-req-mark { color: #ff5577; margin-right: 0.5rem; }
+.jackin-req-name { color: #eee; }
+.jackin-req-state { color: #ffcc00; }
+.jackin-req-notes { opacity: 0.7; }
+.jackin-req.optional .jackin-req-mark,
+.jackin-req.optional .jackin-req-state { color: inherit; opacity: 0.75; }
+
+.jackin-reqs-hint {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}

@@ -47,6 +47,10 @@ pub struct InstallProgress {
     pub mod_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nxm_url: Option<String>,
+    /// Stage "requirements": what the mod needs that the game won't load,
+    /// for the user to decide before anything is downloaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requirements: Option<Vec<mod_manager::RequirementCheck>>,
 }
 
 fn emit_install_progress(app: &tauri::AppHandle, progress: InstallProgress) {
@@ -69,6 +73,9 @@ struct AppState {
     install_busy: Arc<AtomicBool>,
     startup_nxm_url: Mutex<Option<String>>,
     force_reinstall: AtomicBool,
+    /// (mod id, file id) the user chose to install despite its requirements:
+    /// the retry — and a Reinstall after it — doesn't ask again.
+    accepted_requirements: Mutex<Option<(String, String)>>,
     reinstall_mod_id: Mutex<Option<String>>,
     pending_file_name: Mutex<Option<String>>,
     pending_file_version: Mutex<Option<String>>,
@@ -1635,6 +1642,39 @@ async fn handle_nxm_url_internal(nxm_url: String, app: tauri::AppHandle) -> Resu
     result
 }
 
+/// Returned when an install stops to ask about its requirements; the UI
+/// shows the question, not an error.
+const REQUIREMENTS_PAUSE: &str = "Install paused: requirements not loaded";
+
+/// The mod's requirements from NexusMods, checked against this install:
+/// those the game won't load, optional ones included.
+async fn requirements_not_loaded(
+    state: &State<'_, AppState>,
+    api_key: &str,
+    mod_id: &str,
+) -> Result<Vec<mod_manager::RequirementCheck>, String> {
+    let id: u64 = mod_id.trim().parse().map_err(|_| format!("Not a NexusMods id: {}", mod_id))?;
+    let client = reqwest::Client::new();
+    let batch = nexus_sync::fetch_batch(&client, api_key, &[id]).await;
+    let snapshot = batch
+        .snapshots
+        .get(&id)
+        .ok_or_else(|| batch.errors.get(&id).cloned().unwrap_or_else(|| "NexusMods returned nothing".to_string()))?;
+    let Some(reqs) = &snapshot.state.requirements else {
+        return Ok(Vec::new());
+    };
+    let game_path = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.get_settings().game_path.clone()
+    };
+    let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    Ok(manager
+        .check_requirement_list(reqs, Some(mod_id), std::path::Path::new(&game_path))
+        .into_iter()
+        .filter(|c| c.not_loaded())
+        .collect())
+}
+
 /// Strip an NXM link's query string, which carries a time-limited download key.
 ///
 /// Which mod and file the link points at is worth logging; the key is not — log
@@ -1856,6 +1896,52 @@ async fn handle_nxm_url(
             mod_name: Some(mod_name.clone()),
             ..Default::default()
         });
+
+        // Before anything is downloaded: what the mod's page lists that the
+        // game won't load. The user decides whether to go on; the retry with
+        // their answer skips this.
+        let accepted = state
+            .accepted_requirements
+            .lock()
+            .map(|a| a.as_ref() == Some(&(mod_id.to_string(), file_id.to_string())))
+            .unwrap_or(false);
+        if !accepted {
+            let not_loaded = requirements_not_loaded(&state, &api_key, mod_id).await;
+            match not_loaded {
+                Ok(list) if !list.is_empty() => {
+                    for req in &list {
+                        add_log(
+                            format!(
+                                "{} not loaded: {}{}",
+                                if req.optional { "· Optional requirement" } else { "⚠ Requirement" },
+                                req.name,
+                                req.notes.as_deref().map(|n| format!(" ({})", n)).unwrap_or_default()
+                            ),
+                            if req.optional { "info" } else { "warning" }.to_string(),
+                            "installation".to_string(),
+                            state.clone(),
+                        )?;
+                    }
+                    emit_install_progress(&app, InstallProgress {
+                        stage: "requirements".into(),
+                        message: format!("{} lists requirements the game won't load", mod_name),
+                        mod_name: Some(mod_name.clone()),
+                        nxm_url: Some(nxm_url.clone()),
+                        requirements: Some(list),
+                        ..Default::default()
+                    });
+                    return Err(REQUIREMENTS_PAUSE.to_string());
+                }
+                Ok(_) => {}
+                // Not knowing is no reason to stop an install
+                Err(e) => add_log(
+                    format!("⚠ Could not check requirements: {}", e),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?,
+            }
+        }
 
         // Fetch file name for this specific file_id
         let install_file_info = match nexusmods_api::get_file_names(game, &mod_id, &api_key).await {
@@ -2436,6 +2522,13 @@ fn try_relay(nxm_url: String) -> bool {
 #[tauri::command]
 fn is_dev_build() -> bool {
     tauri::is_dev() || cfg!(debug_assertions)
+}
+
+/// The user saw what the mod needs and installs it anyway.
+#[tauri::command]
+fn accept_requirements(mod_id: String, file_id: String, state: State<AppState>) -> Result<(), String> {
+    *state.accepted_requirements.lock().map_err(|e| e.to_string())? = Some((mod_id, file_id));
+    Ok(())
 }
 
 #[tauri::command]
@@ -4455,7 +4548,15 @@ async fn install_mod_from_nxm_inner(
 
     // Step 8: requirements the author lists that the game won't load — known
     // now that the mini-sync fetched them. Logged and passed to the UI.
+    // Already shown before the download and accepted: not asked again.
+    let acknowledged = state
+        .accepted_requirements
+        .lock()
+        .ok()
+        .and_then(|mut a| a.take())
+        .is_some_and(|(m, f)| m == mod_id && f == file_id);
     let missing_requirements: Vec<mod_manager::RequirementCheck> = match &installed_mod_id {
+        Some(_) if acknowledged => Vec::new(),
         Some(id) => {
             let game_path = {
                 let settings = state.settings.lock().map_err(|e| e.to_string())?;
@@ -6169,6 +6270,7 @@ fn main() {
             install_busy: Arc::new(AtomicBool::new(false)),
             startup_nxm_url: Mutex::new(None),
             force_reinstall: AtomicBool::new(false),
+            accepted_requirements: Mutex::new(None),
             reinstall_mod_id: Mutex::new(None),
             pending_file_name: Mutex::new(None),
             pending_file_version: Mutex::new(None),
@@ -6183,6 +6285,7 @@ fn main() {
             dismiss_same_file_updates_check,
             expect_update,
             set_force_reinstall,
+            accept_requirements,
             abort_reinstall,
             install_mod,
             remove_mod,

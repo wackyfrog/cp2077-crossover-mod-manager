@@ -33,6 +33,9 @@ function shortenTurnedAway(detail) {
   return detail.split("/").pop() || null;
 }
 
+// Must match main.rs REQUIREMENTS_PAUSE: the install stopped to ask, not failed
+const REQUIREMENTS_PAUSE = "Install paused: requirements not loaded";
+
 /** A requirement the game won't load, as a dialog row. */
 function requirementItem(r) {
   return {
@@ -603,6 +606,14 @@ function App() {
     } catch {}
   };
 
+  // The user saw what the mod needs and goes on: the same link again, told
+  // not to ask a second time
+  const handleAcceptRequirements = async (nxmUrl) => {
+    const m = nxmUrl.match(/\/mods\/(\d+)\/files\/(\d+)/);
+    if (m) await invoke("accept_requirements", { modId: m[1], fileId: m[2] }).catch(() => {});
+    await handleInstallUrl(nxmUrl);
+  };
+
   const handleReinstall = async (nxmUrl) => {
     setInstallProgress(null);
     setStatusMsg("reinstalling...");
@@ -610,6 +621,7 @@ function App() {
       await invoke("set_force_reinstall");
       await invoke("handle_nxm_url", { nxmUrl });
     } catch (error) {
+      if (String(error).includes(REQUIREMENTS_PAUSE)) return;
       console.error("Reinstall failed:", error);
       try { await invoke("abort_reinstall"); } catch {}
       setInstallProgress({
@@ -660,6 +672,8 @@ function App() {
     try {
       await invoke("handle_nxm_url", { nxmUrl: url });
     } catch (error) {
+      // Stopped to ask about requirements: the overlay already shows the question
+      if (String(error).includes(REQUIREMENTS_PAUSE)) return;
       console.error("Failed to process NXM URL:", error);
       setStatusMsg(`✗ jack in failed: ${error}`);
       setInstallProgress({
@@ -1120,7 +1134,7 @@ function App() {
       </ConfirmDialog>
 
       <ConfirmDialog
-        open={!!installReqs}
+        open={!!installReqs && !((nxmInput || !!installProgress) && !relayStatus)}
         title={installReqs?.missing?.length ? "Missing requirements" : "Optional requirements"}
         message={installReqs?.missing?.length
           ? `"${installReqs?.name}" is installed. Its NexusMods page lists requirements the game won't load:`
@@ -1204,20 +1218,26 @@ function App() {
       <JackInOverlay
         open={(nxmInput || !!installProgress) && !relayStatus}
         progress={installProgress}
+        requirements={installReqs}
         busy={installRunning}
         notice={busyNotice}
         onSubmit={handleInstallUrl}
         onSideload={handleSideloadPick}
         onRetry={() => setInstallProgress(null)}
         onReinstall={handleReinstall}
+        onAcceptRequirements={handleAcceptRequirements}
         onCancel={() => setNxmInput(false)}
         onDismiss={(reason) => {
+          // The overlay showed them; no dialog after it closes
+          setInstallReqs(null);
           const wasSuccess = installProgress?.stage === "done";
           const modName = installProgress?.mod_name;
           setNxmInput(false);
           setInstallProgress(null);
           if (reason === "conflict-cancel") {
             setStatusMsg("installation skipped · mod already jacked in");
+          } else if (reason === "requirements-cancel") {
+            setStatusMsg("installation cancelled · requirements not loaded");
           } else if (wasSuccess && modName) {
             setStatusMsg(`✓ ${modName} jacked in successfully`);
           } else if (wasSuccess) {

@@ -193,11 +193,47 @@ const STAGE_LABELS = {
   extracting: "EXTRACTING",
   installing: "INSTALLING",
   registering: "REGISTERING",
+  requirements: "REQUIREMENTS",
   done: "COMPLETE",
   error: "ERROR",
 };
 
-export default function JackInOverlay({ open, progress, busy, notice, onSubmit, onSideload, onRetry, onReinstall, onCancel, onDismiss }) {
+// Required ones first, optional ones apart
+function RequirementsBlock({ list }) {
+  const required = list.filter((r) => !r.optional);
+  const optional = list.filter((r) => r.optional);
+  if (list.length === 0) return null;
+  return (
+    <div className="jackin-reqs">
+      {required.length > 0 && (
+        <>
+          <div className="jackin-reqs-title jackin-reqs-required">Requirements not loaded</div>
+          {required.map((r, i) => <RequirementLine key={`m${i}`} r={r} />)}
+        </>
+      )}
+      {optional.length > 0 && (
+        <>
+          <div className="jackin-reqs-title">Optional, not installed</div>
+          {optional.map((r, i) => <RequirementLine key={`o${i}`} r={r} />)}
+        </>
+      )}
+    </div>
+  );
+}
+
+function RequirementLine({ r }) {
+  const how = r.state === "ghosted" ? "installed but ghosted" : r.state === "flatlined" ? "flatlined" : "not installed";
+  return (
+    <div className={`jackin-req ${r.optional ? "optional" : ""}`}>
+      <span className="jackin-req-mark">{r.state === "ghosted" ? "◇" : "✗"}</span>
+      <span className="jackin-req-name">{r.name}{r.dlc ? " (DLC)" : ""}</span>
+      <span className="jackin-req-state"> — {how}</span>
+      {r.notes && <span className="jackin-req-notes"> · {r.notes}</span>}
+    </div>
+  );
+}
+
+export default function JackInOverlay({ open, progress, busy, notice, requirements, onSubmit, onSideload, onRetry, onReinstall, onAcceptRequirements, onCancel, onDismiss }) {
   const [url, setUrl] = useState("");
   const [lastNxmUrl, setLastNxmUrl] = useState(null);
   const [modLabel, setModLabel] = useState(null);
@@ -249,6 +285,8 @@ export default function JackInOverlay({ open, progress, busy, notice, onSubmit, 
     }
     if (stage === "done") setPhase("done");
     else if (stage === "error") setPhase("error");
+    // Paused before the download: the user decides
+    else if (stage === "requirements") setPhase("requirements");
     else {
       // A working stage arriving after a finished run means a *new* install
       // started. Without this the overlay stayed in "error" for good: the new
@@ -431,11 +469,12 @@ export default function JackInOverlay({ open, progress, busy, notice, onSubmit, 
   const [inputError, setInputError] = useState(null);
 
   const handleClose = () => {
+    const wasAsking = phase === "requirements";
     setUrl("");
     setLines([]);
     setPhase("input");
     prevStageRef.current = null;
-    onDismiss();
+    onDismiss(wasAsking ? "requirements-cancel" : undefined);
   };
 
   // Escape backs out — but not mid-transfer, where hiding the progress screen
@@ -542,7 +581,7 @@ export default function JackInOverlay({ open, progress, busy, notice, onSubmit, 
         <span className="jackin-chrome-sys">CROSSOVER MOD MANAGER v{__APP_VERSION__}</span>
         <span className="jackin-chrome-divider" />
         <span className="jackin-chrome-status">
-          {phase === "input" ? "AWAITING INPUT" : phase === "working" ? "TRANSFER IN PROGRESS" : phase === "done" ? "COMPLETE" : "FAULT DETECTED"}
+          {phase === "input" ? "AWAITING INPUT" : phase === "working" ? "TRANSFER IN PROGRESS" : phase === "done" ? "COMPLETE" : phase === "requirements" ? "AWAITING DECISION" : "FAULT DETECTED"}
         </span>
       </div>
 
@@ -643,6 +682,19 @@ export default function JackInOverlay({ open, progress, busy, notice, onSubmit, 
                 {speedStr && <span className="jackin-speed"> [{speedStr}]</span>}
               </div>
             )}
+            {/* Before the download: what the mod needs that the game won't
+                load, and a choice. After it, only if that check couldn't run. */}
+            {phase === "requirements" && progress?.requirements && (
+              <>
+                <RequirementsBlock list={progress.requirements} />
+                <div className="jackin-reqs-hint">
+                  Nothing is downloaded yet. NexusMods lists no versions — only whether each is installed is checked.
+                </div>
+              </>
+            )}
+            {phase === "done" && requirements && (
+              <RequirementsBlock list={[...requirements.missing, ...requirements.optional]} />
+            )}
             {progressPct !== null && (
               <div className="jackin-progress-wrap">
                 <div className="jackin-progress-bar" style={{ width: `${progressPct}%` }} />
@@ -694,6 +746,21 @@ export default function JackInOverlay({ open, progress, busy, notice, onSubmit, 
               {!busy && (
                 <button className="jackin-btn primary" onClick={handleRetry}>Retry</button>
               )}
+            </>
+          )}
+          {phase === "requirements" && (
+            <>
+              <button className="jackin-btn exit" onClick={handleClose}>
+                Cancel <span className="jackin-key">esc</span>
+              </button>
+              <button className="jackin-btn primary" onClick={() => {
+                const retryUrl = progress?.nxm_url || lastNxmUrl;
+                if (retryUrl && onAcceptRequirements) {
+                  prevStageRef.current = null;
+                  setPhase("working");
+                  onAcceptRequirements(retryUrl);
+                }
+              }}>Install anyway</button>
             </>
           )}
           {phase === "done" && (
