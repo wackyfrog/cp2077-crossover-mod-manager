@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./ModList.css";
 
 function groupMods(mods) {
@@ -99,7 +99,7 @@ function ModList({
   useEffect(() => {
     const el = contentRef.current?.querySelector(".mod-item.selected, .mod-group-header.selected");
     el?.scrollIntoView({ block: "nearest" });
-  }, [selectedMod?.id, selectedMod?.mod_id, filter]);
+  }, [selectedMod?.id, selectedMod?.mod_id, filter, justUpdated]);
 
   const groups = useMemo(() => groupMods(filtered), [filtered]);
 
@@ -141,6 +141,78 @@ function ModList({
     </div>
   );
 
+  const renderGroup = ([modId, items]) => {
+    if (items.length === 1) return renderMod(items[0]);
+
+    const sortedParts = [...items].sort((a, b) => (a.file_name ?? '').localeCompare(b.file_name ?? ''));
+    const allEnabled  = items.every((m) => m.enabled);
+    const anyEnabled  = items.some((m) => m.enabled);
+    const anyUpdate   = items.some((m) => m.update_available);
+    const anyJust     = items.some((m) => justUpdated[m.id]);
+    const label       = items[0].name;
+    // Parts are separate files with versions of their own ("3.0.0" and
+    // "3.0.0s"); a version for the whole mod only when they all agree,
+    // never whichever part the current sort put first
+    const sharedVersion = items.every((m) => m.version === items[0].version) ? items[0].version : null;
+
+    const isGroupSelected = selectedMod?._isGroup && selectedMod?.mod_id === modId;
+    const anyChildSelected = items.some((m) => m.id === selectedMod?.id);
+    const isOpen = isGroupSelected || anyChildSelected;
+
+    return (
+      <div key={modId} className={`mod-group ${isOpen ? "has-selected" : ""}`}>
+        <div
+          className={`mod-group-header ${isGroupSelected ? "selected" : ""}`}
+          onClick={() => onSelectMod({
+            _isGroup: true,
+            mod_id: modId,
+            name: label,
+            version: sharedVersion,
+            author: items[0].author,
+            summary: items[0].summary,
+            picture_url: items[0].picture_url,
+            nexus_updated_at: items[0].nexus_updated_at,
+            update_available: anyUpdate,
+            latest_version: items.find(m => m.update_available)?.latest_version,
+            enabled: allEnabled,
+            former_names: [...new Set(items.flatMap((m) => m.former_names ?? []))],
+            _siblings: sortedParts,
+          })}
+        >
+          <div className="mod-info">
+            <h3 title={formerly(items.flatMap((m) => m.former_names ?? []))}>{label}</h3>
+            <p className="mod-version mod-group-meta">
+              {!allEnabled && (
+                <span className={`mod-badge ${anyEnabled ? "mod-badge-partial" : "mod-badge-ghosted"}`}>
+                  {anyEnabled ? "PARTIAL" : "GHOSTED"}
+                </span>
+              )}
+              <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />
+              {sharedVersion && `v${sharedVersion} · `}{items.length} parts
+            </p>
+          </div>
+        </div>
+        {isOpen && (
+          <div className="mod-group-parts">
+            {sortedParts.map(m => renderPartMod(m, sortedParts))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // In UPDATES, what still needs updating stays on top; what was updated this
+  // session folds away below, so it neither clutters the list nor vanishes
+  // from under the cursor — the section opens by itself while it holds the
+  // selection.
+  const [doneOpen, setDoneOpen] = useState(false);
+  const isDone = ([, items]) => filter === "updates" && !items.some((m) => m.update_available);
+  const pending = groups.filter((g) => !isDone(g));
+  const done = groups.filter(isDone);
+  const holdsSelection = done.some(([modId, items]) =>
+    (selectedMod?._isGroup && selectedMod.mod_id === modId) || items.some((m) => m.id === selectedMod?.id));
+  const showDone = doneOpen || holdsSelection;
+
   return (
     <div className={`mod-list ${dragActive ? "drag-active" : ""}`}>
       <div className="mod-list-content" ref={contentRef}>
@@ -168,65 +240,21 @@ function ModList({
             )}
           </div>
         ) : (
-          groups.map(([modId, items]) => {
-            if (items.length === 1) return renderMod(items[0]);
-
-            const sortedParts = [...items].sort((a, b) => (a.file_name ?? '').localeCompare(b.file_name ?? ''));
-            const allEnabled  = items.every((m) => m.enabled);
-            const anyEnabled  = items.some((m) => m.enabled);
-            const anyUpdate   = items.some((m) => m.update_available);
-            const anyJust     = items.some((m) => justUpdated[m.id]);
-            const label       = items[0].name;
-            // Parts are separate files with versions of their own ("3.0.0" and
-            // "3.0.0s"); a version for the whole mod only when they all agree,
-            // never whichever part the current sort put first
-            const sharedVersion = items.every((m) => m.version === items[0].version) ? items[0].version : null;
-
-            const isGroupSelected = selectedMod?._isGroup && selectedMod?.mod_id === modId;
-            const anyChildSelected = items.some((m) => m.id === selectedMod?.id);
-            const isOpen = isGroupSelected || anyChildSelected;
-
-            return (
-              <div key={modId} className={`mod-group ${isOpen ? "has-selected" : ""}`}>
-                <div
-                  className={`mod-group-header ${isGroupSelected ? "selected" : ""}`}
-                  onClick={() => onSelectMod({
-                    _isGroup: true,
-                    mod_id: modId,
-                    name: label,
-                    version: sharedVersion,
-                    author: items[0].author,
-                    summary: items[0].summary,
-                    picture_url: items[0].picture_url,
-                    nexus_updated_at: items[0].nexus_updated_at,
-                    update_available: anyUpdate,
-                    latest_version: items.find(m => m.update_available)?.latest_version,
-                    enabled: allEnabled,
-                    former_names: [...new Set(items.flatMap((m) => m.former_names ?? []))],
-                    _siblings: sortedParts,
-                  })}
-                >
-                  <div className="mod-info">
-                    <h3 title={formerly(items.flatMap((m) => m.former_names ?? []))}>{label}</h3>
-                    <p className="mod-version mod-group-meta">
-                      {!allEnabled && (
-                        <span className={`mod-badge ${anyEnabled ? "mod-badge-partial" : "mod-badge-ghosted"}`}>
-                          {anyEnabled ? "PARTIAL" : "GHOSTED"}
-                        </span>
-                      )}
-                      <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />
-                      {sharedVersion && `v${sharedVersion} · `}{items.length} parts
-                    </p>
-                  </div>
-                </div>
-                {isOpen && (
-                  <div className="mod-group-parts">
-                    {sortedParts.map(m => renderPartMod(m, sortedParts))}
-                  </div>
-                )}
-              </div>
-            );
-          })
+          <>
+            {pending.map(renderGroup)}
+            {filter === "updates" && pending.length === 0 && (
+              <p className="mod-list-section-note">All chrome up to date</p>
+            )}
+            {done.length > 0 && (
+              <>
+                <button className="mod-list-section-toggle" onClick={() => setDoneOpen((v) => !v)}>
+                  <span className="files-arrow">{showDone ? "▼" : "▶"}</span>
+                  Updated this session ({done.length})
+                </button>
+                {showDone && done.map(renderGroup)}
+              </>
+            )}
+          </>
         )}
       </div>
 
