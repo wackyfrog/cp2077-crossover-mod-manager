@@ -81,14 +81,14 @@
 }
 
 .mod-badge-flatlined {
-  color: #666;
-  border: 1px solid #444;
+  color: var(--cyber-text-dim);
+  border: 1px solid var(--cyber-text-dim);
   background: rgba(100, 100, 100, 0.08);
 }
 
 .mod-item-disabled { opacity: 0.7; }
-.mod-item-removed { opacity: 0.45; }
-.mod-item-removed .mod-info h3 { opacity: 0.6; }
+/* No dimming: flatlined records are listed only under Flatlined, where every
+   row is one, so fading them all just made the list hard to read */
 .mod-status.removed { color: #555; font-size: 0.86rem; }
 
 /* ── Multi-part mod groups ── */
