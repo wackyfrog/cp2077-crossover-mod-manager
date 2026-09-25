@@ -73,6 +73,13 @@ Full history in the [CHANGELOG](CHANGELOG.md).
 <a id="upgrading"></a>
 ## Upgrading from an earlier version
 
+**After installing a new release, run NETRUN once.** New releases often read
+more from NexusMods than the one before, and your mods get it only on the next
+NETRUN; until then the new parts of the app stay empty or show what the older
+version stored. 1.8, for example, adds each mod's requirements, its current
+name on NexusMods and which files a changelog belongs to. Nothing on disk
+changes — NETRUN only reads.
+
 Earlier releases had defects whose effects stay on disk or in the mod database
 after you upgrade. Each is fixed for new installs, but putting right what was
 already done takes a step from you.
