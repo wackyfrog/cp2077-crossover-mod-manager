@@ -191,3 +191,37 @@
   opacity: 0.4;
   cursor: default;
 }
+
+.logs-tool-btn.on {
+  border-color: var(--cyber-green);
+  color: var(--cyber-green);
+}
+
+/* Wrap off: a line is as wide as its text, the terminal scrolls sideways */
+.logs-nowrap {
+  overflow-x: auto;
+}
+
+.logs-nowrap .log-line {
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.logs-nowrap .log-msg {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Wrap on: the message breaks anywhere, paths included */
+.logs-wrap .log-line {
+  white-space: normal;
+}
+
+.logs-wrap .log-msg {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.logs-terminal::-webkit-scrollbar { height: 8px; }

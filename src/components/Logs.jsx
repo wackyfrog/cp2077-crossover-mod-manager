@@ -8,6 +8,14 @@ const Logs = forwardRef(function Logs({ onLastLog }, ref) {
   const [filterLevel, setFilterLevel] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
   const [copied, setCopied] = useState(false);
+  // Long lines (full paths) either wrap or scroll sideways; remembered
+  const [wrap, setWrap] = useState(() => {
+    try { return localStorage.getItem("logs.wrap") === "1"; } catch { return false; }
+  });
+  const toggleWrap = () => setWrap((w) => {
+    try { localStorage.setItem("logs.wrap", w ? "0" : "1"); } catch {}
+    return !w;
+  });
   const bottomRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -104,11 +112,20 @@ const Logs = forwardRef(function Logs({ onLastLog }, ref) {
             <option value="all">ALL</option>
             <option value="download">DOWNLOAD</option>
             <option value="installation">INSTALL</option>
+            <option value="removal">REMOVAL</option>
+            <option value="sync">SYNC</option>
             <option value="system">SYSTEM</option>
             <option value="nxm_protocol">NXM</option>
           </select>
         </div>
         <div className="logs-tools">
+          <button
+            className={`logs-tool-btn ${wrap ? "on" : ""}`}
+            onClick={toggleWrap}
+            title={wrap ? "Wrap long lines: on" : "Wrap long lines: off — scroll sideways"}
+          >
+            Wrap
+          </button>
           <button className="logs-tool-btn" onClick={copyLogs} disabled={filteredLogs.length === 0}>
             {copied ? "Copied" : "Copy"}
           </button>
@@ -116,7 +133,7 @@ const Logs = forwardRef(function Logs({ onLastLog }, ref) {
         </div>
       </div>
 
-      <div className="logs-terminal">
+      <div className={`logs-terminal ${wrap ? "logs-wrap" : "logs-nowrap"}`}>
         {filteredLogs.length === 0 ? (
           <div className="logs-empty">no log entries</div>
         ) : (
