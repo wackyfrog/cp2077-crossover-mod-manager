@@ -404,7 +404,7 @@ function RequirementsRow({ mod, allMods, onSelectMod, hint }) {
     const record = c.record_id && allMods?.find((m) => m.id === c.record_id);
     if (record) onSelectMod?.(record);
     else if (c.url) openUrl(c.url);
-    else if (c.mod_id) openUrl(`https://www.nexusmods.com/cyberpunk2077/mods/${c.mod_id}`);
+    else if (c.mod_id) openUrl(`https://www.nexusmods.com/cyberpunk2077/mods/${c.mod_id}?tab=files`);
   };
 
   return (

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import useEscape from "../hooks/useEscape";
 import "./JackInOverlay.css";
 
@@ -221,12 +222,28 @@ function RequirementsBlock({ list }) {
   );
 }
 
+// Where to get it: the mod's Files tab on NexusMods, or the author's link
+// for a requirement hosted elsewhere. A ghosted one is already here.
+const requirementLink = (r) =>
+  r.dlc || r.state === "ghosted" ? null
+  : r.url ? r.url
+  : r.mod_id ? `https://www.nexusmods.com/cyberpunk2077/mods/${r.mod_id}?tab=files`
+  : null;
+
 function RequirementLine({ r }) {
   const how = r.state === "ghosted" ? "installed but ghosted" : r.state === "flatlined" ? "flatlined" : "not installed";
+  const link = requirementLink(r);
   return (
     <div className={`jackin-req ${r.optional ? "optional" : ""}`}>
       <span className="jackin-req-mark">{r.state === "ghosted" ? "◇" : "✗"}</span>
-      <span className="jackin-req-name">{r.name}{r.dlc ? " (DLC)" : ""}</span>
+      <span
+        className={`jackin-req-name ${link ? "jackin-req-link" : ""}`}
+        onClick={link ? () => openUrl(link).catch(() => {}) : undefined}
+        title={link ? `Open ${link}` : undefined}
+      >
+        {r.name}{r.dlc ? " (DLC)" : ""}
+      </span>
+      {link && <span className="jackin-req-open" aria-hidden="true">↗</span>}
       <span className="jackin-req-state"> — {how}</span>
       {r.notes && <span className="jackin-req-notes"> · {r.notes}</span>}
     </div>

@@ -571,35 +571,42 @@
   100% { transform: none; filter: none; opacity: 1; }
 }
 
-/* Requirements the finished install's mod lists and the game won't load */
+/* Requirements the mod lists that the game won't load — before the download
+   (a question) or on the finished screen. Colours are set outright: inherited,
+   they came out as the overlay's dim red and were hard to read. */
 .jackin-reqs {
   margin-top: 0.9rem;
-  padding: 0.6rem 0.8rem;
+  padding: 0.7rem 0.9rem;
   border-left: 2px solid #ffcc00;
-  background: rgba(255, 204, 0, 0.05);
+  background: rgba(255, 204, 0, 0.06);
+  font-size: 1rem;
+  color: #e8e8e8;
 }
 
 .jackin-reqs-title {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  opacity: 0.75;
-  margin: 0.4rem 0 0.2rem;
+  color: #b8c8bc;
+  margin: 0.6rem 0 0.3rem;
 }
 
 .jackin-reqs-title:first-child { margin-top: 0; }
-.jackin-reqs-required { color: #ffcc00; opacity: 1; }
+.jackin-reqs-required { color: #ffcc00; font-weight: bold; }
 
-.jackin-req { padding: 0.1rem 0; }
-.jackin-req-mark { color: #ff5577; margin-right: 0.5rem; }
-.jackin-req-name { color: #eee; }
+.jackin-req { padding: 0.2rem 0; line-height: 1.5; }
+.jackin-req-mark { color: #ff5577; margin-right: 0.5rem; font-weight: bold; }
+.jackin-req-name { color: #ffffff; font-weight: bold; }
+.jackin-req-link { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.jackin-req-link:hover { color: #66ffff; }
 .jackin-req-state { color: #ffcc00; }
-.jackin-req-notes { opacity: 0.7; }
+.jackin-req-notes { color: #c8d0ca; }
+.jackin-req-open { margin-left: 0.4rem; color: #66ffff; }
 .jackin-req.optional .jackin-req-mark,
-.jackin-req.optional .jackin-req-state { color: inherit; opacity: 0.75; }
+.jackin-req.optional .jackin-req-state { color: #c8d0ca; }
 
 .jackin-reqs-hint {
-  margin-top: 0.6rem;
-  font-size: 0.85rem;
-  opacity: 0.7;
+  margin-top: 0.7rem;
+  font-size: 0.9rem;
+  color: #c8d0ca;
 }
