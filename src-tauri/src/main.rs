@@ -73,6 +73,10 @@ struct AppState {
     install_busy: Arc<AtomicBool>,
     startup_nxm_url: Mutex<Option<String>>,
     force_reinstall: AtomicBool,
+    /// An install stopped on a question (requirements, or "already
+    /// installed") — so a new link that takes over the Jack In screen can say
+    /// what it replaced.
+    paused_install: Mutex<Option<PausedInstall>>,
     reinstall_mod_id: Mutex<Option<String>>,
     pending_file_name: Mutex<Option<String>>,
     pending_file_version: Mutex<Option<String>>,
@@ -1639,6 +1643,19 @@ async fn handle_nxm_url_internal(nxm_url: String, app: tauri::AppHandle) -> Resu
     result
 }
 
+/// An install waiting on the user's answer, by the file it would install.
+struct PausedInstall {
+    mod_id: String,
+    file_id: String,
+    name: String,
+}
+
+fn pause_install(state: &AppState, mod_id: &str, file_id: &str, name: &str) {
+    if let Ok(mut slot) = state.paused_install.lock() {
+        *slot = Some(PausedInstall { mod_id: mod_id.to_string(), file_id: file_id.to_string(), name: name.to_string() });
+    }
+}
+
 /// Returned when an install stops to ask about its requirements; the UI
 /// shows the question, not an error.
 const REQUIREMENTS_PAUSE: &str = "Install paused: requirements not loaded";
@@ -1797,6 +1814,23 @@ async fn handle_nxm_url(
         let mod_id = captures.get(2).map(|m| m.as_str()).unwrap_or("0");
         let file_id = captures.get(3).map(|m| m.as_str()).unwrap_or("0");
 
+        // A question left open on the Jack In screen is dropped when another
+        // file's link arrives; the same file coming back is its answer.
+        let superseded = state
+            .paused_install
+            .lock()
+            .ok()
+            .and_then(|mut p| p.take())
+            .filter(|p| p.mod_id != mod_id || p.file_id != file_id);
+        if let Some(p) = superseded {
+            add_log(
+                format!("✗ Install of '{}' not continued: another link arrived (mod {} · file {})", p.name, mod_id, file_id),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        }
+
         // Parse URL parameters (key, expires, user_id)
         let url_params: std::collections::HashMap<String, String> = nxm_url
             .split('?')
@@ -1938,6 +1972,7 @@ async fn handle_nxm_url(
                             state.clone(),
                         )?;
                     }
+                    pause_install(&state, mod_id, file_id, &mod_name);
                     add_log(
                         format!("⏸ Install paused: {} requirement(s) not loaded — waiting for your decision", list.len()),
                         "info".to_string(),
@@ -2556,6 +2591,9 @@ fn abort_reinstall(state: State<AppState>) -> Result<(), String> {
     // A Reinstall that stopped (an error, or Cancel on its requirements
     // question) must not force the next, unrelated install of that file.
     state.force_reinstall.store(false, std::sync::atomic::Ordering::Relaxed);
+    if let Ok(mut p) = state.paused_install.lock() {
+        *p = None;
+    }
     let mod_id = state.reinstall_mod_id.lock().map_err(|e| e.to_string())?.take();
     if let Some(id) = mod_id {
         let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
@@ -2855,6 +2893,7 @@ async fn install_mod_from_nxm_inner(
                 manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
             } else {
                 let err_msg = format!("Mod '{}' with the same version is already installed.", existing_mod.name);
+                pause_install(&state, &mod_id, &file_id, &existing_mod.name);
                 add_log(
                     format!(
                         "⚠️ Mod '{}' (File ID: {}) is already installed!",
@@ -6280,6 +6319,7 @@ fn main() {
             install_busy: Arc::new(AtomicBool::new(false)),
             startup_nxm_url: Mutex::new(None),
             force_reinstall: AtomicBool::new(false),
+            paused_install: Mutex::new(None),
             reinstall_mod_id: Mutex::new(None),
             pending_file_name: Mutex::new(None),
             pending_file_version: Mutex::new(None),

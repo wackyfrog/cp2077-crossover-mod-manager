@@ -427,7 +427,8 @@ function App() {
           const { source, detail } = event.payload || {};
           const what = source === "sideload" ? "sideload" : "download";
           const label = shortenTurnedAway(detail);
-          const text = `${what} ignored · already jacking in${label ? ` · queued: ${label}` : ""}`;
+          // Not queued: the link is dropped, and has to be clicked again later
+          const text = `${what} ignored · already jacking in${label ? ` · ${label}` : ""}`;
           setStatusMsg(`⏳ ${text}`);
           // seq, not the text, is what makes a repeated rejection show again.
           setBusyNotice((prev) => ({ text, seq: (prev?.seq ?? 0) + 1 }));
@@ -1243,11 +1244,12 @@ function App() {
           const modName = installProgress?.mod_name;
           setNxmInput(false);
           setInstallProgress(null);
+          // Nothing runs once the screen can be closed: the backend forgets a
+          // paused question and a Reinstall's force flag, however it was left
+          invoke("abort_reinstall").catch(() => {});
           if (reason === "conflict-cancel") {
             setStatusMsg("installation skipped · mod already jacked in");
           } else if (reason === "requirements-cancel") {
-            // A Reinstall paused on its requirements leaves its force flag set
-            invoke("abort_reinstall").catch(() => {});
             setStatusMsg("installation cancelled · requirements not loaded");
             invoke("add_log_entry", {
               message: "✗ Install cancelled: requirements not loaded",
