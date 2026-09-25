@@ -76,6 +76,100 @@ pub struct ModInfo {
     /// the user still searches by the name they installed it under.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub former_names: Vec<String>,
+
+    /// The mod's Requirements on Nexus, from NETRUN. None until fetched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirements: Option<Requirements>,
+}
+
+/// What a mod's page lists under Requirements. Nexus gives no versions — only
+/// the mod and the author's free-text note ("MANDATORY", "Optional",
+/// "v1.30.0 or newer").
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct Requirements {
+    #[serde(default)]
+    pub mods: Vec<ModRequirement>,
+    #[serde(default)]
+    pub dlc: Vec<DlcRequirement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModRequirement {
+    /// Nexus mod id; None for an off-site requirement.
+    pub mod_id: Option<String>,
+    pub name: String,
+    pub notes: Option<String>,
+    /// Hosted elsewhere (`url`) — shown, not checked.
+    pub external: bool,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DlcRequirement {
+    pub name: String,
+    pub notes: Option<String>,
+}
+
+/// Where a requirement stands in this install.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RequirementState {
+    /// A live, switched-on record of that mod.
+    Installed,
+    /// Recorded but switched off: on disk, not loaded.
+    Ghosted,
+    /// Only a flatlined record — its files are gone.
+    Flatlined,
+    /// No record, but the framework's own file is in the game folder
+    /// (installed by hand or by another tool).
+    OnDisk,
+    Missing,
+    /// Off-site or a DLC this app can't look for: shown, not judged.
+    Unchecked,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RequirementCheck {
+    pub name: String,
+    pub mod_id: Option<String>,
+    pub notes: Option<String>,
+    pub url: Option<String>,
+    pub dlc: bool,
+    /// The author's note calls it optional.
+    pub optional: bool,
+    pub state: RequirementState,
+    /// The record that satisfies it, to link to.
+    pub record_id: Option<String>,
+}
+
+impl RequirementCheck {
+    /// A requirement the mod may not work without: not optional, and not
+    /// loaded by the game (missing, ghosted or flatlined).
+    pub fn is_problem(&self) -> bool {
+        !self.optional
+            && matches!(self.state, RequirementState::Ghosted | RequirementState::Flatlined | RequirementState::Missing)
+    }
+}
+
+/// A file each common framework puts in the game folder, relative to it —
+/// taken from their records on a real install. They are often installed by
+/// hand, so no record doesn't mean not installed.
+const FRAMEWORK_FILES: &[(&str, &str)] = &[
+    ("107", "bin/x64/plugins/cyber_engine_tweaks.asi"),
+    ("1511", "engine/tools/scc.exe"),
+    ("2380", "red4ext/RED4ext.dll"),
+    ("4197", "red4ext/plugins/TweakXL/TweakXL.dll"),
+    ("4198", "red4ext/plugins/ArchiveXL/ArchiveXL.dll"),
+    ("7780", "red4ext/plugins/Codeware/Codeware.dll"),
+];
+
+/// DLC whose presence shows in the game folder.
+const DLC_FOLDERS: &[(&str, &str)] = &[("phantom liberty", "archive/pc/ep1")];
+
+/// "Optional", "Optional - MANDATORY for LEO addon": the author marks the
+/// requirement as not needed for the mod itself.
+fn notes_say_optional(notes: Option<&str>) -> bool {
+    notes.is_some_and(|n| n.to_lowercase().contains("optional"))
 }
 
 impl ModInfo {
@@ -589,6 +683,7 @@ impl ModManager {
             latest_file_id: None,
             reinstall_status: None,
             former_names: Vec::new(),
+            requirements: None,
         };
 
         self.mods.push(mod_info);
@@ -612,6 +707,7 @@ impl ModManager {
         corrected_version: Option<String>,
         update_target: Option<String>,
         nexus_name: Option<&str>,
+        requirements: Option<&Requirements>,
     ) -> Result<(), String> {
         let mod_info = self
             .mods
@@ -619,6 +715,9 @@ impl ModManager {
             .find(|m| m.id == mod_id)
             .ok_or("Mod not found")?;
 
+        if let Some(r) = requirements {
+            mod_info.requirements = Some(r.clone());
+        }
         if let Some(n) = nexus_name {
             mod_info.follow_nexus_name(n);
         }
@@ -692,6 +791,79 @@ impl ModManager {
             }
         }
         outcome
+    }
+
+    /// Each of the record's Nexus requirements against this install. Parts of
+    /// one mod count as that mod: any live, switched-on part satisfies it.
+    pub fn check_requirements(&self, record_id: &str, game_dir: &Path) -> Vec<RequirementCheck> {
+        let Some(record) = self.mods.iter().find(|m| m.id == record_id) else {
+            return Vec::new();
+        };
+        let Some(reqs) = &record.requirements else {
+            return Vec::new();
+        };
+        let own = record.mod_id.as_deref().map(str::trim);
+        let mut out = Vec::new();
+
+        for r in &reqs.mods {
+            let id = r.mod_id.as_deref().map(str::trim);
+            if id.is_some() && id == own {
+                continue;
+            }
+            let (state, record_id) = match id {
+                None => (RequirementState::Unchecked, None),
+                Some(_) if r.external => (RequirementState::Unchecked, None),
+                Some(id) => {
+                    let of_mod: Vec<&ModInfo> =
+                        self.mods.iter().filter(|m| m.mod_id.as_deref().map(str::trim) == Some(id)).collect();
+                    let live = |on: bool| of_mod.iter().find(|m| !m.removed && m.enabled == on);
+                    if let Some(m) = live(true) {
+                        (RequirementState::Installed, Some(m.id.clone()))
+                    } else if FRAMEWORK_FILES
+                        .iter()
+                        .any(|(fid, file)| *fid == id && game_dir.join(file).exists())
+                    {
+                        (RequirementState::OnDisk, None)
+                    } else if let Some(m) = live(false) {
+                        (RequirementState::Ghosted, Some(m.id.clone()))
+                    } else if let Some(m) = of_mod.first() {
+                        (RequirementState::Flatlined, Some(m.id.clone()))
+                    } else {
+                        (RequirementState::Missing, None)
+                    }
+                }
+            };
+            out.push(RequirementCheck {
+                name: r.name.clone(),
+                mod_id: r.mod_id.clone(),
+                notes: r.notes.clone(),
+                url: r.url.clone(),
+                dlc: false,
+                optional: notes_say_optional(r.notes.as_deref()),
+                state,
+                record_id,
+            });
+        }
+
+        for d in &reqs.dlc {
+            let folder = DLC_FOLDERS.iter().find(|(name, _)| *name == d.name.to_lowercase()).map(|(_, f)| f);
+            let state = match folder {
+                Some(f) if game_dir.join(f).is_dir() => RequirementState::Installed,
+                Some(_) => RequirementState::Missing,
+                None => RequirementState::Unchecked,
+            };
+            out.push(RequirementCheck {
+                name: d.name.clone(),
+                mod_id: None,
+                notes: d.notes.clone(),
+                url: None,
+                dlc: true,
+                optional: notes_say_optional(d.notes.as_deref()),
+                state,
+                record_id: None,
+            });
+        }
+        out
     }
 
     pub fn toggle_mod(&mut self, mod_id: &str) -> Result<ToggleOutcome, String> {
@@ -1370,6 +1542,7 @@ mod tests {
             latest_file_id: None,
             reinstall_status: None,
             former_names: Vec::new(),
+            requirements: None,
         }
     }
 
@@ -1728,7 +1901,7 @@ mod tests {
         let (mut manager, game) = manager_with("names", vec![nexus, local]);
 
         manager
-            .update_mod_sync_data("nexus", None, None, false, None, None, None, None, None, Some("Synced"))
+            .update_mod_sync_data("nexus", None, None, false, None, None, None, None, None, Some("Synced"), None)
             .unwrap();
         assert_eq!(manager.mods[0].name, "Synced");
 
@@ -1760,6 +1933,68 @@ mod tests {
         assert!(shared.exists(), "the enabled owner still runs on it");
         assert_eq!(outcome.kept.len(), 1);
         assert!(outcome.failed.is_empty());
+        cleanup(&game);
+    }
+
+    fn needs(id: &str, name: &str, notes: Option<&str>) -> ModRequirement {
+        ModRequirement { mod_id: Some(id.into()), name: name.into(), notes: notes.map(Into::into), external: false, url: None }
+    }
+
+    fn of_mod(id: &str, nexus_id: &str, enabled: bool, removed: bool) -> ModInfo {
+        let mut m = fixture(id, vec![]);
+        m.mod_id = Some(nexus_id.into());
+        m.enabled = enabled;
+        m.removed = removed;
+        m
+    }
+
+    #[test]
+    fn requirements_are_judged_by_what_the_game_loads() {
+        let game = game_dir("reqs");
+        write(&game.join("red4ext/RED4ext.dll"), "dll");
+        fs::create_dir_all(game.join("archive/pc/ep1")).unwrap();
+
+        let mut me = of_mod("me", "25873", true, false);
+        me.requirements = Some(Requirements {
+            mods: vec![
+                needs("25552", "NCTO", Some("MANDATORY")),
+                needs("1511", "redscript", Some("MANDATORY")),
+                needs("4197", "TweakXL", None),
+                needs("2380", "RED4ext", Some("MANDATORY")),
+                needs("10135", "LEO", Some("Optional - MANDATORY for LEO addon")),
+                needs("5036", "Claim Vehicles", None),
+                needs("25873", "itself", None),
+            ],
+            dlc: vec![DlcRequirement { name: "Phantom Liberty".into(), notes: None }],
+        });
+        let mods = vec![
+            me,
+            of_mod("ncto-core", "25552", false, false),
+            of_mod("ncto-addon", "25552", true, false), // one live part is enough
+            of_mod("redscript", "1511", false, false),
+            of_mod("tweakxl", "4197", false, true),
+        ];
+        let (manager, _) = manager_with("reqs_db", mods);
+
+        let checks = manager.check_requirements("me", &game);
+        let state = |name: &str| checks.iter().find(|c| c.name == name).map(|c| c.state);
+        assert_eq!(state("NCTO"), Some(RequirementState::Installed));
+        assert_eq!(state("redscript"), Some(RequirementState::Ghosted));
+        assert_eq!(state("TweakXL"), Some(RequirementState::Flatlined));
+        assert_eq!(state("RED4ext"), Some(RequirementState::OnDisk), "installed by hand");
+        assert_eq!(state("Claim Vehicles"), Some(RequirementState::Missing));
+        assert_eq!(state("itself"), None, "a mod doesn't require itself");
+        assert_eq!(state("Phantom Liberty"), Some(RequirementState::Installed));
+
+        let problems: Vec<&str> = checks.iter().filter(|c| c.is_problem()).map(|c| c.name.as_str()).collect();
+        assert_eq!(problems, ["redscript", "TweakXL", "Claim Vehicles"], "LEO is optional per its note");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_mod_never_synced_has_nothing_to_check() {
+        let (manager, game) = manager_with("reqs_none", vec![of_mod("me", "1", true, false)]);
+        assert!(manager.check_requirements("me", &game).is_empty());
         cleanup(&game);
     }
 }

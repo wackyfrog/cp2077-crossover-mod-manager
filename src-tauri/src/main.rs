@@ -1085,6 +1085,44 @@ fn holder_names(holders: &[mod_manager::FileHolder]) -> String {
     names.join(", ")
 }
 
+/// A record's Nexus requirements against this install, for the details panel.
+#[tauri::command]
+fn get_requirements(mod_id: String, state: State<AppState>) -> Result<Vec<mod_manager::RequirementCheck>, String> {
+    let game_path = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.get_settings().game_path.clone()
+    };
+    let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    Ok(manager.check_requirements(&mod_id, std::path::Path::new(&game_path)))
+}
+
+/// Record id → names of its requirements the game won't load (missing,
+/// ghosted, flatlined; optional ones left out), for every live record. The
+/// list marks those mods.
+#[tauri::command]
+fn get_requirement_problems(state: State<AppState>) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
+    let game_path = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.get_settings().game_path.clone()
+    };
+    let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    let game_dir = std::path::Path::new(&game_path);
+    Ok(manager
+        .get_installed_mods()
+        .iter()
+        .filter(|m| !m.removed)
+        .filter_map(|m| {
+            let problems: Vec<String> = manager
+                .check_requirements(&m.id, game_dir)
+                .into_iter()
+                .filter(|c| c.is_problem())
+                .map(|c| c.name)
+                .collect();
+            (!problems.is_empty()).then(|| (m.id.clone(), problems))
+        })
+        .collect())
+}
+
 /// Files of this mod other live records hold too, for the details panel.
 #[tauri::command]
 fn get_shared_files(mod_id: String, state: State<AppState>) -> Result<Vec<mod_manager::SharedFile>, String> {
@@ -4335,6 +4373,7 @@ async fn install_mod_from_nxm_inner(
             latest_file_id: None,
             reinstall_status: None,
             former_names: Vec::new(),
+            requirements: None,
         };
 
         installed_mod_id = Some(mod_info.id.clone());
@@ -4414,7 +4453,43 @@ async fn install_mod_from_nxm_inner(
         }
     }
 
-    // Step 8: Notify frontend to refresh mod list
+    // Step 8: requirements the author lists that the game won't load — known
+    // now that the mini-sync fetched them. Logged and passed to the UI.
+    let missing_requirements: Vec<mod_manager::RequirementCheck> = match &installed_mod_id {
+        Some(id) => {
+            let game_path = {
+                let settings = state.settings.lock().map_err(|e| e.to_string())?;
+                settings.get_settings().game_path.clone()
+            };
+            let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+            manager
+                .check_requirements(id, std::path::Path::new(&game_path))
+                .into_iter()
+                .filter(|c| c.is_problem())
+                .collect()
+        }
+        None => Vec::new(),
+    };
+    for req in &missing_requirements {
+        let how = match req.state {
+            mod_manager::RequirementState::Ghosted => "installed but ghosted",
+            mod_manager::RequirementState::Flatlined => "flatlined",
+            _ => "not installed",
+        };
+        add_log(
+            format!(
+                "⚠ Requirement {}: {}{}",
+                how,
+                req.name,
+                req.notes.as_deref().map(|n| format!(" ({})", n)).unwrap_or_default()
+            ),
+            "warning".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    }
+
+    // Step 9: Notify frontend to refresh mod list
     if let Some(window) = app.get_webview_window("main") {
         add_log(
             "📢 Emitting mod-installed event to frontend".to_string(),
@@ -4428,6 +4503,7 @@ async fn install_mod_from_nxm_inner(
             "version": recorded_version,
             "reinstall": reinstall_id.is_some(),
             "same_file": same_file_version.is_some(),
+            "missing_requirements": missing_requirements,
         })).ok();
     } else {
         add_log(
@@ -5407,6 +5483,7 @@ fn apply_mod_snapshot(
                 installed.corrected_version,
                 nexus_sync::update_target(&snapshot.files, &snapshot.file_updates, record.file_id.as_deref(), sole_record),
                 snapshot.state.name.as_deref(),
+                snapshot.state.requirements.as_ref(),
             )?;
             results.push((record, update_available));
         }
@@ -6116,6 +6193,8 @@ fn main() {
             delete_backup,
             toggle_mod,
             get_shared_files,
+            get_requirements,
+            get_requirement_problems,
             get_settings,
             save_settings,
             get_crossover_bottles_path,

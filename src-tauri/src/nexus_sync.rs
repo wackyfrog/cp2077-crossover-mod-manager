@@ -29,6 +29,9 @@ const V1_REQUESTS_PER_MOD: i64 = 2;
 pub struct ModState {
     /// The mod's title on Nexus now; authors rename it with new versions.
     pub name: Option<String>,
+    /// What the author lists under Requirements. None when the source can't
+    /// say (the v1 fallback has no such field) — the record keeps what it had.
+    pub requirements: Option<crate::mod_manager::Requirements>,
     pub version: String,
     pub summary: Option<String>,
     pub picture_url: Option<String>,
@@ -296,6 +299,7 @@ async fn fetch_batch_graphql(
     struct Node {
         mod_id: u64,
         name: Option<String>,
+        mod_requirements: Option<GqlRequirements>,
         version: Option<String>,
         summary: Option<String>,
         picture_url: Option<String>,
@@ -311,6 +315,38 @@ async fn fetch_batch_graphql(
     #[derive(Deserialize)]
     struct Nodes {
         nodes: Vec<Node>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GqlRequirements {
+        nexus_requirements: Option<GqlRequirementPage>,
+        #[serde(default)]
+        dlc_requirements: Vec<GqlDlc>,
+    }
+    #[derive(Deserialize)]
+    struct GqlRequirementPage {
+        nodes: Vec<GqlRequirement>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GqlRequirement {
+        mod_id: Option<String>,
+        mod_name: Option<String>,
+        notes: Option<String>,
+        #[serde(default)]
+        external_requirement: bool,
+        url: Option<String>,
+        game_id: Option<String>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GqlDlc {
+        game_expansion: Option<GqlExpansion>,
+        notes: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct GqlExpansion {
+        name: Option<String>,
     }
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -334,7 +370,7 @@ async fn fetch_batch_graphql(
         serde_json::json!({
             "query": "query($ids: [CompositeDomainWithIdInput!]!, $count: Int) { \
                 legacyModsByDomain(ids: $ids, count: $count) { \
-                  nodes { modId name version summary pictureUrl updatedAt uploader { memberId name } } } }",
+                  nodes { modId name modRequirements { nexusRequirements { nodes { modId modName notes externalRequirement url gameId } } dlcRequirements { gameExpansion { name } notes } } version summary pictureUrl updatedAt uploader { memberId name } } } }",
             "variables": { "ids": refs, "count": ids.len() },
         }),
     )
@@ -362,6 +398,33 @@ async fn fetch_batch_graphql(
             ModSnapshot {
                 state: ModState {
                     name: node.name.filter(|n| !n.trim().is_empty()),
+                    requirements: node.mod_requirements.map(|r| crate::mod_manager::Requirements {
+                        mods: r
+                            .nexus_requirements
+                            .map(|p| p.nodes)
+                            .unwrap_or_default()
+                            .into_iter()
+                            // Another game's mod can't be installed here anyway
+                            .filter(|q| q.game_id.as_deref().map_or(true, |g| g == "3333"))
+                            .map(|q| crate::mod_manager::ModRequirement {
+                                mod_id: q.mod_id.filter(|id| !id.is_empty() && id != "0"),
+                                name: q.mod_name.unwrap_or_default(),
+                                notes: q.notes.filter(|n| !n.trim().is_empty()),
+                                external: q.external_requirement,
+                                url: q.url.filter(|u| !u.trim().is_empty()),
+                            })
+                            .collect(),
+                        dlc: r
+                            .dlc_requirements
+                            .into_iter()
+                            .filter_map(|d| {
+                                Some(crate::mod_manager::DlcRequirement {
+                                    name: d.game_expansion?.name?,
+                                    notes: d.notes.filter(|n| !n.trim().is_empty()),
+                                })
+                            })
+                            .collect(),
+                    }),
                     version,
                     summary: node.summary,
                     picture_url: node.picture_url,
@@ -523,6 +586,7 @@ async fn fetch_one_v1(
         ModSnapshot {
             state: ModState {
                 name: m.name.filter(|n| !n.trim().is_empty()),
+                requirements: None,
                 version,
                 summary: m.summary,
                 picture_url: m.picture_url,

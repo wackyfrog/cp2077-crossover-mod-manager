@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Requirements from NexusMods, checked against your install** — a mod's page lists what it needs (LUT Switcher: ArchiveXL, Codeware, Cyber Engine Tweaks, redscript, TweakXL), but nothing in the app looked at it, so a mod could be installed without a framework it can't run without, and the first sign was the game. NETRUN now fetches each mod's requirements, and the details show a **Requires** row: every requirement with its state — slotted, ghosted (installed but not loaded), flatlined, not installed, or found on disk without a record for frameworks often installed by hand — and the author's note as written ("MANDATORY", "Optional", "v1.30.0 or newer"). NexusMods gives no versions, so only presence is checked; requirements the note calls optional aren't counted against the mod. A mod with a required item the game won't load is marked **REQ** in the list, and installing one opens a window naming what's missing. DLC requirements are checked for Phantom Liberty. Run NETRUN once to fill them in
+
 ### Changed
 
 - **The log shows long lines whole** — a line longer than the panel, such as a removed file's full path, was cut off with "…" and there was no way to read the rest except copying the log. A **Wrap** button now switches between wrapping long lines and scrolling sideways (the default), and remembers the choice. The category filter also gained **Removal** and **Sync**

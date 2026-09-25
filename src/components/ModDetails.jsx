@@ -361,7 +361,95 @@ function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) 
   );
 }
 
-function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
+const REQUIREMENT_STATE = {
+  installed: { mark: "◆", label: "slotted", cls: "ok" },
+  on_disk: { mark: "◆", label: "on disk, no record", cls: "ok" },
+  ghosted: { mark: "◇", label: "ghosted — not loaded", cls: "warn" },
+  flatlined: { mark: "✗", label: "flatlined — files removed", cls: "bad" },
+  missing: { mark: "✗", label: "not installed", cls: "bad" },
+  unchecked: { mark: "·", label: "not checked", cls: "dim" },
+};
+
+// What the mod's page lists under Requirements, each checked against this
+// install. Nexus gives no versions, only the author's note, shown as written.
+function RequirementsRow({ mod, allMods, onSelectMod, hint }) {
+  const [checks, setChecks] = useState(null);
+  const [open, setOpen] = useState(false);
+  const rowRef = useRef(null);
+  const listRef = useRef(null);
+  useRevealOnOpen(open, rowRef, listRef);
+  const recordId = mod._isGroup ? mod._siblings?.[0]?.id : mod.id;
+
+  useEffect(() => {
+    let current = true;
+    setChecks(null);
+    if (!recordId || mod.removed) return;
+    const read = () =>
+      invoke("get_requirements", { modId: recordId })
+        .then((list) => current && setChecks(list))
+        .catch((err) => console.error("get_requirements:", err));
+    read();
+    // Another mod's install, Ghost or Flatline changes what's satisfied
+    const unlisteners = ["mod-installed", "mod-toggled", "mod-removed", "sync-complete"].map((n) => listen(n, read));
+    return () => {
+      current = false;
+      unlisteners.forEach((p) => p.then((unlisten) => unlisten()));
+    };
+  }, [recordId, mod.removed]);
+
+  if (!checks || checks.length === 0) return null;
+  const problems = checks.filter((c) => !c.optional && ["ghosted", "flatlined", "missing"].includes(c.state));
+
+  const openRequirement = (c) => {
+    const record = c.record_id && allMods?.find((m) => m.id === c.record_id);
+    if (record) onSelectMod?.(record);
+    else if (c.url) openUrl(c.url);
+    else if (c.mod_id) openUrl(`https://www.nexusmods.com/cyberpunk2077/mods/${c.mod_id}`);
+  };
+
+  return (
+    <>
+      <div
+        ref={rowRef}
+        className="detail-row files-toggle-row"
+        onClick={() => setOpen((v) => !v)}
+        {...hint(open ? "collapse requirements" : "what this mod needs, per its NexusMods page")}
+      >
+        <span className="label">Requires</span>
+        <span className="value files-toggle-value">
+          {checks.length} {checks.length === 1 ? "item" : "items"}
+          {problems.length > 0 && <span className="req-problem-count"> · {problems.length} not loaded</span>}
+          <span className="files-arrow">{open ? "▼" : "▶"}</span>
+        </span>
+      </div>
+      {open && (
+        <div className="req-list" ref={listRef}>
+          {checks.map((c, i) => {
+            const st = REQUIREMENT_STATE[c.state] ?? REQUIREMENT_STATE.unchecked;
+            const linkable = !c.dlc && (c.record_id || c.url || c.mod_id);
+            return (
+              <div key={i} className={`req-item req-${st.cls} ${c.optional ? "req-optional" : ""}`}>
+                <span className="req-mark">{st.mark}</span>
+                <span className="req-body">
+                  <span
+                    className={`req-name ${linkable ? "req-link" : ""}`}
+                    onClick={linkable ? () => openRequirement(c) : undefined}
+                  >
+                    {c.name}{c.dlc && <span className="req-tag">DLC</span>}
+                  </span>
+                  <span className="req-state">{st.label}</span>
+                  {c.notes && <span className="req-notes">{c.notes}</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ModDetails({ mod, justUpdated = {}, siblings = [], allMods = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
   const [filesOpen, setFilesOpen] = useState(false);
   // Files other live records hold too — Ghost and Flatline leave them in place.
   const [shared, setShared] = useState({});
@@ -523,6 +611,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
 
           <div className="detail-section">
             {versionRow()}
+            <RequirementsRow mod={mod} allMods={allMods} onSelectMod={onSelectMod} hint={hint} />
             <div className="detail-row">
               <span className="label">Author</span>
               <AuthorValue mod={mod} hint={hint} />
@@ -707,6 +796,8 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
               </a>
             </div>
           )}
+
+          <RequirementsRow mod={mod} allMods={allMods} onSelectMod={onSelectMod} hint={hint} />
 
           {/* Files row — inline toggle inside the info section */}
           <div

@@ -74,7 +74,7 @@ export function isShown(selected, shown) {
 }
 
 function ModList({
-  mods, justUpdated = {}, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
+  mods, justUpdated = {}, reqProblems = {}, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
   loading, dragActive = false,
 }) {
   const contentRef = useRef(null);
@@ -103,6 +103,10 @@ function ModList({
 
   const groups = useMemo(() => groupMods(filtered), [filtered]);
 
+  // Requirements from Nexus the game won't load (missing, ghosted, flatlined)
+  const ReqBadge = ({ names }) =>
+    names?.length ? <span className="mod-badge mod-badge-req" title={`Requires: ${names.join(", ")}`}>REQ</span> : null;
+
   const renderMod = (mod) => (
     <div
       key={mod.id}
@@ -117,6 +121,7 @@ function ModList({
           )}
           {mod.removed && <span className="mod-badge mod-badge-flatlined">FLATLINED</span>}
           {!mod.removed && <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title={`v${mod.latest_version} available`} />}
+          {!mod.removed && <ReqBadge names={reqProblems[mod.id]} />}
           v{mod.version}
         </p>
       </div>
@@ -137,6 +142,7 @@ function ModList({
           {!mod.removed && !mod.enabled && <span className="mod-badge mod-badge-ghosted">GHOSTED</span>}
           {/* The mod's version is its core's; a part's own newer file may be numbered apart */}
           {!mod.removed && <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title="newer file on NexusMods" />}
+          {!mod.removed && <ReqBadge names={reqProblems[mod.id]} />}
           {mod.version && `v${mod.version} · `}{mod.files?.length || 0} files
         </p>
       </div>
@@ -194,6 +200,7 @@ function ModList({
                 </span>
               )}
               {!allRemoved && <StatusBadge outdated={anyUpdate} latest={anyJust} title="Update available" />}
+              {!allRemoved && <ReqBadge names={[...new Set(items.flatMap((m) => reqProblems[m.id] ?? []))]} />}
               {sharedVersion && `v${sharedVersion} · `}{items.length} parts
             </p>
           </div>

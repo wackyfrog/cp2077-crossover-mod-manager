@@ -105,6 +105,10 @@ function App() {
   const [syncSummary, setSyncSummary] = useState(null); // { synced, total, updated, errors, cancelled }
   const [removeConfirm, setRemoveConfirm] = useState(null); // { modId, modName }
   const [removeResult, setRemoveResult] = useState(null); // remove_mod report + modName
+  // Record id → requirements the game won't load, for the list's REQ mark
+  const [reqProblems, setReqProblems] = useState({});
+  // Shown after an install whose mod lists requirements that aren't loaded
+  const [installReqs, setInstallReqs] = useState(null); // { name, missing }
   const [openLogs, setOpenLogs] = useState(0); // bumped to open the footer log
   const [forgetConfirm, setForgetConfirm] = useState(null); // { modId, modName }
   const [installProgress, setInstallProgress] = useState(null);
@@ -306,6 +310,8 @@ function App() {
                 [before.id]: { from: before.version, sortAt: cur[before.id]?.sortAt ?? before.installed_at },
               }));
             }
+            const missing = event.payload?.missing_requirements ?? [];
+            if (missing.length > 0) setInstallReqs({ name: event.payload?.name, missing });
             const modList = await loadMods();
             // Select the mod that was just installed/updated
             const installedId = event.payload?.id;
@@ -516,6 +522,7 @@ function App() {
       const modList = await invoke("get_installed_mods");
       console.log("Loaded mods:", modList.length, "mods");
       setMods(modList);
+      invoke("get_requirement_problems").then(setReqProblems).catch((err) => console.error("get_requirement_problems:", err));
       // Refresh selectedMod with updated data from new list
       setSelectedMod((cur) => {
         if (!cur) return null;
@@ -754,6 +761,8 @@ function App() {
   };
 
   const handleToggleMod = (modId, nowEnabled, kept = []) => {
+    // Ghosting a framework leaves the mods that need it unloaded
+    invoke("get_requirement_problems").then(setReqProblems).catch(() => {});
     if (kept.length > 0) {
       const holders = [...new Set(kept.flatMap((k) => k.holders.map((h) => h.mod_name)))];
       setStatusMsg(
@@ -998,6 +1007,7 @@ function App() {
                 mods={mods}
                 justUpdated={justUpdated}
                 selectedMod={selectedMod}
+                reqProblems={reqProblems}
                 onSelectMod={setSelectedMod}
                 searchQuery={searchQuery}
                 filter={modFilter}
@@ -1010,6 +1020,7 @@ function App() {
               <ModDetails
                 mod={selectedShown ? selectedMod : null}
                 justUpdated={justUpdated}
+                allMods={mods}
                 siblings={selectedMod?._siblings || (selectedMod?.mod_id ? mods.filter(m => m.mod_id === selectedMod.mod_id && !m.removed) : [])}
                 onSelectMod={setSelectedMod}
                 onRemove={handleRemoveMod}
@@ -1092,6 +1103,23 @@ function App() {
           </ul>
         )}
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!installReqs}
+        title="Missing requirements"
+        message={`"${installReqs?.name}" is installed. Its NexusMods page lists requirements the game won't load:`}
+        items={(installReqs?.missing ?? []).map((r) => ({
+          icon: r.state === "ghosted" ? "◇" : "✗",
+          label: `${r.name}${r.dlc ? " (DLC)" : ""} — ${r.state === "ghosted" ? "installed but ghosted" : r.state === "flatlined" ? "flatlined" : "not installed"}`,
+          value: r.notes ?? undefined,
+        }))}
+        confirmText="OK"
+        cancelText=""
+        auxText="Show log"
+        onAux={() => { setInstallReqs(null); setOpenLogs((n) => n + 1); }}
+        onConfirm={() => setInstallReqs(null)}
+        onCancel={() => setInstallReqs(null)}
+      />
 
       <ConfirmDialog
         open={!!forgetConfirm}

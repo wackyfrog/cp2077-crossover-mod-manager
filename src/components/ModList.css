@@ -80,6 +80,12 @@
   background: rgba(0, 255, 136, 0.08);
 }
 
+.mod-badge-req {
+  color: var(--cyber-red-bright);
+  border: 1px solid var(--cyber-red-bright);
+  background: rgba(255, 51, 102, 0.08);
+}
+
 .mod-badge-flatlined {
   color: var(--cyber-text-dim);
   border: 1px solid var(--cyber-text-dim);

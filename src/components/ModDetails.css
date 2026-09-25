@@ -933,3 +933,36 @@
   font-size: 0.9rem;
   letter-spacing: 0.5px;
 }
+
+/* Requirements — from the mod's NexusMods page, checked against this install */
+.req-problem-count { color: var(--cyber-yellow); }
+
+.req-list {
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-left: 2px solid var(--cyber-border-bright);
+}
+
+.req-item {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  align-items: baseline;
+}
+
+.req-mark { flex-shrink: 0; width: 1ch; }
+.req-body { display: flex; flex-wrap: wrap; gap: 0.2rem 0.75rem; align-items: baseline; }
+.req-name { color: var(--cyber-text); }
+.req-link { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.req-link:hover { color: var(--cyber-blue); }
+.req-tag { margin-left: 0.4rem; font-size: 0.72rem; letter-spacing: 1px; color: var(--cyber-text-dim); }
+.req-state { font-size: 0.85rem; }
+.req-notes { flex-basis: 100%; font-size: 0.85rem; color: var(--cyber-text-dim); }
+
+.req-ok .req-mark, .req-ok .req-state { color: var(--cyber-green); }
+.req-warn .req-mark, .req-warn .req-state { color: var(--cyber-yellow); }
+.req-bad .req-mark, .req-bad .req-state { color: var(--cyber-red-bright); }
+.req-dim .req-mark, .req-dim .req-state { color: var(--cyber-text-dim); }
+/* The author calls it optional: shown, not alarming */
+.req-optional.req-bad .req-mark, .req-optional.req-bad .req-state,
+.req-optional.req-warn .req-mark, .req-optional.req-warn .req-state { color: var(--cyber-text-dim); }
