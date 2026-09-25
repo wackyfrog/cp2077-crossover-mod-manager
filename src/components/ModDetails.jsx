@@ -292,7 +292,10 @@ function DetailsStatusBadge({ mod, justUpdated, siblings = [] }) {
 // behind the install is (→ latest), and unfolding it shows what's in between.
 // The whole row is the target, with the arrow at its end, like Files.
 // `brief` is the flatlined view, which shows the version and nothing else.
-function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) {
+// `version` overrides what is shown as installed: a part of a multi-part mod
+// shows its own file's version ("1.4.1n"), not the mod's ("3.3.0").
+function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false, version }) {
+  const shownVersion = version ?? mod.version;
   const { status, data, lines, open } = state;
   // A part's arrow points at the newest version of its own file, not the
   // mod's: LUT Switcher's Nova pack 1.4.0n goes to 1.4.1n, not the core's 3.3.0
@@ -324,20 +327,20 @@ function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) 
       >
         <span className="label">Version</span>
         <span className="value files-toggle-value">
-          {mod.version ?? <span className="version-date">parts differ</span>}
-          {!brief && !mod.update_available && updatedFrom && updatedFrom !== mod.version && (
+          {shownVersion ?? <span className="version-date">parts differ</span>}
+          {!brief && !mod.update_available && updatedFrom && updatedFrom !== shownVersion && (
             <span className="version-updated-from"> · updated from {updatedFrom}</span>
           )}
-          {!brief && mod.update_available && mod.version == null && mod.latest_version && (
+          {!brief && mod.update_available && shownVersion == null && mod.latest_version && (
             // A group whose parts disagree: nothing to point an arrow from
             <span className="version-date"> · <span className="version-update-badge">v{mod.latest_version}</span> on Nexus</span>
           )}
-          {!brief && mod.update_available && mod.version != null && (
+          {!brief && mod.update_available && shownVersion != null && (
             // The arrow only when the declared version really is newer. A mod
             // can be OUTDATED because its author retired the installed file
             // while the mod's own version stayed put ("1.0.1 → v1.0.1") or
             // fell behind ("1.3.2 → v1") — then say what actually happened.
-            compareVersions(latest, mod.version) > 0 ? (
+            compareVersions(latest, shownVersion) > 0 ? (
               <>
                 <span className="version-arrow"> → </span>
                 <span className="version-update-badge">v{latest}</span>
@@ -531,11 +534,17 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], allMods = [], onSele
       });
   };
 
+  // One part of a mod installed as several: its record's `version` is the
+  // mod's at install time ("3.3.0" for every LUT Switcher pack), so the part
+  // is shown by its own file's version
+  const isPart = !!mod && !mod._isGroup && siblings.filter((m) => m.id !== mod.id).length > 0;
   const versionRow = (props) =>
     mod && (
       <VersionRow
         mod={mod} state={changelog} onToggle={toggleChangelog} hint={hint}
-        updatedFrom={justUpdated[mod.id]?.from} {...props}
+        updatedFrom={justUpdated[mod.id]?.from}
+        version={isPart && mod.file_version ? mod.file_version : undefined}
+        {...props}
       />
     );
 
@@ -769,7 +778,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], allMods = [], onSele
             <span className="label">File ID</span>
             <span className="value">
               {mod.file_id || 'N/A'}
-              {mod.file_version && mod.file_version !== mod.version && (
+              {!isPart && mod.file_version && mod.file_version !== mod.version && (
                 <span className="file-version-badge"> (file v{mod.file_version})</span>
               )}
             </span>

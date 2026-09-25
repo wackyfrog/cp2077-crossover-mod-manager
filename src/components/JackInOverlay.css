@@ -616,3 +616,9 @@
   font-size: 0.85rem;
   color: #66ffff;
 }
+
+/* The file being installed, after the mod's name */
+.jackin-file-name {
+  color: #66ffff;
+  text-shadow: none;
+}

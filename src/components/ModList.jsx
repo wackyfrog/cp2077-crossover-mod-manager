@@ -143,7 +143,7 @@ function ModList({
           {/* The mod's version is its core's; a part's own newer file may be numbered apart */}
           {!mod.removed && <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title="newer file on NexusMods" />}
           {!mod.removed && <ReqBadge names={reqProblems[mod.id]} />}
-          {mod.version && `v${mod.version} · `}{mod.files?.length || 0} files
+          {(mod.file_version || mod.version) && `v${mod.file_version || mod.version} · `}{mod.files?.length || 0} files
         </p>
       </div>
     </div>
@@ -163,7 +163,9 @@ function ModList({
     // Parts are separate files with versions of their own ("3.0.0" and
     // "3.0.0s"); a version for the whole mod only when they all agree,
     // never whichever part the current sort put first
-    const sharedVersion = items.every((m) => m.version === items[0].version) ? items[0].version : null;
+    // A part's own file version: its record's `version` is the mod's at install
+    const partVersion = (m) => m.file_version || m.version;
+    const sharedVersion = items.every((m) => partVersion(m) === partVersion(items[0])) ? partVersion(items[0]) : null;
 
     const isGroupSelected = selectedMod?._isGroup && selectedMod?.mod_id === modId;
     const anyChildSelected = items.some((m) => m.id === selectedMod?.id);

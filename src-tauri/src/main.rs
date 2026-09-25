@@ -47,6 +47,9 @@ pub struct InstallProgress {
     pub mod_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nxm_url: Option<String>,
+    /// The file being installed, when it is known ("LUT Pack - Nova LUT").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
     /// Stage "requirements": what the mod needs that the game won't load,
     /// for the user to decide before anything is downloaded.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1932,6 +1935,37 @@ async fn handle_nxm_url(
             ..Default::default()
         });
 
+        // Fetch file name for this specific file_id
+        let install_file_info = match nexusmods_api::get_file_names(game, &mod_id, &api_key).await {
+            Ok(names) => {
+                let fid = file_id.to_string();
+                names.get(&fid).cloned()
+            },
+            Err(_) => None,
+        };
+        if let Ok(mut slot) = state.pending_file_name.lock() {
+            *slot = install_file_info.as_ref().map(|(n, _, _)| n.clone());
+        }
+        if let Ok(mut slot) = state.pending_file_version.lock() {
+            *slot = install_file_info.as_ref().and_then(|(_, v, _)| v.clone());
+        }
+        if let Ok(mut slot) = state.pending_file_description.lock() {
+            *slot = install_file_info.as_ref().and_then(|(_, _, d)| d.clone());
+        }
+
+        // Which file of the mod this is: a mod installed as several parts
+        // shares one name, and the Jack In screen should say which part.
+        let install_file_name = install_file_info.as_ref().map(|(n, _, _)| n.clone());
+        if let Some((name, version, _)) = &install_file_info {
+            emit_install_progress(&app, InstallProgress {
+                stage: "fetching".into(),
+                message: format!("File: {}{}", name, version.as_deref().map(|v| format!(" v{}", v)).unwrap_or_default()),
+                mod_name: Some(mod_name.clone()),
+                file_name: Some(name.clone()),
+                ..Default::default()
+            });
+        }
+
         // Before anything is downloaded: what the mod's page lists that the
         // game won't load. The user decides whether to go on; the retry with
         // their answer skips this.
@@ -1983,6 +2017,7 @@ async fn handle_nxm_url(
                         stage: "requirements".into(),
                         message: format!("{} lists requirements the game won't load", mod_name),
                         mod_name: Some(mod_name.clone()),
+                        file_name: install_file_name.clone(),
                         nxm_url: Some(nxm_url.clone()),
                         requirements: Some(list),
                         ..Default::default()
@@ -1998,24 +2033,6 @@ async fn handle_nxm_url(
                     state.clone(),
                 )?,
             }
-        }
-
-        // Fetch file name for this specific file_id
-        let install_file_info = match nexusmods_api::get_file_names(game, &mod_id, &api_key).await {
-            Ok(names) => {
-                let fid = file_id.to_string();
-                names.get(&fid).cloned()
-            },
-            Err(_) => None,
-        };
-        if let Ok(mut slot) = state.pending_file_name.lock() {
-            *slot = install_file_info.as_ref().map(|(n, _, _)| n.clone());
-        }
-        if let Ok(mut slot) = state.pending_file_version.lock() {
-            *slot = install_file_info.as_ref().and_then(|(_, v, _)| v.clone());
-        }
-        if let Ok(mut slot) = state.pending_file_description.lock() {
-            *slot = install_file_info.as_ref().and_then(|(_, _, d)| d.clone());
         }
 
         add_log(

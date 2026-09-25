@@ -256,6 +256,8 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
   const [url, setUrl] = useState("");
   const [lastNxmUrl, setLastNxmUrl] = useState(null);
   const [modLabel, setModLabel] = useState(null);
+  // Which file of the mod — parts of one mod share its name
+  const [fileLabel, setFileLabel] = useState(null);
   const [lines, setLines] = useState([]);
   const [phase, setPhase] = useState("input"); // input | working | done | error
   const [cancelling, setCancelling] = useState(false);
@@ -293,7 +295,10 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
     const { stage, message } = progress;
 
     if (progress.nxm_url) setLastNxmUrl(progress.nxm_url);
+    // The first step of every attempt: forget the last one's file
+    if (stage === "fetching" && message?.startsWith("Fetching mod #")) setFileLabel(null);
     if (progress.mod_name) setModLabel(progress.mod_name);
+    if (progress.file_name) setFileLabel(progress.file_name);
     // Try to extract mod name from message if backend didn't provide it
     if (!modLabel && message) {
       // Try to extract from "Downloading file: FileName.zip" or "Installing ModName"
@@ -471,7 +476,7 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
     if (open && !progress) {
       setUrl("");
       setLastNxmUrl(null);
-      setModLabel(null);
+      setModLabel(null); setFileLabel(null);
       setInputError(null);
       setLines([]);
       setPhase("input");
@@ -564,7 +569,7 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
     prevStageRef.current = null;
     setPhase("working");
     setCancelling(false);
-    setModLabel(null);
+    setModLabel(null); setFileLabel(null);
     if (onRetry) onRetry();
     onSubmit(retryUrl);
   };
@@ -666,6 +671,7 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
             <div className={`jackin-stage stage-${stage}`}>
               {STAGE_LABELS[stage] || stage || "CONNECTING"}
               {(mod_name || modLabel) && <span className="jackin-mod-name"> — {mod_name || modLabel}</span>}
+              {fileLabel && <span className="jackin-file-name"> · {fileLabel}</span>}
             </div>
             {errorInfo?.type === "conflict" ? (
               <div className="jackin-conflict">
@@ -682,7 +688,7 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
                       setLines([]);
                       prevStageRef.current = null;
                       setPhase("working");
-                      setModLabel(null);
+                      setModLabel(null); setFileLabel(null);
                       if (onRetry) onRetry();
                       onReinstall(retryUrl);
                     }
