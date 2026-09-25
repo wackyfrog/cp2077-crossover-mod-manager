@@ -1247,6 +1247,11 @@ function App() {
             setStatusMsg("installation skipped · mod already jacked in");
           } else if (reason === "requirements-cancel") {
             setStatusMsg("installation cancelled · requirements not loaded");
+            invoke("add_log_entry", {
+              message: "✗ Install cancelled: requirements not loaded",
+              level: "info",
+              category: "installation",
+            }).catch(() => {});
           } else if (wasSuccess && modName) {
             setStatusMsg(`✓ ${modName} jacked in successfully`);
           } else if (wasSuccess) {

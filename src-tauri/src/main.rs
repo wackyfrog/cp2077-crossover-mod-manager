@@ -1851,10 +1851,11 @@ async fn handle_nxm_url(
         )?;
 
         // Automatically trigger mod download
+        // Nothing is downloaded yet — the requirements check may still stop it
         add_log(
-            "Initiating automatic mod download from NXM URL...".to_string(),
+            "Starting install from NXM URL...".to_string(),
             "info".to_string(),
-            "download".to_string(),
+            "installation".to_string(),
             state.clone(),
         )?;
 
@@ -1900,7 +1901,14 @@ async fn handle_nxm_url(
         // Before anything is downloaded: what the mod's page lists that the
         // game won't load. The user decides whether to go on; the retry with
         // their answer skips this.
-        if !skip_requirements.unwrap_or(false) {
+        if skip_requirements.unwrap_or(false) {
+            add_log(
+                "▶ Installing anyway: requirements shown and accepted".to_string(),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+        } else {
             let not_loaded = requirements_not_loaded(&state, &api_key, mod_id).await;
             match not_loaded {
                 Ok(list) if !list.is_empty() => {
@@ -1917,6 +1925,12 @@ async fn handle_nxm_url(
                             state.clone(),
                         )?;
                     }
+                    add_log(
+                        format!("⏸ Install paused: {} requirement(s) not loaded — waiting for your decision", list.len()),
+                        "info".to_string(),
+                        "installation".to_string(),
+                        state.clone(),
+                    )?;
                     emit_install_progress(&app, InstallProgress {
                         stage: "requirements".into(),
                         message: format!("{} lists requirements the game won't load", mod_name),
