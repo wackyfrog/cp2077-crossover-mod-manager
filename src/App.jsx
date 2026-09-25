@@ -1246,6 +1246,8 @@ function App() {
           if (reason === "conflict-cancel") {
             setStatusMsg("installation skipped · mod already jacked in");
           } else if (reason === "requirements-cancel") {
+            // A Reinstall paused on its requirements leaves its force flag set
+            invoke("abort_reinstall").catch(() => {});
             setStatusMsg("installation cancelled · requirements not loaded");
             invoke("add_log_entry", {
               message: "✗ Install cancelled: requirements not loaded",

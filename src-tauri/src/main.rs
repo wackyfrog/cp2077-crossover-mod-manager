@@ -1901,6 +1901,17 @@ async fn handle_nxm_url(
         // Before anything is downloaded: what the mod's page lists that the
         // game won't load. The user decides whether to go on; the retry with
         // their answer skips this.
+        // The same file at the same version is already installed and this
+        // isn't a Reinstall: the install stops at "already installed" first.
+        // Asking about requirements here would come before that, for a file
+        // that may not be installed at all; a Reinstall is asked in turn.
+        let already_installed = !state.force_reinstall.load(std::sync::atomic::Ordering::Relaxed)
+            && state
+                .mod_manager
+                .lock()
+                .map_err(|e| e.to_string())?
+                .find_existing_mod(mod_id, file_id)
+                .is_some_and(|m| m.version == mod_version);
         if skip_requirements.unwrap_or(false) {
             add_log(
                 "▶ Installing anyway: requirements shown and accepted".to_string(),
@@ -1908,6 +1919,8 @@ async fn handle_nxm_url(
                 "installation".to_string(),
                 state.clone(),
             )?;
+        } else if already_installed {
+            // nothing: the duplicate check below answers first
         } else {
             let not_loaded = requirements_not_loaded(&state, &api_key, mod_id).await;
             match not_loaded {
@@ -2540,6 +2553,9 @@ fn set_force_reinstall(state: State<AppState>) {
 
 #[tauri::command]
 fn abort_reinstall(state: State<AppState>) -> Result<(), String> {
+    // A Reinstall that stopped (an error, or Cancel on its requirements
+    // question) must not force the next, unrelated install of that file.
+    state.force_reinstall.store(false, std::sync::atomic::Ordering::Relaxed);
     let mod_id = state.reinstall_mod_id.lock().map_err(|e| e.to_string())?.take();
     if let Some(id) = mod_id {
         let mut mgr = state.mod_manager.lock().map_err(|e| e.to_string())?;
