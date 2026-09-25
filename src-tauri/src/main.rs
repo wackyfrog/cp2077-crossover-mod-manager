@@ -3502,6 +3502,18 @@ async fn install_mod_from_nxm_inner(
     }
 
     let mut installed_files = Vec::new();
+
+    // Updating a switched-off mod must not change what the game loads. A file
+    // it ships that another enabled mod already has active keeps that mod's
+    // copy; this mod's version goes beside it as `.disabled` (Factions Evolved
+    // 2.40 ships two of NCTO's scripts: installed over them while ghosted, it
+    // left NCTO running on FE's versions).
+    let ghost_set_aside: std::collections::HashSet<String> = {
+        let target = state.reinstall_mod_id.lock().ok().and_then(|s| s.clone());
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        target.map(|id| manager.active_elsewhere_if_ghosted(&id)).unwrap_or_default()
+    };
+    let mut set_aside: Vec<String> = Vec::new();
     let mut install_count = 0;
     let mut is_redmod = false;
     let mut is_cet = false;
@@ -3722,20 +3734,29 @@ async fn install_mod_from_nxm_inner(
             // Validate path stays within game directory
             validate_path_within_game_dir(&install_path, game_dir)?;
 
-            // Copy file
-            fs::copy(entry.path(), &install_path).map_err(|e| {
+            // Copy file — beside an enabled mod's active copy when this mod
+            // stays ghosted (see `ghost_set_aside`)
+            let keep_theirs = install_path.exists()
+                && ghost_set_aside.contains(&install_path.to_string_lossy().to_lowercase());
+            let write_to = if keep_theirs {
+                set_aside.push(install_path.to_string_lossy().to_string());
+                std::path::PathBuf::from(format!("{}.disabled", install_path.display()))
+            } else {
+                install_path.clone()
+            };
+            fs::copy(entry.path(), &write_to).map_err(|e| {
                 // Guards will auto-cleanup temp files on error
                 format!("Failed to copy file to game directory: {}", e)
             })?;
 
             // Set Wine-compatible permissions (macOS/Unix only)
             // This helps Wine load DLLs and access config files properly
-            if let Err(e) = set_wine_compatible_permissions(&install_path, false) {
+            if let Err(e) = set_wine_compatible_permissions(&write_to, false) {
                 // Log warning but continue - not critical
                 add_log(
                     format!(
                         "⚠️  Could not set permissions for {}: {}",
-                        install_path.display(),
+                        write_to.display(),
                         e
                     ),
                     "warning".to_string(),
@@ -3778,6 +3799,18 @@ async fn install_mod_from_nxm_inner(
         );
     }
 
+    for path in &set_aside {
+        add_log(
+            format!(
+                "· Another mod's active copy kept; this ghosted mod's version saved as .disabled: {}",
+                path.find("Cyberpunk 2077/").map(|i| &path[i + 15..]).unwrap_or(path)
+            ),
+            "info".to_string(),
+            "installation".to_string(),
+            state.clone(),
+        )?;
+    }
+
     add_log(
         format!(
             "✓ Installed {} files to game directory",
@@ -3792,7 +3825,11 @@ async fn install_mod_from_nxm_inner(
     {
         let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
         let updating = state.reinstall_mod_id.lock().ok().and_then(|s| s.clone());
-        let conflicts = manager.check_file_conflicts(&installed_files, updating.as_deref());
+        let mut conflicts = manager.check_file_conflicts(&installed_files, updating.as_deref());
+        // Set aside, not replaced: the other mod's file is untouched
+        for path in &set_aside {
+            conflicts.remove(path);
+        }
 
         if !conflicts.is_empty() {
             add_log(
@@ -4457,7 +4494,9 @@ async fn install_mod_from_nxm_inner(
                 "installation".to_string(),
                 state.clone(),
             )?;
-            for shared in &outcome.kept {
+            // Set aside at copy time are already logged: the other mod's copy
+            // is the active one
+            for shared in outcome.kept.iter().filter(|k| !set_aside.contains(&k.path)) {
                 add_log(
                     format!("· Left active, also held by {}: {}", holder_names(&shared.holders), shared.path),
                     "warning".to_string(),

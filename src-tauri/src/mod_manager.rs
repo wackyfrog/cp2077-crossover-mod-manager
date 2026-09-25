@@ -770,6 +770,22 @@ impl ModManager {
             .collect()
     }
 
+    /// For an update of a switched-off record: the lowercased paths other
+    /// switched-on records hold. The update writes its copy of such a file
+    /// beside theirs as `.disabled` instead of over it. Empty for a record
+    /// that is on, flatlined or unknown — those install over as usual.
+    pub fn active_elsewhere_if_ghosted(&self, record_id: &str) -> std::collections::HashSet<String> {
+        match self.mods.iter().find(|m| m.id == record_id) {
+            Some(t) if !t.enabled && !t.removed => self
+                .mods
+                .iter()
+                .filter(|m| m.id != t.id && m.enabled && !m.removed)
+                .flat_map(|m| m.files.iter().map(|f| f.to_lowercase()))
+                .collect(),
+            _ => std::collections::HashSet::new(),
+        }
+    }
+
     /// Ghost the files an update just installed for a record that stays
     /// switched off. A file another enabled record holds stays active, as on
     /// Ghost: the update may bring a file that mod also ships.
@@ -2006,6 +2022,26 @@ mod tests {
     fn a_mod_never_synced_has_nothing_to_check() {
         let (manager, game) = manager_with("reqs_none", vec![of_mod("me", "1", true, false)]);
         assert!(manager.check_requirements("me", &game).is_empty());
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_ghosted_update_sets_aside_only_what_enabled_mods_hold() {
+        let path = "/g/Cyberpunk 2077/r6/scripts/NCTO/NCTOvehicles.reds".to_string();
+        let mut fe = fixture("fe", vec![]);
+        fe.enabled = false;
+        let mut ncto = fixture("ncto", vec![path.clone()]);
+        ncto.enabled = true;
+        let mut off = fixture("off", vec!["/g/Cyberpunk 2077/other.reds".into()]);
+        off.enabled = false;
+        let (mut manager, game) = manager_with("set_aside", vec![fe, ncto, off]);
+
+        let aside = manager.active_elsewhere_if_ghosted("fe");
+        assert!(aside.contains(&path.to_lowercase()));
+        assert_eq!(aside.len(), 1, "a switched-off mod's files don't count");
+
+        manager.mods[0].enabled = true;
+        assert!(manager.active_elsewhere_if_ghosted("fe").is_empty(), "an enabled mod installs over as usual");
         cleanup(&game);
     }
 }
