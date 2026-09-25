@@ -184,7 +184,12 @@ const CHANGELOG_OPEN_WITHOUT_INSTALLED = 3;
 // nothing here says how far behind the install is: the installed version is
 // marked where it falls, and what sits above it was simply uploaded later.
 // It's found by the installed file's version, then the mod's.
-function readChangelog(changelog, mod) {
+//
+// A mod's files form lines (`lines`: file id → line id, from NETRUN) — a core
+// and its packs, each with versions of its own. A part shows its own line;
+// the other files' versions fold away under one row. Without lines (an older
+// cache, or a group) every version is the mod's own, as before.
+function readChangelog(changelog, lines, mod) {
   const entries = Object.entries(changelog)
     .map(([ver, entry]) => ({
       ver,
@@ -192,20 +197,37 @@ function readChangelog(changelog, mod) {
       date: entry?.date,
       at: uploadedAt(entry),
       description: descriptionText(entry?.description),
+      files: entry?.files ?? [],
     }))
     .sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || compareVersions(b.ver, a.ver));
-  const find = (v) => (v ? entries.find((e) => normVersion(e.ver) === normVersion(v)) : null);
+  const ownLine = !mod._isGroup && lines && mod.file_id != null ? lines[String(mod.file_id)] : undefined;
+  const byLine = ownLine !== undefined;
+  const inLine = (e) => !byLine || e.files.length === 0 || e.files.some((f) => lines[String(f.id)] === ownLine);
+  const own = entries.filter(inLine);
+  const others = entries.filter((e) => !inLine(e));
+  const find = (v) => (v ? own.find((e) => normVersion(e.ver) === normVersion(v)) : null);
   const installed = find(mod.file_version) || find(mod.version) || null;
-  const split = installed ? entries.indexOf(installed) + 1 : CHANGELOG_OPEN_WITHOUT_INSTALLED;
-  return { installed, shown: entries.slice(0, split), older: entries.slice(split) };
+  const split = installed ? own.indexOf(installed) + 1 : CHANGELOG_OPEN_WITHOUT_INSTALLED;
+  return {
+    installed,
+    shown: own.slice(0, split),
+    older: own.slice(split),
+    others,
+    // The newest version of this part's own file, when its line is known
+    lineLatest: byLine ? own[0]?.ver ?? null : null,
+  };
 }
 
-function ChangelogVersion({ entry, kind }) {
+// "LUT Pack - Misc" — which file(s) a version came from
+const fileLabel = (entry) => [...new Set(entry.files.map((f) => f.name).filter(Boolean))].join(" · ");
+
+function ChangelogVersion({ entry, kind, showFile = false }) {
   return (
     <div className={`changelog-version changelog-version--${kind}`}>
       <div className="changelog-ver-label">
         v{normVersion(entry.ver)}
         {kind === "installed" && <span className="changelog-installed-badge">installed</span>}
+        {showFile && fileLabel(entry) && <span className="changelog-file-name">{fileLabel(entry)}</span>}
         {entry.date && <span className="changelog-date">{entry.date}</span>}
       </div>
       {entry.lines.length > 0 && (
@@ -227,9 +249,10 @@ function ChangelogVersion({ entry, kind }) {
   );
 }
 
-function ChangelogPanel({ changelog, mod, ref }) {
+function ChangelogPanel({ changelog, lines, mod, ref }) {
   const [olderOpen, setOlderOpen] = useState(false);
-  const { installed, shown, older } = readChangelog(changelog, mod);
+  const [othersOpen, setOthersOpen] = useState(false);
+  const { installed, shown, older, others } = readChangelog(changelog, lines, mod);
   return (
     <div className="changelog-panel" ref={ref}>
       {shown.map((e) => (
@@ -243,6 +266,15 @@ function ChangelogPanel({ changelog, mod, ref }) {
             {older.length} earlier {older.length === 1 ? "version" : "versions"}
           </button>
         ))}
+      {others.length > 0 && (
+        <>
+          <button className="changelog-older-toggle changelog-others-toggle" onClick={() => setOthersOpen((v) => !v)}>
+            <span className="files-arrow">{othersOpen ? "▼" : "▶"}</span>
+            {others.length} {others.length === 1 ? "version" : "versions"} of other files of this mod
+          </button>
+          {othersOpen && others.map((e) => <ChangelogVersion key={e.ver} entry={e} kind="foreign" showFile />)}
+        </>
+      )}
     </div>
   );
 }
@@ -261,7 +293,10 @@ function DetailsStatusBadge({ mod, justUpdated, siblings = [] }) {
 // The whole row is the target, with the arrow at its end, like Files.
 // `brief` is the flatlined view, which shows the version and nothing else.
 function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) {
-  const { status, data, open } = state;
+  const { status, data, lines, open } = state;
+  // A part's arrow points at the newest version of its own file, not the
+  // mod's: LUT Switcher's Nova pack 1.4.0n goes to 1.4.1n, not the core's 3.3.0
+  const latest = (status === "ready" && data && readChangelog(data, lines, mod).lineLatest) || mod.latest_version;
   const count = data ? Object.keys(data).length : 0;
   // No Nexus id, or Nexus has no history for it: a plain row
   const toggles = !!mod.mod_id && !(status === "ready" && count === 0);
@@ -302,10 +337,10 @@ function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) 
             // can be OUTDATED because its author retired the installed file
             // while the mod's own version stayed put ("1.0.1 → v1.0.1") or
             // fell behind ("1.3.2 → v1") — then say what actually happened.
-            compareVersions(mod.latest_version, mod.version) > 0 ? (
+            compareVersions(latest, mod.version) > 0 ? (
               <>
                 <span className="version-arrow"> → </span>
-                <span className="version-update-badge">v{mod.latest_version}</span>
+                <span className="version-update-badge">v{latest}</span>
               </>
             ) : (
               <span
@@ -321,7 +356,7 @@ function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) 
           {toggles && <span className="files-arrow">{expanded ? "▼" : "▶"}</span>}
         </span>
       </div>
-      {expanded && <ChangelogPanel changelog={data} mod={mod} ref={panelRef} />}
+      {expanded && <ChangelogPanel changelog={data} lines={lines} mod={mod} ref={panelRef} />}
     </>
   );
 }
@@ -344,7 +379,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
     invoke("get_mod_changelog", { modId })
       .then((cached) => {
         if (changelogFor.current !== modId || !cached) return;
-        setChangelog((c) => ({ status: "ready", data: cached.versions, open: c.open }));
+        setChangelog((c) => ({ status: "ready", data: cached.versions, lines: cached.lines, open: c.open }));
       })
       .catch((err) => console.error("get_mod_changelog:", err));
 
@@ -398,7 +433,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
     invoke("refresh_mod", { modId })
       .then((cached) => {
         if (changelogFor.current !== modId) return;
-        setChangelog({ status: "ready", data: cached?.versions ?? {}, open: true });
+        setChangelog({ status: "ready", data: cached?.versions ?? {}, lines: cached?.lines, open: true });
         onModsChanged?.();
       })
       .catch((err) => {

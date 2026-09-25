@@ -72,6 +72,10 @@ impl ModSnapshot {
     pub fn changelog(&self) -> BTreeMap<String, VersionNotes> {
         build_changelog(&self.files)
     }
+
+    pub fn lines(&self) -> BTreeMap<String, u64> {
+        file_lines(&self.files, &self.file_updates)
+    }
 }
 
 #[derive(Debug)]
@@ -559,6 +563,78 @@ pub struct VersionNotes {
     /// repeat of an older version's (see `build_changelog`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// The files that carry this version. A multi-part mod's versions come
+    /// from several files; the UI sorts them into lines (`file_lines`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<VersionFile>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct VersionFile {
+    pub id: u64,
+    pub name: Option<String>,
+}
+
+/// The part after the version number: "1.4.0n" → "n", "3.3.0" → "".
+/// Authors who ship packs beside a core tag each pack's versions this way,
+/// and keep the tag when they rename the file (LUT Switcher: "LUT Switcher -
+/// Nova LUT Pack" 1.4.0n became "LUT Pack - Nova LUT" 1.4.1n). None when the
+/// version doesn't start with a number.
+fn version_tag(version: &str) -> Option<String> {
+    let v = version.trim();
+    let v = v.strip_prefix(['v', 'V']).unwrap_or(v);
+    let number_end = v.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(v.len());
+    if number_end == 0 {
+        return None;
+    }
+    Some(v[number_end..].trim().to_lowercase())
+}
+
+/// File id → line id: files that are successive versions of one download.
+/// Linked when they share a name, a version tag (`version_tag`), or the
+/// author declared one replaces the other. A line's id is its lowest file id.
+/// Guessing wrong only moves versions between "this file" and "other files"
+/// in the UI; mods whose parts all use plain numbers form one line, as before.
+pub fn file_lines(files: &[NexusFile], file_updates: &[(u64, u64)]) -> BTreeMap<String, u64> {
+    let ids: Vec<u64> = files.iter().map(|f| f.file_id).collect();
+    let mut parent: HashMap<u64, u64> = ids.iter().map(|&id| (id, id)).collect();
+    fn root(parent: &mut HashMap<u64, u64>, id: u64) -> u64 {
+        let mut r = id;
+        while parent[&r] != r {
+            r = parent[&r];
+        }
+        parent.insert(id, r);
+        r
+    }
+    let join = |parent: &mut HashMap<u64, u64>, a: u64, b: u64| {
+        if !parent.contains_key(&a) || !parent.contains_key(&b) {
+            return;
+        }
+        let (ra, rb) = (root(parent, a), root(parent, b));
+        if ra != rb {
+            parent.insert(ra.max(rb), ra.min(rb));
+        }
+    };
+
+    let mut first_by_key: HashMap<String, u64> = HashMap::new();
+    for f in files {
+        let name = f.name.as_deref().map(|n| format!("name:{}", n.trim().to_lowercase()));
+        let tag = f.version.as_deref().and_then(version_tag).map(|t| format!("tag:{}", t));
+        for key in [name, tag].into_iter().flatten() {
+            match first_by_key.get(&key) {
+                Some(&other) => join(&mut parent, other, f.file_id),
+                None => {
+                    first_by_key.insert(key, f.file_id);
+                }
+            }
+        }
+    }
+    for &(old, new) in file_updates {
+        join(&mut parent, old, new);
+    }
+
+    // Union by lower id keeps every root the lowest id of its line
+    ids.iter().map(|&id| (id.to_string(), root(&mut parent, id))).collect()
 }
 
 /// One entry per version, from the files that carry it. Archived and deleted
@@ -576,6 +652,7 @@ fn build_changelog(files: &[NexusFile]) -> BTreeMap<String, VersionNotes> {
         uploaded: Option<i64>,
         lines: Vec<String>,
         description: Option<String>,
+        files: Vec<VersionFile>,
     }
     let mut ordered: Vec<&NexusFile> = files.iter().collect();
     ordered.sort_by_key(|f| f.uploaded.unwrap_or(i64::MAX));
@@ -591,6 +668,7 @@ fn build_changelog(files: &[NexusFile]) -> BTreeMap<String, VersionNotes> {
         // Several files can share a version (multi-part mods): the first
         // upload dates it, the first one with notes speaks for it.
         entry.uploaded = entry.uploaded.or(f.uploaded);
+        entry.files.push(VersionFile { id: f.file_id, name: f.name.clone() });
         if entry.lines.is_empty() {
             entry.lines = f.changelog.clone();
         }
@@ -619,7 +697,7 @@ fn build_changelog(files: &[NexusFile]) -> BTreeMap<String, VersionNotes> {
                 .uploaded
                 .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
                 .map(|d| d.format("%d %b %Y").to_string());
-            (ver, VersionNotes { lines: acc.lines, date, uploaded: acc.uploaded, description: acc.description })
+            (ver, VersionNotes { lines: acc.lines, date, uploaded: acc.uploaded, description: acc.description, files: acc.files })
         })
         .collect()
 }
@@ -629,6 +707,10 @@ pub struct CachedChangelog {
     /// RFC 3339; when NETRUN (or a single-mod refresh) last fetched it.
     pub fetched_at: String,
     pub versions: BTreeMap<String, VersionNotes>,
+    /// File id → line id (`file_lines`). Empty in caches written before it
+    /// existed, until the next NETRUN — the UI then shows every version.
+    #[serde(default)]
+    pub lines: BTreeMap<String, u64>,
 }
 
 /// Changelogs keyed by Nexus mod id, in `~/.crossover-mod-manager/changelogs.json`
@@ -655,10 +737,10 @@ impl ChangelogCache {
         self.entries.get(mod_id)
     }
 
-    pub fn insert(&mut self, mod_id: &str, versions: BTreeMap<String, VersionNotes>) {
+    pub fn insert(&mut self, mod_id: &str, versions: BTreeMap<String, VersionNotes>, lines: BTreeMap<String, u64>) {
         self.entries.insert(
             mod_id.to_string(),
-            CachedChangelog { fetched_at: chrono::Utc::now().to_rfc3339(), versions },
+            CachedChangelog { fetched_at: chrono::Utc::now().to_rfc3339(), versions, lines },
         );
     }
 
@@ -737,6 +819,45 @@ mod tests {
         assert_eq!(log["3.1.2"].lines, vec!["Crash fix on enemy spawns.".to_string()]);
         assert_eq!(log["3.1.2"].date.as_deref(), Some("30 Aug 2026"));
         assert_eq!(log["3.1.2"].uploaded, Some(1788110007));
+    }
+
+    fn part(id: u64, name: &str, version: &str) -> NexusFile {
+        NexusFile { file_id: id, name: Some(name.into()), ..file(version, "OPTIONAL", id as i64, &[]) }
+    }
+
+    #[test]
+    fn version_tags_separate_packs_from_the_core() {
+        assert_eq!(version_tag("1.4.0n").as_deref(), Some("n"));
+        assert_eq!(version_tag("v3.3.0").as_deref(), Some(""));
+        assert_eq!(version_tag("1.0.0CR").as_deref(), Some("cr"));
+        assert_eq!(version_tag("beta"), None);
+    }
+
+    #[test]
+    fn lines_follow_names_tags_and_declared_replacements() {
+        // LUT Switcher (16310): the core renamed four times, packs renamed once
+        let files = [
+            part(10, "LUT Switcher - Core", "1.0.0"),
+            part(20, "LUT Switcher 2 - Core", "2.5.2"),
+            part(30, "LUTSwitcher", "3.3.0"),
+            part(40, "LUT Switcher - Nova LUT Pack", "1.4.0n"),
+            part(50, "LUT Pack - Nova LUT", "1.4.1n"),
+            part(60, "LUT Pack - Misc", "1.2.1m"),
+            part(70, "Readme", "notes"),
+            part(80, "Addon", "beta"),
+        ];
+        let lines = file_lines(&files, &[(70, 80)]);
+        let line = |id: u64| lines[&id.to_string()];
+        assert_eq!([line(10), line(20), line(30)], [10, 10, 10], "the core, whatever it was called");
+        assert_eq!([line(40), line(50)], [40, 40], "the Nova pack across its rename");
+        assert_eq!(line(60), 60);
+        assert_eq!(line(80), 70, "linked only by the author's declared replacement");
+    }
+
+    #[test]
+    fn a_version_knows_its_files() {
+        let log = build_changelog(&[part(1, "Core", "1.0"), part(2, "Pack", "1.0")]);
+        assert_eq!(log["1.0"].files.iter().map(|f| f.id).collect::<Vec<_>>(), [1, 2]);
     }
 
     #[test]

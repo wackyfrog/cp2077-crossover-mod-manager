@@ -5396,7 +5396,7 @@ fn apply_mod_snapshot(
         .changelogs
         .lock()
         .map_err(|e| e.to_string())?
-        .insert(mod_id, snapshot.changelog());
+        .insert(mod_id, snapshot.changelog(), snapshot.lines());
     Ok(results)
 }
 

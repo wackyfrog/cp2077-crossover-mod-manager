@@ -191,6 +191,20 @@
   text-transform: uppercase;
 }
 
+.changelog-file-name {
+  font-size: 0.8rem;
+  color: var(--cyber-blue);
+  margin-left: 0.6rem;
+}
+
+.changelog-others-toggle {
+  margin-top: 1rem;
+}
+
+.changelog-version--foreign {
+  opacity: 0.8;
+}
+
 .changelog-date {
   font-size: 0.8rem;
   color: var(--cyber-text-dim);

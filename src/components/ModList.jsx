@@ -115,7 +115,8 @@ function ModList({
         <p className="mod-part-name">{mod.file_name || `File #${mod.file_id || "?"}`}</p>
         <p className="mod-part-meta">
           {!mod.enabled && <span className="mod-badge mod-badge-ghosted">GHOSTED</span>}
-          <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title={`v${mod.latest_version} available`} />
+          {/* The mod's version is its core's; a part's own newer file may be numbered apart */}
+          <StatusBadge outdated={mod.update_available} latest={justUpdated[mod.id]} title="newer file on NexusMods" />
           {mod.version && `v${mod.version} · `}{mod.files?.length || 0} files
         </p>
       </div>
