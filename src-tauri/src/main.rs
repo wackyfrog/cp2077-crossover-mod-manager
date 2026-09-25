@@ -215,7 +215,7 @@ fn remove_mod(
         state.clone(),
     )?;
 
-    let (mod_name, removed_files, failed_files) = {
+    let mod_manager::RemoveOutcome { mod_name, removed: removed_files, failed: failed_files, kept } = {
         let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
         manager.remove_mod(&mod_id)?
     };
@@ -242,6 +242,15 @@ fn remove_mod(
         add_log(
             format!("⚠ Failed to remove: {}", error),
             "warning".to_string(),
+            "removal".to_string(),
+            state.clone(),
+        )?;
+    }
+
+    for shared in &kept {
+        add_log(
+            format!("· Kept, also held by {}: {}", holder_names(&shared.holders), shared.path),
+            "info".to_string(),
             "removal".to_string(),
             state.clone(),
         )?;
@@ -279,6 +288,16 @@ fn remove_mod(
         )?;
     }
 
+    let kept_note = if kept.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Kept {} file(s) other mods also hold ({}).",
+            kept.len(),
+            holder_names(&kept.iter().flat_map(|k| k.holders.clone()).collect::<Vec<_>>())
+        )
+    };
+
     let result_message = if failed_files.is_empty() {
         add_log(
             format!(
@@ -291,9 +310,10 @@ fn remove_mod(
             state.clone(),
         )?;
         format!(
-            "Mod '{}' removed successfully! Deleted {} files.",
+            "Mod '{}' removed successfully! Deleted {} files.{}",
             mod_name,
-            removed_files.len()
+            removed_files.len(),
+            kept_note
         )
     } else {
         add_log(
@@ -308,10 +328,11 @@ fn remove_mod(
             state.clone(),
         )?;
         format!(
-            "Mod '{}' partially removed. {} files deleted, {} files failed to delete.",
+            "Mod '{}' partially removed. {} files deleted, {} files failed to delete.{}",
             mod_name,
             removed_files.len(),
-            failed_files.len()
+            failed_files.len(),
+            kept_note
         )
     };
 
@@ -468,6 +489,14 @@ fn validate_mod_files(state: State<AppState>) -> Result<serde_json::Value, Strin
             .unwrap_or_else(|| f.to_string())
     };
 
+    // A switched-off mod's file stays active while an enabled mod holds it
+    // too — Ghost leaves it in place on purpose.
+    let held_by_enabled: std::collections::HashSet<String> = mods
+        .iter()
+        .filter(|m| m.enabled && !m.removed)
+        .flat_map(|m| m.files.iter().map(|f| f.to_lowercase()))
+        .collect();
+
     for m in &mods {
         if m.removed || m.files.is_empty() { continue; }
         total_mods += 1;
@@ -479,6 +508,8 @@ fn validate_mod_files(state: State<AppState>) -> Result<serde_json::Value, Strin
             // are ghosted on purpose and are not missing (docs/bugs.md B4).
             match mod_manager::file_state(f, m.enabled) {
                 mod_manager::FileState::AsExpected => {}
+                mod_manager::FileState::Mismatched
+                    if !m.enabled && held_by_enabled.contains(&f.to_lowercase()) => {}
                 mod_manager::FileState::Missing => {
                     missing.push(shorten(f));
                     missing_count += 1;
@@ -992,8 +1023,8 @@ fn toggle_mod(
     mod_id: String,
     state: State<AppState>,
     app: tauri::AppHandle,
-) -> Result<bool, String> {
-    let (enabled, log_entries) = {
+) -> Result<serde_json::Value, String> {
+    let mod_manager::ToggleOutcome { enabled, log_entries, kept } = {
         let mut manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
         manager.toggle_mod(&mod_id)?
     };
@@ -1015,6 +1046,15 @@ fn toggle_mod(
         )?;
     }
 
+    for shared in &kept {
+        add_log(
+            format!("· Left active, also held by {}: {}", holder_names(&shared.holders), shared.path),
+            "warning".to_string(),
+            "system".to_string(),
+            state.clone(),
+        )?;
+    }
+
     add_log(
         format!("✅ {} file(s) renamed", log_entries.len()),
         "info".to_string(),
@@ -1026,7 +1066,22 @@ fn toggle_mod(
         window.emit("mod-toggled", &mod_id).ok();
     }
 
-    Ok(enabled)
+    Ok(serde_json::json!({ "enabled": enabled, "kept": kept }))
+}
+
+/// "A, B" for a log line, each mod named once.
+fn holder_names(holders: &[mod_manager::FileHolder]) -> String {
+    let mut names: Vec<&str> = holders.iter().map(|h| h.mod_name.as_str()).collect();
+    names.sort();
+    names.dedup();
+    names.join(", ")
+}
+
+/// Files of this mod other live records hold too, for the details panel.
+#[tauri::command]
+fn get_shared_files(mod_id: String, state: State<AppState>) -> Result<Vec<mod_manager::SharedFile>, String> {
+    let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+    Ok(manager.shared_files(&mod_id))
 }
 
 #[tauri::command]
@@ -6028,6 +6083,7 @@ fn main() {
             restore_backup,
             delete_backup,
             toggle_mod,
+            get_shared_files,
             get_settings,
             save_settings,
             get_crossover_bottles_path,

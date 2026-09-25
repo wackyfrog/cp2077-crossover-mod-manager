@@ -618,6 +618,22 @@
   word-break: break-all;
 }
 
+.file-shared {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cyber-yellow);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.files-shared-count {
+  color: var(--cyber-yellow);
+}
+
 .file-item:hover {
   background: rgba(255, 0, 64, 0.05);
   color: var(--cyber-red);

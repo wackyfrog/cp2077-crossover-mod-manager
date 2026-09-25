@@ -700,7 +700,13 @@ function App() {
     }
   };
 
-  const handleToggleMod = (modId, nowEnabled) => {
+  const handleToggleMod = (modId, nowEnabled, kept = []) => {
+    if (kept.length > 0) {
+      const holders = [...new Set(kept.flatMap((k) => k.holders.map((h) => h.mod_name)))];
+      setStatusMsg(
+        `ghosted · ${kept.length} shared file${kept.length > 1 ? "s" : ""} left active for ${holders.join(", ")}`
+      );
+    }
     // Оновлюємо стан локально без повного перезавантаження
     setMods((prev) =>
       prev.map((m) => (m.id === modId ? { ...m, enabled: nowEnabled } : m))
@@ -734,7 +740,9 @@ function App() {
           setStatusMsg(report);
         } else {
           setModFilter("removed");
-          setStatusMsg(`flatlined: ${modName}`);
+          // Files another live mod holds stay on disk; the report names them
+          const kept = report.split(" Kept ")[1];
+          setStatusMsg(`flatlined: ${modName}${kept ? ` · kept ${kept}` : ""}`);
         }
         return cur;
       });

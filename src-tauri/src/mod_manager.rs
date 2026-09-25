@@ -100,6 +100,37 @@ pub struct RelocateReport {
     pub mods_affected: usize,
 }
 
+/// A file of one mod that other live records hold too.
+#[derive(Debug, Clone, Serialize)]
+pub struct SharedFile {
+    pub path: String,
+    pub holders: Vec<FileHolder>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileHolder {
+    pub mod_id: String,
+    pub mod_name: String,
+    pub enabled: bool,
+}
+
+/// What a Ghost or Enable did.
+pub struct ToggleOutcome {
+    pub enabled: bool,
+    pub log_entries: Vec<String>,
+    /// Files left active on Ghost because an enabled record holds them.
+    pub kept: Vec<SharedFile>,
+}
+
+/// What a Flatline did.
+pub struct RemoveOutcome {
+    pub mod_name: String,
+    pub removed: Vec<String>,
+    pub failed: Vec<String>,
+    /// Files left on disk because another live record holds them.
+    pub kept: Vec<SharedFile>,
+}
+
 /// What became of a mod's tracked files when we tried to delete them.
 pub struct DeleteOutcome {
     /// Paths actually deleted; may carry the `.disabled` suffix.
@@ -574,7 +605,41 @@ impl ModManager {
         self.save_database()
     }
 
-    pub fn toggle_mod(&mut self, mod_id: &str) -> Result<(bool, Vec<String>), String> {
+    /// Which of `mod_id`'s files other live records hold too, and who holds
+    /// them. Flatlined records own nothing. Paths compare case-insensitively,
+    /// as on the APFS volume the game lives on.
+    pub fn shared_files(&self, mod_id: &str) -> Vec<SharedFile> {
+        let Some(target) = self.mods.iter().find(|m| m.id == mod_id) else {
+            return Vec::new();
+        };
+        target
+            .files
+            .iter()
+            .filter_map(|file| {
+                let lower = file.to_lowercase();
+                let holders: Vec<FileHolder> = self
+                    .mods
+                    .iter()
+                    .filter(|m| m.id != mod_id && !m.removed)
+                    .filter(|m| m.files.iter().any(|f| f.to_lowercase() == lower))
+                    .map(|m| FileHolder {
+                        mod_id: m.id.clone(),
+                        mod_name: m.name.clone(),
+                        enabled: m.enabled,
+                    })
+                    .collect();
+                (!holders.is_empty()).then(|| SharedFile { path: file.clone(), holders })
+            })
+            .collect()
+    }
+
+    pub fn toggle_mod(&mut self, mod_id: &str) -> Result<ToggleOutcome, String> {
+        let shared: HashMap<String, SharedFile> = self
+            .shared_files(mod_id)
+            .into_iter()
+            .map(|s| (s.path.clone(), s))
+            .collect();
+
         let mod_info = self
             .mods
             .iter_mut()
@@ -583,37 +648,43 @@ impl ModManager {
 
         let enabling = !mod_info.enabled;
         let mut log_entries: Vec<String> = Vec::new();
+        let mut kept: Vec<SharedFile> = Vec::new();
 
         for file_path in &mod_info.files {
             let original = Path::new(file_path);
             let disabled = PathBuf::from(format!("{}.disabled", file_path));
 
             if enabling {
-                if disabled.exists() {
+                if original.exists() {
+                    // An enabled mod kept it live while this one was ghosted;
+                    // renaming the `.disabled` copy over it would replace that
+                    // mod's file.
+                    if disabled.exists() {
+                        log_entries.push(format!("· Already active, left {}.disabled as is", file_path));
+                    }
+                } else if disabled.exists() {
                     fs::rename(&disabled, original).map_err(|e| {
                         format!("Failed to enable file {}: {}", file_path, e)
                     })?;
                     log_entries.push(format!("✓ Renamed: {}.disabled → {}", file_path, file_path));
                 }
-            } else {
-                if original.exists() {
-                    fs::rename(original, &disabled).map_err(|e| {
-                        format!("Failed to disable file {}: {}", file_path, e)
-                    })?;
-                    log_entries.push(format!("✓ Renamed: {} → {}.disabled", file_path, file_path));
-                }
+            } else if let Some(s) = shared.get(file_path).filter(|s| s.holders.iter().any(|h| h.enabled)) {
+                // Ghosting it would switch it off for the enabled holder too.
+                kept.push(s.clone());
+            } else if original.exists() {
+                fs::rename(original, &disabled).map_err(|e| {
+                    format!("Failed to disable file {}: {}", file_path, e)
+                })?;
+                log_entries.push(format!("✓ Renamed: {} → {}.disabled", file_path, file_path));
             }
         }
 
         mod_info.enabled = enabling;
         self.save_database()?;
-        Ok((enabling, log_entries))
+        Ok(ToggleOutcome { enabled: enabling, log_entries, kept })
     }
 
-    pub fn remove_mod(
-        &mut self,
-        mod_id: &str,
-    ) -> Result<(String, Vec<String>, Vec<String>), String> {
+    pub fn remove_mod(&mut self, mod_id: &str) -> Result<RemoveOutcome, String> {
         let mod_index = self
             .mods
             .iter()
@@ -621,9 +692,33 @@ impl ModManager {
             .ok_or("Mod not found")?;
 
         let mod_name = self.mods[mod_index].name.clone();
-        let tracked = self.mods[mod_index].files.clone();
+        let shared = self.shared_files(mod_id);
+        let shared_paths: std::collections::HashSet<&str> =
+            shared.iter().map(|s| s.path.as_str()).collect();
+        let tracked: Vec<String> = self.mods[mod_index]
+            .files
+            .iter()
+            .filter(|f| !shared_paths.contains(f.as_str()))
+            .cloned()
+            .collect();
 
-        let outcome = delete_tracked_files(&tracked);
+        let mut outcome = delete_tracked_files(&tracked);
+
+        // A file another live record holds stays on disk: deleting it would
+        // take it from that mod too. When every other holder is ghosted, the
+        // file is ghosted with them rather than left live for nobody.
+        let mut kept: Vec<SharedFile> = Vec::new();
+        for s in shared {
+            let original = Path::new(&s.path);
+            let disabled = PathBuf::from(format!("{}.disabled", s.path));
+            if !s.holders.iter().any(|h| h.enabled) && original.exists() && !disabled.exists() {
+                if let Err(e) = fs::rename(original, &disabled) {
+                    outcome.failed.push((s.path.clone(), format!("could not ghost shared file: {}", e)));
+                    continue;
+                }
+            }
+            kept.push(s);
+        }
 
         for gone in &outcome.already_gone {
             eprintln!("· Nothing to delete, already absent: {}", gone);
@@ -648,7 +743,7 @@ impl ModManager {
         self.save_database()?;
 
         let failure_reports = outcome.failure_reports();
-        Ok((mod_name, outcome.removed, failure_reports))
+        Ok(RemoveOutcome { mod_name, removed: outcome.removed, failed: failure_reports, kept })
     }
 
     /// Update file_name, file_version, file_description, and latest_file_id for all mods with given mod_id
@@ -1397,7 +1492,7 @@ mod tests {
             game.join("mods.json"),
             vec![fixture("m1", vec![tracked.display().to_string()])],
         );
-        let (_, removed, failed) = manager.remove_mod("m1").unwrap();
+        let RemoveOutcome { removed, failed, .. } = manager.remove_mod("m1").unwrap();
 
         assert_eq!(removed.len(), 1);
         assert!(failed.is_empty());
@@ -1419,7 +1514,7 @@ mod tests {
             game.join("mods.json"),
             vec![fixture("m2", vec![stubborn.display().to_string()])],
         );
-        let (_, removed, failed) = manager.remove_mod("m2").unwrap();
+        let RemoveOutcome { removed, failed, .. } = manager.remove_mod("m2").unwrap();
 
         assert!(removed.is_empty());
         assert_eq!(failed.len(), 1);
@@ -1433,6 +1528,110 @@ mod tests {
             vec![stubborn.display().to_string()],
             "the manifest narrows to what is left, so the user can retry"
         );
+        cleanup(&game);
+    }
+
+    /// Two records holding one active file: `radioManager.lua` shipped by both
+    /// RadioExt and the patch that replaces it.
+    fn two_holders(tag: &str, owner_enabled: bool) -> (ModManager, PathBuf, PathBuf, PathBuf) {
+        let game = game_dir(tag);
+        let shared = game.join("bin/x64/plugins/cyber_engine_tweaks/mods/radioExt/radioManager.lua");
+        let own = game.join("archive/pc/mod/patch.archive");
+        write(&shared, "-- patched");
+        write(&own, "patch");
+        let mut owner = fixture("owner", vec![shared.display().to_string()]);
+        owner.enabled = owner_enabled;
+        let mut patch = fixture("patch", vec![shared.display().to_string(), own.display().to_string()]);
+        patch.enabled = true;
+        let manager = ModManager::with_database(game.join("mods.json"), vec![owner, patch]);
+        (manager, game, shared, own)
+    }
+
+    fn ghost(path: &Path) -> PathBuf {
+        PathBuf::from(format!("{}.disabled", path.display()))
+    }
+
+    #[test]
+    fn shared_files_name_live_holders_only() {
+        let (mut manager, game, shared, _) = two_holders("shared_scan", true);
+        let found = manager.shared_files("patch");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, shared.display().to_string());
+        assert_eq!(found[0].holders.iter().map(|h| h.mod_id.as_str()).collect::<Vec<_>>(), ["owner"]);
+
+        // a path spelled in another case is the same file on APFS
+        manager.mods[0].files = vec![shared.display().to_string().to_uppercase()];
+        assert_eq!(manager.shared_files("patch").len(), 1);
+
+        manager.mods[0].removed = true;
+        assert!(manager.shared_files("patch").is_empty(), "a flatlined record owns nothing");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn ghosting_leaves_a_file_an_enabled_mod_holds() {
+        let (mut manager, game, shared, own) = two_holders("ghost_guard", true);
+
+        let outcome = manager.toggle_mod("patch").unwrap();
+
+        assert!(!outcome.enabled);
+        assert!(shared.exists(), "the owner still runs on it");
+        assert!(!ghost(&shared).exists());
+        assert_eq!(outcome.kept.len(), 1);
+        assert!(ghost(&own).exists(), "the patch's own file is ghosted as usual");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn ghosting_takes_a_file_only_disabled_mods_hold() {
+        let (mut manager, game, shared, _) = two_holders("ghost_free", false);
+
+        let outcome = manager.toggle_mod("patch").unwrap();
+
+        assert!(outcome.kept.is_empty());
+        assert!(ghost(&shared).exists());
+        assert!(!shared.exists());
+        cleanup(&game);
+    }
+
+    #[test]
+    fn enabling_does_not_rename_over_a_file_already_active() {
+        let (mut manager, game, shared, _) = two_holders("enable_over", true);
+        manager.mods[1].enabled = false;
+        write(&ghost(&shared), "-- stale copy");
+
+        let outcome = manager.toggle_mod("patch").unwrap();
+
+        assert!(outcome.enabled);
+        assert_eq!(fs::read_to_string(&shared).unwrap(), "-- patched", "the active file is untouched");
+        assert!(ghost(&shared).exists(), "the ghost is left, not renamed over it");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn flatlining_keeps_a_file_another_enabled_mod_holds() {
+        let (mut manager, game, shared, own) = two_holders("flatline_guard", true);
+
+        let outcome = manager.remove_mod("patch").unwrap();
+
+        assert!(shared.exists(), "the owner still runs on it");
+        assert!(!own.exists());
+        assert_eq!(outcome.kept.len(), 1);
+        assert!(outcome.failed.is_empty());
+        let record = manager.mods.iter().find(|m| m.id == "patch").unwrap();
+        assert!(record.removed, "a kept shared file is not a failed removal");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn flatlining_ghosts_a_file_only_disabled_mods_hold() {
+        let (mut manager, game, shared, _) = two_holders("flatline_ghost", false);
+
+        let outcome = manager.remove_mod("patch").unwrap();
+
+        assert!(!shared.exists(), "nothing enabled wants it live");
+        assert!(ghost(&shared).exists(), "the disabled owner still has it to switch back on");
+        assert_eq!(outcome.kept.len(), 1);
         cleanup(&game);
     }
 }

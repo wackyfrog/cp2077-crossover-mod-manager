@@ -327,6 +327,8 @@ function VersionRow({ mod, state, onToggle, hint, updatedFrom, brief = false }) 
 
 function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemove, onForget, onToggle, onJackIn, onModsChanged, loading, hint = () => ({}) }) {
   const [filesOpen, setFilesOpen] = useState(false);
+  // Files other live records hold too — Ghost and Flatline leave them in place.
+  const [shared, setShared] = useState({});
   const filesRowRef = useRef(null);
   const fileListRef = useRef(null);
   useRevealOnOpen(filesOpen, filesRowRef, fileListRef);
@@ -351,6 +353,25 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
     setChangelog({ status: "missing", data: null, open: false });
     if (modId) readCachedChangelog(modId);
   }, [mod?.id, mod?.mod_id]);
+
+  const sharedFor = useRef(null);
+  useEffect(() => {
+    const id = mod && !mod._isGroup && !mod.removed ? mod.id : null;
+    sharedFor.current = id;
+    setShared({});
+    if (!id) return;
+    const read = () =>
+      invoke("get_shared_files", { modId: id })
+        .then((list) => {
+          if (sharedFor.current !== id) return;
+          setShared(Object.fromEntries(list.map((s) => [s.path, s.holders])));
+        })
+        .catch((err) => console.error("get_shared_files:", err));
+    read();
+    // Another mod's Ghost, Flatline or install changes who holds what
+    const unlisteners = ["mod-toggled", "mod-removed", "mod-installed"].map((name) => listen(name, read));
+    return () => unlisteners.forEach((p) => p.then((unlisten) => unlisten()));
+  }, [mod?.id, mod?._isGroup, mod?.removed]);
 
   // NETRUN and installs rewrite the cache while the same mod stays selected
   useEffect(() => {
@@ -410,8 +431,8 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
 
   const handleToggle = async () => {
     try {
-      const nowEnabled = await invoke("toggle_mod", { modId: mod.id });
-      onToggle?.(mod.id, nowEnabled);
+      const { enabled, kept } = await invoke("toggle_mod", { modId: mod.id });
+      onToggle?.(mod.id, enabled, kept);
     } catch (error) {
       console.error("Failed to toggle mod:", error);
       alert("Failed to toggle mod: " + error);
@@ -419,6 +440,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
   };
 
   const fileCount = mod.files?.length ?? 0;
+  const sharedCount = Object.keys(shared).length;
 
   const parts = [...siblings].sort((a, b) => (a.file_name ?? '').localeCompare(b.file_name ?? ''));
 
@@ -659,6 +681,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
             <span className="label">Files</span>
             <span className="value files-toggle-value">
               {fileCount} {fileCount === 1 ? 'file' : 'files'}
+              {sharedCount > 0 && <span className="files-shared-count"> · {sharedCount} shared</span>}
               <span className="files-arrow">{filesOpen ? '▼' : '▶'}</span>
             </span>
           </div>
@@ -670,6 +693,14 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
               mod.files.map((file, index) => (
                 <div key={index} className="file-item" title={file}>
                   <span className="file-path">{file.replace(/^.*?Cyberpunk 2077\//, '')}</span>
+                  {shared[file] && (
+                    <span
+                      className="file-shared"
+                      title={`Also installed by ${shared[file].map((h) => `${h.mod_name}${h.enabled ? "" : " (unslotted)"}`).join(", ")} — Ghost and Flatline leave it in place while that mod needs it`}
+                    >
+                      shared · {shared[file].map((h) => h.mod_name).join(", ")}
+                    </span>
+                  )}
                   <button
                     className="reveal-button"
                     title="Show in Finder"
