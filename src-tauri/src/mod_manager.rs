@@ -70,6 +70,27 @@ pub struct ModInfo {
     // Reinstall state machine: None = normal, Some("prepare"|"removing"|"installing")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reinstall_status: Option<String>,
+
+    /// Names the mod had on Nexus before, oldest first. Authors put the
+    /// version in the title ("Nova LUT 3.0 …" became "Nova LUT 4.0 …"), and
+    /// the user still searches by the name they installed it under.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub former_names: Vec<String>,
+}
+
+impl ModInfo {
+    /// Take the name the mod has on Nexus now, keeping the old one findable.
+    /// Returns whether anything changed.
+    pub fn follow_nexus_name(&mut self, nexus_name: &str) -> bool {
+        let nexus_name = nexus_name.trim();
+        if nexus_name.is_empty() || nexus_name == self.name {
+            return false;
+        }
+        let old = std::mem::replace(&mut self.name, nexus_name.to_string());
+        self.former_names.retain(|n| n != nexus_name && *n != old);
+        self.former_names.push(old);
+        true
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -559,6 +580,7 @@ impl ModManager {
             file_description: None,
             latest_file_id: None,
             reinstall_status: None,
+            former_names: Vec::new(),
         };
 
         self.mods.push(mod_info);
@@ -581,6 +603,7 @@ impl ModManager {
         uploader: Option<(u64, String)>,
         corrected_version: Option<String>,
         update_target: Option<String>,
+        nexus_name: Option<&str>,
     ) -> Result<(), String> {
         let mod_info = self
             .mods
@@ -588,6 +611,9 @@ impl ModManager {
             .find(|m| m.id == mod_id)
             .ok_or("Mod not found")?;
 
+        if let Some(n) = nexus_name {
+            mod_info.follow_nexus_name(n);
+        }
         if let Some(v) = corrected_version {
             mod_info.version = v;
         }
@@ -878,8 +904,12 @@ impl ModManager {
         new_file_version: Option<String>,
         new_file_description: Option<String>,
         same_file: bool,
+        nexus_name: Option<&str>,
     ) -> Result<bool, String> {
         let mod_info = self.mods.iter_mut().find(|m| m.id == mod_id).ok_or("Mod not found")?;
+        if let Some(n) = nexus_name.filter(|_| mod_info.mod_id.is_some()) {
+            mod_info.follow_nexus_name(n);
+        }
         // Preserve the user's slot state across an update: an active mod keeps
         // its prior enabled/ghosted state, while reinstalling a flatlined
         // (removed) mod re-slots it.
@@ -1304,6 +1334,7 @@ mod tests {
             file_description: None,
             latest_file_id: None,
             reinstall_status: None,
+            former_names: Vec::new(),
         }
     }
 
@@ -1342,7 +1373,7 @@ mod tests {
         let (mut manager, game) = manager_with("samefile", vec![outdated]);
 
         manager
-            .complete_reinstall("a", vec!["x".into()], "2.40", Some("42"), None, Some("2.30".into()), None, true)
+            .complete_reinstall("a", vec!["x".into()], "2.40", Some("42"), None, Some("2.30".into()), None, true, None)
             .unwrap();
 
         let m = &manager.mods[0];
@@ -1361,7 +1392,7 @@ mod tests {
         let (mut manager, game) = manager_with("newfile", vec![outdated]);
 
         manager
-            .complete_reinstall("a", vec![], "2.40", Some("43"), None, Some("2.40".into()), None, false)
+            .complete_reinstall("a", vec![], "2.40", Some("43"), None, Some("2.40".into()), None, false, None)
             .unwrap();
 
         let m = &manager.mods[0];
@@ -1632,6 +1663,51 @@ mod tests {
         assert!(!shared.exists(), "nothing enabled wants it live");
         assert!(ghost(&shared).exists(), "the disabled owner still has it to switch back on");
         assert_eq!(outcome.kept.len(), 1);
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_new_nexus_name_keeps_the_old_one_findable() {
+        let mut m = fixture("nova", vec![]);
+        m.name = "Nova LUT 3.0 (AgX - HDR Support)".into();
+
+        assert!(m.follow_nexus_name("Nova LUT 4.0 (AgX - New HDR)"));
+        assert_eq!(m.name, "Nova LUT 4.0 (AgX - New HDR)");
+        assert_eq!(m.former_names, ["Nova LUT 3.0 (AgX - HDR Support)"]);
+
+        assert!(!m.follow_nexus_name("Nova LUT 4.0 (AgX - New HDR)"), "same name: nothing to do");
+        assert!(!m.follow_nexus_name("  "), "an empty title from Nexus is ignored");
+
+        // renamed back: the current name leaves the history, the one it replaces joins it
+        assert!(m.follow_nexus_name("Nova LUT 3.0 (AgX - HDR Support)"));
+        assert_eq!(m.former_names, ["Nova LUT 4.0 (AgX - New HDR)"]);
+    }
+
+    #[test]
+    fn netrun_and_update_take_the_nexus_name() {
+        let mut nexus = fixture("nexus", vec![]);
+        nexus.mod_id = Some("11622".into());
+        nexus.name = "Old".into();
+        let mut local = fixture("local", vec![]);
+        local.name = "Typed by user".into();
+        let (mut manager, game) = manager_with("names", vec![nexus, local]);
+
+        manager
+            .update_mod_sync_data("nexus", None, None, false, None, None, None, None, None, Some("Synced"))
+            .unwrap();
+        assert_eq!(manager.mods[0].name, "Synced");
+
+        manager
+            .complete_reinstall("nexus", vec![], "2", Some("9"), None, None, None, false, Some("Updated"))
+            .unwrap();
+        assert_eq!(manager.mods[0].name, "Updated");
+        assert_eq!(manager.mods[0].former_names, ["Old", "Synced"]);
+
+        // no Nexus id: the name is the user's, not Nexus's
+        manager
+            .complete_reinstall("local", vec![], "2", None, None, None, None, false, Some("Whatever"))
+            .unwrap();
+        assert_eq!(manager.mods[1].name, "Typed by user");
         cleanup(&game);
     }
 }

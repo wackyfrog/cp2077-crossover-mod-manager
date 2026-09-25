@@ -27,6 +27,8 @@ pub const BATCH_SIZE: usize = 50;
 const V1_REQUESTS_PER_MOD: i64 = 2;
 
 pub struct ModState {
+    /// The mod's title on Nexus now; authors rename it with new versions.
+    pub name: Option<String>,
     pub version: String,
     pub summary: Option<String>,
     pub picture_url: Option<String>,
@@ -289,6 +291,7 @@ async fn fetch_batch_graphql(
     #[serde(rename_all = "camelCase")]
     struct Node {
         mod_id: u64,
+        name: Option<String>,
         version: Option<String>,
         summary: Option<String>,
         picture_url: Option<String>,
@@ -327,7 +330,7 @@ async fn fetch_batch_graphql(
         serde_json::json!({
             "query": "query($ids: [CompositeDomainWithIdInput!]!, $count: Int) { \
                 legacyModsByDomain(ids: $ids, count: $count) { \
-                  nodes { modId version summary pictureUrl updatedAt uploader { memberId name } } } }",
+                  nodes { modId name version summary pictureUrl updatedAt uploader { memberId name } } } }",
             "variables": { "ids": refs, "count": ids.len() },
         }),
     )
@@ -354,6 +357,7 @@ async fn fetch_batch_graphql(
             node.mod_id,
             ModSnapshot {
                 state: ModState {
+                    name: node.name.filter(|n| !n.trim().is_empty()),
                     version,
                     summary: node.summary,
                     picture_url: node.picture_url,
@@ -475,6 +479,7 @@ async fn fetch_one_v1(
 ) -> Result<(ModSnapshot, Remaining), FetchError> {
     #[derive(Deserialize)]
     struct V1Mod {
+        name: Option<String>,
         version: Option<String>,
         summary: Option<String>,
         picture_url: Option<String>,
@@ -513,6 +518,7 @@ async fn fetch_one_v1(
     Ok((
         ModSnapshot {
             state: ModState {
+                name: m.name.filter(|n| !n.trim().is_empty()),
                 version,
                 summary: m.summary,
                 picture_url: m.picture_url,

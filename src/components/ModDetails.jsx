@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { formerly } from "./ModList";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
@@ -448,7 +449,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
     return (
       <div className="mod-details">
         <div className="mod-details-header">
-          <h2><DetailsStatusBadge mod={mod} justUpdated={justUpdated} siblings={parts} />{mod.name}</h2>
+          <h2 title={formerly(mod.former_names)}><DetailsStatusBadge mod={mod} justUpdated={justUpdated} siblings={parts} />{mod.name}</h2>
           <span className="group-badge">{parts.length} parts</span>
         </div>
 
@@ -529,7 +530,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
     return (
       <div className="mod-details mod-details-removed">
         <div className="mod-details-header">
-          <h2 className="removed-title">{mod.name}</h2>
+          <h2 className="removed-title" title={formerly(mod.former_names)}>{mod.name}</h2>
           <span className="removed-badge">FLATLINED</span>
         </div>
 
@@ -605,7 +606,7 @@ function ModDetails({ mod, justUpdated = {}, siblings = [], onSelectMod, onRemov
   return (
     <div className="mod-details">
       <div className="mod-details-header">
-        <h2><DetailsStatusBadge mod={mod} justUpdated={justUpdated} />{mod.name}</h2>
+        <h2 title={formerly(mod.former_names)}><DetailsStatusBadge mod={mod} justUpdated={justUpdated} />{mod.name}</h2>
         <label className={`cyber-toggle ${loading ? 'cyber-toggle--disabled' : ''}`} {...hint(mod.enabled ? 'disable this mod without removing files' : 'enable this mod')}>
           <input
             type="checkbox"

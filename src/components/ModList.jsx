@@ -28,6 +28,12 @@ function StatusBadge({ outdated, latest, title }) {
   return null;
 }
 
+/** Hover text naming the titles a mod had on Nexus before, if any. */
+export const formerly = (names) => {
+  const unique = [...new Set(names ?? [])];
+  return unique.length ? `formerly: ${unique.join(" · ")}` : undefined;
+};
+
 function ModList({
   mods, justUpdated = {}, selectedMod, onSelectMod, searchQuery = "", filter = "all", sort = "recent",
   loading, dragActive = false,
@@ -49,6 +55,8 @@ function ModList({
       result = result.filter(
         (m) =>
           m.name?.toLowerCase().includes(q) ||
+          // The name it was installed under, before the author renamed it
+          m.former_names?.some((n) => n.toLowerCase().includes(q)) ||
           m.author?.toLowerCase().includes(q) ||
           m.uploader_name?.toLowerCase().includes(q) ||
           m.version?.toLowerCase().includes(q)
@@ -84,7 +92,7 @@ function ModList({
       onClick={() => onSelectMod(mod)}
     >
       <div className="mod-info">
-        <h3>{mod.name}</h3>
+        <h3 title={formerly(mod.former_names)}>{mod.name}</h3>
         <p className="mod-version">
           {!mod.removed && !mod.enabled && (
             <span className="mod-badge mod-badge-ghosted">GHOSTED</span>
@@ -175,11 +183,12 @@ function ModList({
                     update_available: anyUpdate,
                     latest_version: items.find(m => m.update_available)?.latest_version,
                     enabled: allEnabled,
+                    former_names: [...new Set(items.flatMap((m) => m.former_names ?? []))],
                     _siblings: sortedParts,
                   })}
                 >
                   <div className="mod-info">
-                    <h3>{label}</h3>
+                    <h3 title={formerly(items.flatMap((m) => m.former_names ?? []))}>{label}</h3>
                     <p className="mod-version mod-group-meta">
                       {!allEnabled && (
                         <span className={`mod-badge ${anyEnabled ? "mod-badge-partial" : "mod-badge-ghosted"}`}>

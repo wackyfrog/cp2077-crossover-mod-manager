@@ -4231,6 +4231,9 @@ async fn install_mod_from_nxm_inner(
                 new_file_version,
                 new_file_description,
                 same_file_version.is_some(),
+                // Only a Nexus download knows the mod's current title; a
+                // sideload's name is whatever the user typed.
+                Some(mod_name.as_str()).filter(|_| params.local_archive_path.is_none() && !mod_id.trim().is_empty()),
             )?
         };
 
@@ -4312,6 +4315,7 @@ async fn install_mod_from_nxm_inner(
             file_description: state.pending_file_description.lock().ok().and_then(|mut s| s.take()),
             latest_file_id: None,
             reinstall_status: None,
+            former_names: Vec::new(),
         };
 
         installed_mod_id = Some(mod_info.id.clone());
@@ -5383,6 +5387,7 @@ fn apply_mod_snapshot(
                 snapshot.state.uploader.clone(),
                 installed.corrected_version,
                 nexus_sync::update_target(&snapshot.files, &snapshot.file_updates, record.file_id.as_deref(), sole_record),
+                snapshot.state.name.as_deref(),
             )?;
             results.push((record, update_available));
         }
