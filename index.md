@@ -35,11 +35,20 @@ is meant to be dull and correct.
   folders every which way — `Archive/`, `R6/`, `BIN/`. The installer writes
   them under the casing the game uses, so a mod's files join the real folders
   instead of forming a set of near-identical ones beside them.
-- **Checks for updates** against NexusMods and tells you which of your mods
-  have a newer version.
+- **Checks what a mod needs before installing it.** A mod's NexusMods page
+  lists its requirements; before anything is downloaded, the app checks them
+  against your install — not there, switched off, removed — and asks whether to
+  go on. Optional ones are shown apart. NexusMods lists no versions, so only
+  presence is checked.
+- **Checks for updates** against NexusMods, tells you which of your mods have a
+  newer version, and shows what changed in between — for a mod installed as
+  several files, each file's own history.
 - **Uninstalls what it installed.** Every file the app puts on disk is tracked
   and goes with the mod, emptied folders included — the switched-off ones too,
   whose files sit on disk under a different name.
+- **Doesn't break one mod by removing another.** When two mods ship the same
+  file — a patch replacing its parent's script — switching one off or removing
+  it leaves the file the other still uses, and says so.
 - **Repairs mods that installed wrong**, including ones put there by older
   versions of this app: a scan reports what it would move before anything is
   moved.
