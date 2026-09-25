@@ -505,10 +505,11 @@ function App() {
     setJackInConfirm(null);
 
     // If we know the latest file_id for this file, open direct download URL.
-    // latest_file_id is the newest file with the same name as the installed
-    // one; authors who put the version in the file name never have one, so it
-    // falls back to the installed file itself — asking for that just
-    // reinstalls it. Then the Files tab lets the newer file be picked.
+    // latest_file_id is NETRUN's update target (nexus_sync::update_target):
+    // the file the author declared as the replacement, else the newest file
+    // with the installed one's name or a sole later MAIN. Without one — or
+    // when it's the installed file itself, which would just reinstall it —
+    // the Files tab lets the newer file be picked.
     const targetFileId = mod.update_available && mod.latest_file_id && mod.latest_file_id !== mod.file_id
       ? mod.latest_file_id
       : null;

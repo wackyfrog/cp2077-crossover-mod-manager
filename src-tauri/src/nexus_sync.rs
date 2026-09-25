@@ -49,6 +49,10 @@ pub struct NexusFile {
 pub struct ModSnapshot {
     pub state: ModState,
     pub files: Vec<NexusFile>,
+    /// (old file id, new file id) pairs the author declared on Nexus. Only
+    /// v1 has them: filled by the v1 fallback, or by `fetch_file_updates`
+    /// for mods whose update target the files alone can't settle.
+    pub file_updates: Vec<(u64, u64)>,
 }
 
 impl ModSnapshot {
@@ -164,7 +168,9 @@ pub fn installed_state(
 
 /// The file Update should download for a record, if one is clear.
 ///
-/// First choice: the newest live file with the installed file's name,
+/// The author's word comes first: a live file down the replacement chain
+/// Nexus keeps (`file_updates`, see `declared_successor`). Without one, the
+/// newest live file with the installed file's name,
 /// uploaded after it. Authors who rename the file with each release (the
 /// version in the name, or a new name altogether — SPLAT went from "Splat
 /// Physics" to "SPLAT Physics Realistic Ragdoll Overhaul") never have one,
@@ -178,15 +184,23 @@ pub fn installed_state(
 /// Files the author retired (OLD_VERSION, ARCHIVED, DELETED) are never a
 /// target: installing one leaves the mod OUTDATED, and Update would point
 /// at it again (Nova LUT uploaded its 4.0.0s switcher pack as OLD_VERSION).
-pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>, sole_record: bool) -> Option<String> {
+pub fn update_target(
+    files: &[NexusFile],
+    file_updates: &[(u64, u64)],
+    installed_file_id: Option<&str>,
+    sole_record: bool,
+) -> Option<String> {
     let installed = installed_file_id
         .map(str::trim)
         .and_then(|fid| files.iter().find(|f| f.file_id.to_string() == fid))?;
+    if let Some(declared) = declared_successor(files, file_updates, installed.file_id) {
+        return Some(declared.to_string());
+    }
     let since = installed.uploaded?;
     let later: Vec<&NexusFile> = files
         .iter()
         .filter(|f| f.uploaded.is_some_and(|t| t > since))
-        .filter(|f| !matches!(f.category.as_deref(), Some("OLD_VERSION" | "ARCHIVED" | "DELETED")))
+        .filter(|f| !is_retired(f))
         .collect();
     if let Some(same) = later
         .iter()
@@ -199,6 +213,32 @@ pub fn update_target(files: &[NexusFile], installed_file_id: Option<&str>, sole_
         [only] if sole_record => Some(only.file_id.to_string()),
         _ => None,
     }
+}
+
+fn is_retired(f: &NexusFile) -> bool {
+    matches!(f.category.as_deref(), Some("OLD_VERSION" | "ARCHIVED" | "DELETED"))
+}
+
+/// The furthest live file down the author's replacement chain from
+/// `installed`. The chain can pass through retired files (Nova LUT 2 → 3 → 4)
+/// and can end in one (the Nova LUT switcher pack 3.0.0s → 4.0.0s, itself
+/// OLD_VERSION after the pack moved to LUT Switcher) — then there's nothing
+/// to update to. Unlike the rename rule it names one file for one file, so it
+/// holds for mods installed as several records.
+fn declared_successor(files: &[NexusFile], file_updates: &[(u64, u64)], installed: u64) -> Option<u64> {
+    let mut seen = std::collections::HashSet::from([installed]);
+    let mut current = installed;
+    let mut live = None;
+    while let Some(&(_, next)) = file_updates.iter().find(|(old, _)| *old == current) {
+        if !seen.insert(next) {
+            break;
+        }
+        if files.iter().any(|f| f.file_id == next && !is_retired(f)) {
+            live = Some(next);
+        }
+        current = next;
+    }
+    live
 }
 
 // ── GraphQL ─────────────────────────────────────────────────────────────
@@ -332,6 +372,7 @@ async fn fetch_batch_graphql(
                         changelog: f.changelog_text.unwrap_or_default(),
                     })
                     .collect(),
+                file_updates: Vec::new(),
             },
         );
     }
@@ -407,6 +448,26 @@ async fn v1_get(
     Ok((json, remaining))
 }
 
+#[derive(Deserialize)]
+struct V1FileUpdate {
+    old_file_id: u64,
+    new_file_id: u64,
+}
+
+/// The author's "this file replaces that one" links for one mod — one v1
+/// request. GraphQL doesn't carry them (no such field on `ModFile`).
+pub async fn fetch_file_updates(client: &reqwest::Client, api_key: &str, id: u64) -> Result<Vec<(u64, u64)>, FetchError> {
+    #[derive(Deserialize)]
+    struct V1Updates {
+        #[serde(default)]
+        file_updates: Vec<V1FileUpdate>,
+    }
+    let url = format!("https://api.nexusmods.com/v1/games/{}/mods/{}/files.json", GAME_DOMAIN, id);
+    let (json, _) = v1_get(client, api_key, &url).await?;
+    let parsed: V1Updates = serde_json::from_value(json).map_err(|e| FetchError::Other(format!("File list unreadable: {}", e)))?;
+    Ok(parsed.file_updates.into_iter().map(|u| (u.old_file_id, u.new_file_id)).collect())
+}
+
 async fn fetch_one_v1(
     client: &reqwest::Client,
     api_key: &str,
@@ -438,6 +499,8 @@ async fn fetch_one_v1(
     #[derive(Deserialize)]
     struct V1Files {
         files: Vec<V1File>,
+        #[serde(default)]
+        file_updates: Vec<V1FileUpdate>,
     }
 
     let base = format!("https://api.nexusmods.com/v1/games/{}/mods/{}", GAME_DOMAIN, id);
@@ -469,6 +532,7 @@ async fn fetch_one_v1(
                     changelog: f.changelog_html.filter(|c| !c.trim().is_empty()).into_iter().collect(),
                 })
                 .collect(),
+            file_updates: f.file_updates.iter().map(|u| (u.old_file_id, u.new_file_id)).collect(),
         },
         remaining,
     ))
@@ -729,7 +793,7 @@ mod tests {
             named(2, "Core", "MAIN", 200),
             named(3, "Addon", "MAIN", 300),
         ];
-        assert_eq!(update_target(&files, Some("1"), true).as_deref(), Some("2"));
+        assert_eq!(update_target(&files, &[], Some("1"), true).as_deref(), Some("2"));
     }
 
     #[test]
@@ -740,7 +804,7 @@ mod tests {
             named(158554, "SPLAT Physics Realistic Ragdoll Overhaul", "ARCHIVED", 200),
             named(158573, "SPLAT Physics Realistic Ragdoll Overhaul", "MAIN", 300),
         ];
-        assert_eq!(update_target(&files, Some("152859"), true).as_deref(), Some("158573"));
+        assert_eq!(update_target(&files, &[], Some("152859"), true).as_deref(), Some("158573"));
     }
 
     #[test]
@@ -750,10 +814,10 @@ mod tests {
             named(2, "Mod 2.0 Lite", "MAIN", 200),
             named(3, "Mod 2.0 Full", "MAIN", 300),
         ];
-        assert_eq!(update_target(&files, Some("1"), true), None);
+        assert_eq!(update_target(&files, &[], Some("1"), true), None);
         // nothing after the installed file, or the file unknown
-        assert_eq!(update_target(&files, Some("3"), true), None);
-        assert_eq!(update_target(&files, Some("99"), true), None);
+        assert_eq!(update_target(&files, &[], Some("3"), true), None);
+        assert_eq!(update_target(&files, &[], Some("99"), true), None);
     }
 
     #[test]
@@ -764,8 +828,8 @@ mod tests {
             named(144813, "Nova LUT 4", "MAIN", 200),
             named(144850, "Nova LUT - LUT Switcher Pack", "OLD_VERSION", 201),
         ];
-        assert_eq!(update_target(&files, Some("105480"), true).as_deref(), Some("144813"));
-        assert_eq!(update_target(&files, Some("105480"), false), None);
+        assert_eq!(update_target(&files, &[], Some("105480"), true).as_deref(), Some("144813"));
+        assert_eq!(update_target(&files, &[], Some("105480"), false), None);
     }
 
     #[test]
@@ -777,9 +841,45 @@ mod tests {
             named(154976, "LUT Pack - Nova LUT", "OPTIONAL", 300),
             named(157888, "LUTSwitcher", "MAIN", 400),
         ];
-        assert_eq!(update_target(&files, Some("144848"), false), None);
-        assert_eq!(update_target(&files, Some("146114"), false), None);
-        assert_eq!(update_target(&files, Some("146114"), true).as_deref(), Some("157888"));
+        assert_eq!(update_target(&files, &[], Some("144848"), false), None);
+        assert_eq!(update_target(&files, &[], Some("146114"), false), None);
+        assert_eq!(update_target(&files, &[], Some("146114"), true).as_deref(), Some("157888"));
+    }
+
+    #[test]
+    fn update_target_follows_the_chain_the_author_declared() {
+        // Nova LUT, 25.09: 3 and 4 have different names, and the mod is
+        // installed as several records — only the chain names 4 for 3
+        let files = [
+            named(83367, "Nova LUT 2", "OLD_VERSION", 100),
+            named(105479, "Nova LUT 3", "OLD_VERSION", 200),
+            named(105480, "Nova LUT - LUT Switcher Pack", "OLD_VERSION", 201),
+            named(144813, "Nova LUT 4", "MAIN", 300),
+            named(144850, "Nova LUT - LUT Switcher Pack", "OLD_VERSION", 301),
+        ];
+        let chain = [(83367, 105479), (105479, 144813), (105480, 144850)];
+        assert_eq!(update_target(&files, &[], Some("105479"), false), None);
+        assert_eq!(update_target(&files, &chain, Some("105479"), false).as_deref(), Some("144813"));
+        // through a retired link to the live end
+        assert_eq!(update_target(&files, &chain, Some("83367"), false).as_deref(), Some("144813"));
+        // a chain that ends in a retired file names nothing
+        assert_eq!(update_target(&files, &chain, Some("105480"), false), None);
+        // and doesn't override the rules when it names nothing
+        assert_eq!(update_target(&files, &chain, Some("105480"), true).as_deref(), Some("144813"));
+    }
+
+    #[test]
+    fn update_target_survives_a_looping_chain() {
+        let files = [named(1, "A", "OLD_VERSION", 100), named(2, "B", "OLD_VERSION", 200)];
+        assert_eq!(update_target(&files, &[(1, 2), (2, 1)], Some("1"), false), None);
+        let files = [named(1, "A", "OLD_VERSION", 100), named(2, "B", "MAIN", 200)];
+        assert_eq!(update_target(&files, &[(1, 2), (2, 1)], Some("1"), false).as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn update_target_ignores_a_chain_to_a_file_nexus_no_longer_lists() {
+        let files = [named(1, "A", "OLD_VERSION", 100), named(3, "C", "MAIN", 300)];
+        assert_eq!(update_target(&files, &[(1, 2)], Some("1"), false), None);
     }
 
     #[test]

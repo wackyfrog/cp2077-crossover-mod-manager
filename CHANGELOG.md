@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Update follows the file the author named as the replacement** — when an author gives a new version a new name and the mod is installed as several parts, Update couldn't tell which file replaces yours and opened the Files tab; picking the new file there installed it as another part beside the old one (Nova LUT 4 next to Nova LUT 3, both replacing the same game files). NexusMods keeps the author's own "this file updates that one" links, and NETRUN now fetches them — one extra request, only for outdated mods without an update target — so Update asks for that file and it replaces your mod in place. A link that ends in a file the author has since retired names nothing, as before
+
 ## [1.7.0] - 2026-09-24
 
 ### Upgrading from an earlier version

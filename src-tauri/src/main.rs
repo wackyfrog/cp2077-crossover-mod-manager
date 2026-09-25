@@ -5314,7 +5314,7 @@ fn apply_mod_snapshot(
                 snapshot.state.nexus_updated_at.clone(),
                 snapshot.state.uploader.clone(),
                 installed.corrected_version,
-                nexus_sync::update_target(&snapshot.files, record.file_id.as_deref(), sole_record),
+                nexus_sync::update_target(&snapshot.files, &snapshot.file_updates, record.file_id.as_deref(), sole_record),
             )?;
             results.push((record, update_available));
         }
@@ -5327,11 +5327,52 @@ fn apply_mod_snapshot(
     Ok(results)
 }
 
+/// Adds the author's replacement links to a snapshot when a live record is
+/// outdated and its files alone name no update target (Nova LUT 3 → 4: a new
+/// name, and the mod installed as several records). One v1 request, and only
+/// for such mods. `Ok(true)` when it fetched.
+async fn fetch_declared_successors(
+    state: &AppState,
+    client: &reqwest::Client,
+    api_key: &str,
+    id: u64,
+    snapshot: &mut nexus_sync::ModSnapshot,
+) -> Result<bool, String> {
+    if !snapshot.file_updates.is_empty() {
+        return Ok(false);
+    }
+    let needed = {
+        let key = id.to_string();
+        let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+        let live: Vec<ModInfo> = manager
+            .get_installed_mods()
+            .into_iter()
+            .filter(|m| !m.removed && m.mod_id.as_deref().map(str::trim) == Some(key.as_str()))
+            .collect();
+        let sole_record = live.len() <= 1;
+        live.iter().any(|r| {
+            nexus_sync::installed_state(&snapshot.files, r.file_id.as_deref(), &r.version, &snapshot.state.version, is_newer_version)
+                .update_available
+                && nexus_sync::update_target(&snapshot.files, &[], r.file_id.as_deref(), sole_record).is_none()
+        })
+    };
+    if !needed {
+        return Ok(false);
+    }
+    snapshot.file_updates = nexus_sync::fetch_file_updates(client, api_key, id).await.map_err(|e| e.message())?;
+    Ok(true)
+}
+
 /// NETRUN for a single mod: same requests and same write as the full run.
 async fn refresh_one_mod(state: &AppState, api_key: &str, mod_id: &str) -> Result<(), String> {
     let id: u64 = mod_id.trim().parse().map_err(|_| format!("Not a NexusMods id: {}", mod_id))?;
     let client = reqwest::Client::new();
-    let batch = nexus_sync::fetch_batch(&client, api_key, &[id]).await;
+    let mut batch = nexus_sync::fetch_batch(&client, api_key, &[id]).await;
+    if let Some(snapshot) = batch.snapshots.get_mut(&id) {
+        if let Err(e) = fetch_declared_successors(state, &client, api_key, id, snapshot).await {
+            println!("📡 Replacement links for mod {} unavailable: {}", id, e);
+        }
+    }
     let Some(snapshot) = batch.snapshots.get(&id) else {
         return Err(batch
             .errors
@@ -5457,7 +5498,7 @@ async fn sync_mod_data(
             "status": format!("requesting mods {}–{} of {} from NexusMods…", first, done_ids, ids.len()),
         })).ok();
 
-        let batch = nexus_sync::fetch_batch(&client, &api_key, chunk).await;
+        let mut batch = nexus_sync::fetch_batch(&client, &api_key, chunk).await;
         if let Some(ref reason) = batch.used_fallback {
             add_log(
                 format!("GraphQL unavailable ({}), fetching {} mods one by one", reason, chunk.len()),
@@ -5471,6 +5512,15 @@ async fn sync_mod_data(
                 .iter()
                 .filter(|m| m.mod_id.as_deref().map(str::trim) == Some(key.as_str()))
                 .collect();
+            if let Some(snapshot) = batch.snapshots.get_mut(id) {
+                // Without the links the record just keeps no target, as before
+                if let Err(e) = fetch_declared_successors(&state, &client, &api_key, *id, snapshot).await {
+                    add_log(
+                        format!("Replacement links for mod {} unavailable: {}", id, e),
+                        "warning".to_string(), "sync".to_string(), state.clone(),
+                    )?;
+                }
+            }
             let applied = match batch.snapshots.get(id) {
                 Some(snapshot) => apply_mod_snapshot(&state, &key, snapshot),
                 None => Err(batch.errors.get(id).cloned().unwrap_or_else(|| "no data".to_string())),
