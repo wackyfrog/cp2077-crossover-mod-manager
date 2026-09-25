@@ -4108,25 +4108,30 @@ async fn install_mod_from_nxm_inner(
                     .filter(|m| m.id != *existing_id && !m.removed)
                     .flat_map(|m| m.files.iter().map(|f| f.to_lowercase()))
                     .collect();
+                // Logged like a removal: an update deletes files too, and the
+                // log is where the user checks what left the game folder.
+                let log = |message: String, level: &str| {
+                    add_log(message, level.to_string(), "installation".to_string(), state.clone())
+                };
                 for (old_file, fate) in orphan_cleanup::stale_files(&old_mod.files, &installed_files, &claimed_elsewhere) {
                     match fate {
                         orphan_cleanup::StaleFile::Shared => {
-                            println!("↔ Keeping {}: another installed mod claims it too", old_file);
+                            log(format!("↔ Kept old file (another installed mod claims it): {}", old_file), "info")?;
                         }
                         orphan_cleanup::StaleFile::CetState => kept_state_files.push(old_file.to_string()),
-                        orphan_cleanup::StaleFile::Unsafe => eprintln!("⛔ Skipping unsafe stale path: {}", old_file),
+                        orphan_cleanup::StaleFile::Unsafe => {
+                            log(format!("⛔ Skipped unsafe old path: {}", old_file), "warning")?;
+                        }
                         orphan_cleanup::StaleFile::Delete => {
                             // A ghosted mod's files live on disk with a .disabled
                             // suffix, so clean up both the active and disabled variant.
-                            if std::path::Path::new(old_file).exists() {
-                                if let Err(e) = std::fs::remove_file(old_file) {
-                                    eprintln!("Failed to remove stale file {}: {}", old_file, e);
+                            for path in [old_file.to_string(), format!("{}.disabled", old_file)] {
+                                if !std::path::Path::new(&path).exists() {
+                                    continue;
                                 }
-                            }
-                            let old_disabled = format!("{}.disabled", old_file);
-                            if std::path::Path::new(&old_disabled).exists() {
-                                if let Err(e) = std::fs::remove_file(&old_disabled) {
-                                    eprintln!("Failed to remove stale file {}: {}", old_disabled, e);
+                                match std::fs::remove_file(&path) {
+                                    Ok(()) => log(format!("✓ Removed old file: {}", path), "info")?,
+                                    Err(e) => log(format!("❌ Failed to remove old file {}: {}", path, e), "error")?,
                                 }
                             }
                         }
