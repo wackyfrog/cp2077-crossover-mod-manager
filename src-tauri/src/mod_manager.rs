@@ -143,6 +143,14 @@ pub struct ToggleOutcome {
     pub kept: Vec<SharedFile>,
 }
 
+/// What re-ghosting a switched-off mod's update did.
+pub struct GhostOutcome {
+    pub renamed: usize,
+    /// Left active because an enabled record holds them too.
+    pub kept: Vec<SharedFile>,
+    pub failed: Vec<String>,
+}
+
 /// What a Flatline did.
 pub struct RemoveOutcome {
     pub mod_name: String,
@@ -657,6 +665,33 @@ impl ModManager {
                 (!holders.is_empty()).then(|| SharedFile { path: file.clone(), holders })
             })
             .collect()
+    }
+
+    /// Ghost the files an update just installed for a record that stays
+    /// switched off. A file another enabled record holds stays active, as on
+    /// Ghost: the update may bring a file that mod also ships.
+    pub fn reghost_after_update(&self, mod_id: &str, installed: &[String]) -> GhostOutcome {
+        let shared: HashMap<String, SharedFile> = self
+            .shared_files(mod_id)
+            .into_iter()
+            .map(|s| (s.path.to_lowercase(), s))
+            .collect();
+        let mut outcome = GhostOutcome { renamed: 0, kept: Vec::new(), failed: Vec::new() };
+        for file in installed {
+            if let Some(s) = shared.get(&file.to_lowercase()).filter(|s| s.holders.iter().any(|h| h.enabled)) {
+                outcome.kept.push(s.clone());
+                continue;
+            }
+            let original = Path::new(file);
+            if !original.exists() {
+                continue;
+            }
+            match fs::rename(original, format!("{}.disabled", file)) {
+                Ok(()) => outcome.renamed += 1,
+                Err(e) => outcome.failed.push(format!("{}: {}", file, e)),
+            }
+        }
+        outcome
     }
 
     pub fn toggle_mod(&mut self, mod_id: &str) -> Result<ToggleOutcome, String> {
@@ -1708,6 +1743,23 @@ mod tests {
             .complete_reinstall("local", vec![], "2", None, None, None, None, false, Some("Whatever"))
             .unwrap();
         assert_eq!(manager.mods[1].name, "Typed by user");
+        cleanup(&game);
+    }
+
+    #[test]
+    fn a_ghosted_update_leaves_a_file_an_enabled_mod_holds() {
+        // "patch" is switched off and was just updated; its new files are live
+        let (mut manager, game, shared, own) = two_holders("reghost", true);
+        manager.mods[1].enabled = false;
+        let installed = vec![shared.display().to_string(), own.display().to_string()];
+
+        let outcome = manager.reghost_after_update("patch", &installed);
+
+        assert_eq!(outcome.renamed, 1);
+        assert!(ghost(&own).exists(), "its own file goes back to .disabled");
+        assert!(shared.exists(), "the enabled owner still runs on it");
+        assert_eq!(outcome.kept.len(), 1);
+        assert!(outcome.failed.is_empty());
         cleanup(&game);
     }
 }

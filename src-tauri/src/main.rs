@@ -4240,14 +4240,33 @@ async fn install_mod_from_nxm_inner(
         // If the mod was ghosted before the update, keep it ghosted: the freshly
         // installed files use their real names, so re-disable them on disk to
         // match the preserved enabled=false state.
+        // A file another enabled mod holds stays active, as on Ghost.
         if !now_enabled {
-            for f in &installed_files {
-                if std::path::Path::new(f).exists() {
-                    let disabled = format!("{}.disabled", f);
-                    if let Err(e) = std::fs::rename(f, &disabled) {
-                        eprintln!("Failed to re-disable file after update {}: {}", f, e);
-                    }
-                }
+            let outcome = {
+                let manager = state.mod_manager.lock().map_err(|e| e.to_string())?;
+                manager.reghost_after_update(existing_id, &installed_files)
+            };
+            add_log(
+                format!("👻 Kept ghosted: {} new file(s) renamed to .disabled", outcome.renamed),
+                "info".to_string(),
+                "installation".to_string(),
+                state.clone(),
+            )?;
+            for shared in &outcome.kept {
+                add_log(
+                    format!("· Left active, also held by {}: {}", holder_names(&shared.holders), shared.path),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
+            }
+            for failure in &outcome.failed {
+                add_log(
+                    format!("⚠ Could not ghost after update: {}", failure),
+                    "warning".to_string(),
+                    "installation".to_string(),
+                    state.clone(),
+                )?;
             }
         }
 
