@@ -119,21 +119,24 @@ function pickFake() {
 }
 
 const MAX_LINES = 35;
+// Decorative lines kept at the tail. Enough to feel alive; few enough that
+// the real ones (fetching, file, downloading…) stay on screen — with 35 of
+// them allowed, the terminal outgrew the window and scrolled the real lines
+// off the top.
+const FAKE_TAIL = 6;
 
 function trimLines(lines) {
-  if (lines.length <= MAX_LINES) return lines;
-  // Keep last MAX_LINES, but try to remove fake first
-  const excess = lines.length - MAX_LINES;
-  let removed = 0;
-  const result = [];
-  for (const line of lines) {
-    if (removed < excess && line.type === "fake") {
-      removed++;
-    } else {
-      result.push(line);
+  const fakes = lines.filter((l) => l.type === "fake").length;
+  let drop = Math.max(0, fakes - FAKE_TAIL);
+  // Oldest decoration goes first; every real line stays
+  const result = lines.filter((l) => {
+    if (drop > 0 && l.type === "fake") {
+      drop--;
+      return false;
     }
-  }
-  // If still too many, hard-slice (keeps most recent)
+    return true;
+  });
+  // A very long real log still can't grow without bound
   return result.slice(-MAX_LINES);
 }
 
@@ -277,7 +280,7 @@ export default function JackInOverlay({ open, progress, busy, notice, requiremen
   const flushTyping = () => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     setTypingLine((cur) => {
-      if (cur) setLines((prev) => [...prev, { text: cur.full, type: "fake", done: true }]);
+      if (cur) setLines((prev) => trimLines([...prev, { text: cur.full, type: "fake", done: true }]));
       return null;
     });
   };
