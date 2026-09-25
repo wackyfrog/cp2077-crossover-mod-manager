@@ -204,6 +204,7 @@ function RequirementsBlock({ list }) {
   const required = list.filter((r) => !r.optional);
   const optional = list.filter((r) => r.optional);
   if (list.length === 0) return null;
+  const anyLink = list.some((r) => requirementLink(r));
   return (
     <div className="jackin-reqs">
       {required.length > 0 && (
@@ -218,6 +219,7 @@ function RequirementsBlock({ list }) {
           {optional.map((r, i) => <RequirementLine key={`o${i}`} r={r} />)}
         </>
       )}
+      {anyLink && <div className="jackin-reqs-howto">Click a name ↗ to open its download page</div>}
     </div>
   );
 }
