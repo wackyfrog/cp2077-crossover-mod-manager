@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **An update logs the old files it removes** — updating a mod deletes the files the new version no longer ships, but the log said nothing about it, so the only way to see what left the game folder was to look on disk. Each removed file is now logged the way Flatline logs its files, along with old files kept because another mod still uses them
+- **The installer window is laid out as intended** — the disk image opened with small icons sorted by date and the app's `.app` extension showing; it now opens with large icons, the app beside the Applications folder to drag it onto
 - **A mod's picture no longer stays blank after an update** — when an update changed which picture the details show (Nova LUT 3's file had its own image, Nova LUT 4's doesn't, so the mod's picture takes its place), the picture could stay a dark placeholder until you selected the mod again. It now appears as soon as it loads
 
 ## [1.7.0] - 2026-09-24
